@@ -5,6 +5,7 @@ package spike
 import (
 	"math/big"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -86,6 +87,25 @@ func TestTestnetSend(t *testing.T) {
 		t.Fatalf("NewRpcClient: %v", err)
 	}
 	defer client.Stop()
+
+	// SAFETY: never broadcast against the wrong network. The default keystore can
+	// be a real, funded wallet, so refuse to send unless the node reports the
+	// expected testnet chain identifier (override with ZNN_EXPECT_CHAINID).
+	wantChainID := uint64(73404) // Zenon testnet
+	if v := os.Getenv("ZNN_EXPECT_CHAINID"); v != "" {
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			t.Fatalf("bad ZNN_EXPECT_CHAINID %q: %v", v, err)
+		}
+		wantChainID = n
+	}
+	momentum, err := client.LedgerApi.GetFrontierMomentum()
+	if err != nil {
+		t.Fatalf("GetFrontierMomentum: %v", err)
+	}
+	if momentum.ChainIdentifier != wantChainID {
+		t.Fatalf("refusing to send: node chainId %d != expected %d — wrong ZNN_TESTNET_URL? (this guard prevents broadcasting a funded-wallet tx against mainnet)", momentum.ChainIdentifier, wantChainID)
+	}
 
 	amount := big.NewInt(10_000_000) // 0.1 ZNN
 	template := client.LedgerApi.SendTemplate(toAddr, types.ZnnTokenStandard, amount, nil)

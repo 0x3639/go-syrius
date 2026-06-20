@@ -52,9 +52,14 @@ real keystores and live nodes, not assumptions.
   `80d6f0b04fc7cc76482125ab8d99080df50d5528da807097d8c1f351a3caff00`, confirmed at
   momentum height 440.
 - That send used the **plasma** path (`requiredDifficulty: 0`, wallet had 1000 QSR
-  fused), so on-chain PoW was not exercised in this run. PoW correctness is covered by
-  the SDK's own `pow` tests (canonical-algorithm match). Exercising PoW end-to-end
-  (an unfused address → `requiredDifficulty > 0`) is an optional follow-up.
+  fused), so on-chain PoW was **not** exercised in this run. What Gate 0→1 actually
+  proves is the autofill → sign → publish → confirm path end-to-end against a live
+  testnet. PoW *algorithm* correctness is independently covered by the SDK's `pow`
+  tests (canonical go-zenon match).
+- **Carried forward as a REQUIRED Gate 2→mainnet item (not optional):** a real
+  end-to-end PoW send — from an address with no fused plasma so `requiredDifficulty > 0`
+  — must pass before any mainnet send path is enabled. Until then the integration-level
+  PoW path is unproven for go-syrius.
 
 ## Node RPC requirements
 
@@ -81,5 +86,8 @@ real keystores and live nodes, not assumptions.
 - [x] Testnet send integration test confirms a transaction on-chain.
 - [x] Compatibility note committed; go-syrius pins a released SDK version (v0.1.16, no `replace`).
 
-**Gate 0 → 1: PASSED.** Keystore compatibility and a confirmed testnet transaction are
-both proven. The foundation holds — Phase 1 (Wails skeleton + read-only wallet) may begin.
+**Gate 0 → 1: PASSED** (scoped). Proven: keystore compatibility, and a testnet
+transaction confirmed end-to-end via the autofill→sign→publish path (plasma-funded).
+Not yet proven at integration level: an end-to-end PoW send — this is a **required**
+Gate 2→mainnet item (see above), not a Gate 0→1 blocker. The foundation holds —
+Phase 1 (Wails skeleton + read-only wallet) may begin.

@@ -139,102 +139,38 @@ git commit -m "chore: initialize go module and pin znn-sdk-go v0.1.16"
 - Consumes: `github.com/zenon-network/go-zenon/wallet` — `ReadKeyFile`, `(*KeyFile).Decrypt`, `(*KeyStore).DeriveForIndexPath`, `KeyFile.BaseAddress`, `KeyPair.Address`.
 - Produces: a secret-free, skip-if-absent test asserting go-syrius derives the same index-0 address syrius recorded. Verified against a real keystore (`baseAddress z1qrr0…8wpcjmg`).
 
-- [ ] **Step 1: (Manual, P0-a) Create the reference wallet in real syrius**
+- [x] **Step 1: Provide a real syrius keystore locally (gitignored)**
 
-Install the current Flutter syrius release. Create a new wallet. Record three things:
-1. The wallet’s index-0 address as syrius displays it (`z1…`).
-2. The password you set.
-3. The keystore filename syrius wrote (under syrius’s wallet directory).
+Place a real syrius keystore at `secrets/pillar.json` with its password at
+`secrets/pillar-password.txt`. `secrets/` is gitignored — nothing here is committed.
+(Used: a real wallet; treated read-only, never committed.)
 
-Copy that keystore file into this repo:
-```bash
-mkdir -p internal/compat/testdata
-cp "<syrius-wallet-dir>/<keystore-file>" internal/compat/testdata/reference-wallet.dat
-```
-Do **not** fund this wallet, and never fund it later. The committed compat keystore exists only to prove file-format compatibility and must stay at zero balance forever. (Task 6's testnet send uses a *separate, uncommitted* wallet supplied via env vars — see Task 6 Step 1.)
+- [x] **Step 2: Compat test via go-zenon's canonical wallet (committed: `internal/compat/keystore_compat_test.go`)**
 
-- [ ] **Step 2: Write the failing compat test**
+Read the keystore with `go-zenon/wallet` (the SDK can't read raw-entropy syrius
+keystores), derive index 0, and assert it equals the keystore's own `baseAddress`.
+The expected value comes from the file, so no secret is in committed code; the test
+skips when `secrets/` is absent (override via `ZNN_COMPAT_KEYSTORE` / `ZNN_COMPAT_PASSWORD`):
 
-`internal/compat/keystore_compat_test.go` (replace the two `REPLACE_ME` constants with the values from Step 1):
 ```go
-package compat
-
-import (
-	"path/filepath"
-	"testing"
-
-	"github.com/0x3639/znn-sdk-go/wallet"
-)
-
-// Throwaway reference wallet — see internal/compat/doc.go. No real funds.
-const (
-	referenceKeystoreFile = "reference-wallet.dat"
-	referencePassword     = "REPLACE_ME_password"
-	referenceAddress0     = "REPLACE_ME_z1address"
-)
-
-func TestSyriusKeystoreRoundTrip(t *testing.T) {
-	dir, err := filepath.Abs("testdata")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	mgr, err := wallet.NewKeyStoreManager(dir)
-	if err != nil {
-		t.Fatalf("NewKeyStoreManager: %v", err)
-	}
-
-	ks, err := mgr.ReadKeyStore(referencePassword, referenceKeystoreFile)
-	if err != nil {
-		t.Fatalf("ReadKeyStore (SDK cannot open a real syrius .dat — fix in znn-sdk-go/wallet): %v", err)
-	}
-
-	kp, err := ks.GetKeyPair(0)
-	if err != nil {
-		t.Fatalf("GetKeyPair(0): %v", err)
-	}
-
-	addr, err := kp.GetAddress()
-	if err != nil {
-		t.Fatalf("GetAddress: %v", err)
-	}
-
-	if got := addr.String(); got != referenceAddress0 {
-		t.Fatalf("index-0 address mismatch:\n  got  %s\n  want %s\n(address derivation is NOT syrius-compatible — fix in znn-sdk-go/wallet)", got, referenceAddress0)
-	}
-}
+kf, err := wallet.ReadKeyFile(keystorePath)   // github.com/zenon-network/go-zenon/wallet
+ks, err := kf.Decrypt(password)
+_, kp, err := ks.DeriveForIndexPath(0)
+if kp.Address != kf.BaseAddress { t.Fatalf("derivation not syrius-compatible") }
 ```
 
-- [ ] **Step 3: Run it to verify it fails first** (before adding the `.dat`/constants, or with placeholder constants)
+- [x] **Step 3: Run it**
 
 Run: `go test ./internal/compat/ -run TestSyriusKeystoreRoundTrip -v`
-Expected: FAIL (missing file or address mismatch). This confirms the test actually checks something.
+Result: PASS — opened the real keystore; index-0 == `baseAddress z1qrr0…8wpcjmg`.
+(If `Decrypt` or the address ever mismatches, that is a real compat defect: per the
+no-SDK-modification directive, keep using go-zenon's wallet — do not patch the SDK.)
 
-- [ ] **Step 4: Fill in the real constants and `.dat`, then run to pass**
-
-Run: `go test ./internal/compat/ -run TestSyriusKeystoreRoundTrip -v`
-Expected: PASS.
-**If `ReadKeyStore` fails or the address mismatches:** STOP. This is a real SDK compatibility defect. Diagnose in `../znn-sdk-go/wallet/` (compare `encryptedfile.go` / `derivation.go` against `go-zenon/wallet/keyfile.go`), fix and unit-test it **in the SDK**, then rerun this test. Do not adjust this test to mask a mismatch.
-
-- [ ] **Step 5: Document the testdata**
-
-`internal/compat/doc.go`:
-```go
-// Package compat holds tests proving byte/behaviour compatibility with the
-// original Flutter syrius wallet.
-//
-// testdata/reference-wallet.dat is a THROWAWAY syrius keystore with no funds,
-// committed solely so TestSyriusKeystoreRoundTrip can prove that znn-sdk-go
-// opens real syrius keystores and derives identical addresses. Never place a
-// funded keystore here.
-package compat
-```
-
-- [ ] **Step 6: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
-git add internal/compat/
-git commit -m "test: prove SDK opens real syrius keystore with matching address"
+git add internal/compat/ .gitignore
+git commit -m "test: prove syrius keystore compat via go-zenon wallet (no SDK changes)"
 ```
 
 ---
@@ -433,17 +369,20 @@ func TestTestnetSend(t *testing.T) {
 
 - [ ] **Step 3: Run it against testnet**
 
-Run:
+Run (the committed test reads the keystore from the gitignored `secrets/` folder by
+default and self-sends; it refuses to run unless the node's `ChainIdentifier` is the
+expected testnet value):
 ```bash
-ZNN_TESTNET_URL="<testnet node>" \
-ZNN_WALLET_DIR="$PWD/internal/compat/testdata" \
-ZNN_WALLET_FILE="reference-wallet.dat" \
-ZNN_WALLET_PASS="<password>" \
-ZNN_SEND_TO="<a second testnet z1 you control>" \
+ZNN_TESTNET_URL="ws://<testnet-node>:35998" \
 go test ./internal/spike/ -tags integration -run TestTestnetSend -v
 ```
+Optional overrides: `ZNN_KEYSTORE`, `ZNN_KEYSTORE_PASSWORD`, `ZNN_SEND_TO`,
+`ZNN_EXPECT_CHAINID` (default 73404).
 Expected: PASS; logs a tx hash and confirmation. This is the Gate 0→1 transaction proof.
-**If publish is rejected:** the failure mode points at the SDK's send flow (e.g. wrong `ChainIdentifier`, hash-field ordering, nonce encoding). Per the SDK-first rule, reproduce it as a failing test in `znn-sdk-go/zenon`, fix it there, cut a new SDK release, re-pin in Task 1, then retry — do not patch around it in this repo.
+**Result:** verified — tx confirmed on testnet (chainId 73404).
+**If publish is rejected:** the failure points at the send flow (chainId, hash-field
+ordering, nonce/PoW). Per the no-SDK-modification directive, diagnose against go-zenon
+behaviour; do not patch the SDK.
 
 - [ ] **Step 4: Commit**
 

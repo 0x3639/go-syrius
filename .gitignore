@@ -1,0 +1,12 @@
+# Secrets — never commit wallets, seeds, passwords, or keystores
+/secrets/
+*.dat
+*-seed-words.txt
+*-password.txt
+
+# Local SDD scratch
+/.superpowers/
+
+# Go build artifacts
+/bin/
+*.test

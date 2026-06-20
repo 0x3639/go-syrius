@@ -2,7 +2,10 @@ module github.com/0x3639/go-syrius
 
 go 1.24.0
 
-require github.com/0x3639/znn-sdk-go v0.1.16
+require (
+	github.com/0x3639/znn-sdk-go v0.1.16
+	github.com/zenon-network/go-zenon v0.0.8-alphanet.0.20250515170359-667a69d9e9a4
+)
 
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.2.0 // indirect
@@ -29,7 +32,6 @@ require (
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/tyler-smith/go-bip39 v1.1.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	github.com/zenon-network/go-zenon v0.0.8-alphanet.0.20250515170359-667a69d9e9a4 // indirect
 	golang.org/x/crypto v0.44.0 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
 	golang.org/x/sync v0.12.0 // indirect

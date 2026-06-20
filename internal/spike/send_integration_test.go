@@ -9,18 +9,19 @@ import (
 	"testing"
 	"time"
 
-	sdkwallet "github.com/0x3639/znn-sdk-go/wallet"
 	"github.com/0x3639/znn-sdk-go/rpc_client"
+	sdkwallet "github.com/0x3639/znn-sdk-go/wallet"
 	"github.com/0x3639/znn-sdk-go/zenon"
-	gzwallet "github.com/zenon-network/go-zenon/wallet"
 	"github.com/zenon-network/go-zenon/common/types"
+	gzwallet "github.com/zenon-network/go-zenon/wallet"
 )
 
 // Env:
-//   ZNN_TESTNET_URL       testnet node URL (required)
-//   ZNN_KEYSTORE          path to a syrius keystore (default secrets/pillar.json)
-//   ZNN_KEYSTORE_PASSWORD keystore password (else read from secrets/pillar-password.txt)
-//   ZNN_SEND_TO           recipient z1… (default: the wallet's own address — self-send)
+//
+//	ZNN_TESTNET_URL       testnet node URL (required)
+//	ZNN_KEYSTORE          path to a syrius keystore (default secrets/pillar.json)
+//	ZNN_KEYSTORE_PASSWORD keystore password (else read from secrets/pillar-password.txt)
+//	ZNN_SEND_TO           recipient z1… (default: the wallet's own address — self-send)
 //
 // Flow (per the keystore + no-SDK-modification findings):
 //  1. Read the keystore with go-zenon (canonical; the SDK can't read syrius keystores).

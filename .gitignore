@@ -1,8 +1,14 @@
-# Secrets — never commit wallets, seeds, passwords, or keystores
+# Secrets — never commit wallets, seeds, passwords, or keystores.
+# Keep all wallet material under /secrets/ (the primary guard); the patterns
+# below are extra defense for common keystore/secret filenames placed elsewhere.
+# (Deliberately NOT a blanket *.json — the frontend will have many config .jsons.)
 /secrets/
 *.dat
 *-seed-words.txt
 *-password.txt
+*keystore*.json
+wallet*.json
+*.keystore
 
 # Local SDD scratch
 /.superpowers/

@@ -117,18 +117,27 @@ git commit -m "chore: initialize go module and pin znn-sdk-go v0.1.16"
 
 ---
 
-## Task 2: Keystore round-trip compatibility test (headline de-risk)
+## Task 2: Keystore round-trip compatibility test (headline de-risk) — DONE
 
-This is the single most important Phase 0 test: proves the SDK opens a **real syrius** `.dat` and derives the **same** `z1…` address syrius shows. If it fails, the fix is in `znn-sdk-go/wallet` (SDK-first rule), not here.
+> **Revision (2026-06-20):** Done, but NOT via the SDK. Discovery: `znn-sdk-go`'s
+> wallet **cannot read real syrius keystores** — its crypto is byte-identical to
+> go-zenon (so decryption succeeds) but it JSON-wraps the entropy payload, while
+> syrius/go-zenon encrypt **raw BIP-39 entropy**, so `FromEncryptedFile` fails with
+> `invalid character 'ù'` when JSON-parsing raw entropy. Per the user's directive to
+> **not modify the SDK**, go-syrius reads/derives keystores through **go-zenon's
+> canonical `wallet` package directly** (`wallet.ReadKeyFile` → `(*KeyFile).Decrypt`
+> → `(*KeyStore).DeriveForIndexPath`, compared to `KeyFile.BaseAddress`). The SDK is
+> used only for RPC, PoW, and `zenon.Send`. Write-compat (Phase 3) likewise uses
+> go-zenon's `(*KeyStore).Encrypt` + `(*KeyFile).Write`.
 
 **Files:**
-- Create: `internal/compat/testdata/reference-wallet.dat` (throwaway, from manual step)
 - Create: `internal/compat/keystore_compat_test.go`
 - Create: `internal/compat/doc.go`
+- (No committed keystore: the real keystore is read from the gitignored `secrets/` folder at runtime; `.gitignore` added.)
 
 **Interfaces:**
-- Consumes: `wallet.NewKeyStoreManager`, `(*KeyStoreManager).ReadKeyStore`, `(*KeyStore).GetKeyPair`, `(*KeyPair).GetAddress` from Task’s SDK surface.
-- Produces: a committed, deterministic regression test asserting address-derivation compatibility.
+- Consumes: `github.com/zenon-network/go-zenon/wallet` — `ReadKeyFile`, `(*KeyFile).Decrypt`, `(*KeyStore).DeriveForIndexPath`, `KeyFile.BaseAddress`, `KeyPair.Address`.
+- Produces: a secret-free, skip-if-absent test asserting go-syrius derives the same index-0 address syrius recorded. Verified against a real keystore (`baseAddress z1qrr0…8wpcjmg`).
 
 - [ ] **Step 1: (Manual, P0-a) Create the reference wallet in real syrius**
 
@@ -317,6 +326,16 @@ git commit -m "test: integration read-only RPC against a live node"
 ---
 
 ## Task 6: Testnet end-to-end transaction (integration, the PoW+sign proof)
+
+> **Keypair bridge (per the no-SDK-modification + keystore findings):** the SDK
+> can't read syrius keystores, and `zenon.Send` needs an SDK `*wallet.KeyPair`.
+> So Task 6's flow is: read the keystore with **go-zenon** (`wallet.ReadKeyFile`
+> → `(*KeyFile).Decrypt`) to recover the mnemonic, then build the SDK keypair
+> via `znnsdkwallet.NewKeyStoreFromMnemonic(mnemonic)` → `GetKeyPair(0)`, and
+> pass that to `zenon.NewZenon(client).Send(template, kp)`. The two derivations
+> must yield the same address — assert that equality (it cross-checks SDK vs
+> go-zenon BIP-44 derivation). The test code below predates this and must be
+> updated accordingly when Task 6 runs.
 
 **Files:**
 - Create: `internal/spike/send_integration_test.go`

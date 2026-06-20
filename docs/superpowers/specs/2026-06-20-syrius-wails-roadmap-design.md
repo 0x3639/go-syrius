@@ -35,7 +35,7 @@ Steady state: frontend trails backend by ~one phase. While backend builds phase 
 
 These are correctness fences, not coordination points. No phase overlap is allowed across them.
 
-- **Gate 0 → 1:** an existing syrius wallet opens with a byte-correct index-0 `z1…` address AND a testnet tx confirms. Until this passes, no UI work starts.
+- **Gate 0 → 1:** an existing syrius wallet opens with a byte-correct index-0 `z1…` address AND a testnet tx confirms. Until this passes, no *product* UI work starts — no screens, routes, or binding-consuming components. Non-product frontend scaffolding (the Wails/Svelte/Vite/Tailwind toolchain and an empty component/design-system skeleton) is explicitly permitted before the gate, since it consumes no bindings and proves nothing about the foundation; it is the frontend track's Phase 0 prep (see the phase table).
 - **Gate 2 → mainnet:** the crypto-critical path (keystore, derivation, hashing, signing, PoW) is independently reviewed and exhaustive testnet testing passes. Mainnet send stays behind a build flag until this clears.
 - **Gate 3:** a wallet created by this app opens in real syrius and vice-versa (round-trip interop).
 

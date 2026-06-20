@@ -142,7 +142,7 @@ Copy that keystore file into this repo:
 mkdir -p internal/compat/testdata
 cp "<syrius-wallet-dir>/<keystore-file>" internal/compat/testdata/reference-wallet.dat
 ```
-Do **not** fund this wallet. It exists only to prove file-format compatibility.
+Do **not** fund this wallet, and never fund it later. The committed compat keystore exists only to prove file-format compatibility and must stay at zero balance forever. (Task 6's testnet send uses a *separate, uncommitted* wallet supplied via env vars — see Task 6 Step 1.)
 
 - [ ] **Step 2: Write the failing compat test**
 
@@ -327,7 +327,7 @@ git commit -m "test: integration read-only RPC against a live node"
 
 - [ ] **Step 1: (Manual, P0-b) Acquire testnet access and funds**
 
-Obtain a testnet node URL (`wss://`/`ws://`). Create or import a throwaway testnet wallet (you can reuse the Task 2 reference wallet) and fund its index-0 address from the Zenon testnet faucet. Confirm a non-zero balance via the Task 5 test pointed at the testnet node.
+Obtain a testnet node URL (`wss://`/`ws://`). Create a throwaway testnet wallet — a **separate, uncommitted** keystore, *not* the committed Task 2 compat `.dat`, which must never hold funds — stored outside the repo and referenced only through env vars (Step 2). Fund its index-0 address from the Zenon testnet faucet, then confirm a non-zero balance via the Task 5 test pointed at the testnet node.
 
 - [ ] **Step 2: Write the end-to-end test**
 
@@ -483,21 +483,17 @@ git add docs/compatibility-notes.md
 git commit -m "docs: record Phase 0 keystore and transaction compatibility findings"
 ```
 
-- [ ] **Step 3: Open the SDK pull request**
+- [ ] **Step 3: (No SDK changes to upstream)**
 
-Push the SDK branch and open a PR so the autofill/Send changes land upstream; afterward, in this repo, drop the `replace` and pin the new SDK release:
-```bash
-cd ../znn-sdk-go && git push -u origin phase0-tx-assembly
-# open PR via the GitHub UI or gh once the token has access
-```
+The send-flow orchestration this plan once added is already upstream and released as `znn-sdk-go v0.1.16` (the `zenon` facade), which go-syrius pins in Task 1. No SDK branch, PR, or `replace` removal is needed — that work pre-dates this plan's revision. This step is a no-op retained only to mark that the SDK dependency is a clean pinned release.
 
 - [ ] **Step 4: Confirm Phase 0 exit criteria (Gate 0→1)**
 
 All must hold:
-- `go test ./...` (offline) passes, including the keystore round-trip.
+- `go test ./...` (offline) passes, including the keystore round-trip and the SDK facade smoke test.
 - Read-only RPC integration test passes against the live node.
 - Testnet send integration test confirms a transaction on-chain.
-- Compatibility note committed; SDK changes PR'd.
+- Compatibility note committed; go-syrius pins a released SDK version (`v0.1.16`, no `replace`).
 
 ---
 

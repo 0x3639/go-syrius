@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store'
 import * as Tx from '../../../wailsjs/go/app/TxService'
 
-export type SendPreview = { toAddress: string; symbol: string; zts: string; amount: string; usedPlasma: number; difficulty: number; hash: string; needsPoW: boolean }
+export type SendPreview = { toAddress: string; symbol: string; zts: string; amount: string; usedPlasma: number; difficulty: number; hash: string; needsPoW: boolean; summary?: string }
 export type TxState = { status: 'idle' | 'preparing' | 'awaiting' | 'publishing' | 'done' | 'error'; preview: SendPreview | null; hash: string; error: string }
 
 export const tx = writable<TxState>({ status: 'idle', preview: null, hash: '', error: '' })

@@ -6,6 +6,9 @@
 {#if p}
 <div class="rounded border border-accent/40 bg-surface p-4 space-y-2" role="dialog" aria-label="Confirm transaction">
   <h2 class="text-sm text-muted">Confirm — you are signing this exact transaction</h2>
+  {#if p.summary}
+  <p class="text-sm text-accent">{p.summary}</p>
+  {/if}
   <div class="flex justify-between"><span class="text-muted">To</span><span class="font-mono">{shortAddress(p.toAddress)}</span></div>
   <div class="flex justify-between"><span class="text-muted">Amount</span><span class="font-mono">{formatAmount(p.amount, 8)} {p.symbol || p.zts}</span></div>
   <div class="flex justify-between"><span class="text-muted">Fee</span><span>{p.needsPoW ? `PoW (difficulty ${p.difficulty})` : 'Feeless (plasma)'}</span></div>

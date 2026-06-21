@@ -164,6 +164,28 @@ func TestImportMnemonicRoundTrip(t *testing.T) {
 	}
 }
 
+func TestChangePassword(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+	if _, err := w.ImportMnemonic("cp.dat", "old-pw", m); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := w.ChangePassword("cp.dat", "wrong", "new-pw"); err == nil {
+		t.Fatal("expected wrong old password to fail")
+	}
+	if err := w.ChangePassword("cp.dat", "old-pw", "new-pw"); err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+
+	if err := w.Unlock("cp.dat", "old-pw"); err == nil {
+		t.Fatal("old password should no longer work")
+	}
+	if err := w.Unlock("cp.dat", "new-pw"); err != nil {
+		t.Fatalf("new password should work: %v", err)
+	}
+}
+
 func TestImportRejectsNonKeystore(t *testing.T) {
 	w := newTestWalletService(t)
 	bad := filepath.Join(t.TempDir(), "notakeystore.json")

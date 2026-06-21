@@ -31,10 +31,11 @@ type WalletService struct {
 	// mu protects keystore/active/gen. Go mutexes are NOT reentrant, so internal
 	// callers must use the *Locked() helpers while public methods take the lock
 	// once. No method calls another lock-taking method while holding mu.
-	mu       sync.Mutex
-	keystore *wallet.KeyStore // nil when locked
-	active   int
-	gen      uint64 // session generation, bumped on each Unlock and Lock
+	mu           sync.Mutex
+	keystore     *wallet.KeyStore // nil when locked
+	active       int
+	activeWallet string // name of the unlocked keystore; "" when locked
+	gen          uint64 // session generation, bumped on each Unlock and Lock
 
 	onLock func() // optional callback invoked on Lock (e.g. clear pending tx)
 }
@@ -176,8 +177,42 @@ func (w *WalletService) Unlock(name, password string) error {
 	w.mu.Lock()
 	w.keystore = ks
 	w.active = 0
+	w.activeWallet = name
 	w.gen++
 	w.mu.Unlock()
+	return nil
+}
+
+// ChangePassword re-encrypts the named keystore under a new password, writing
+// atomically (temp file + rename) so a failure never corrupts the original.
+func (w *WalletService) ChangePassword(name, oldPassword, newPassword string) error {
+	dir, err := w.config.walletsDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dir, name)
+	kf, err := wallet.ReadKeyFile(path)
+	if err != nil {
+		return fmt.Errorf("cannot read keystore: %w", err)
+	}
+	ks, err := kf.Decrypt(oldPassword)
+	if err != nil {
+		return errors.New("incorrect password")
+	}
+	defer ks.Zero()
+	newKf, err := ks.Encrypt(newPassword)
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	newKf.Path = tmp
+	if err := newKf.Write(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
 	return nil
 }
 
@@ -188,6 +223,7 @@ func (w *WalletService) Lock() error {
 		w.keystore.Zero()
 		w.keystore = nil
 	}
+	w.activeWallet = ""
 	w.gen++
 	onLock := w.onLock
 	w.mu.Unlock()

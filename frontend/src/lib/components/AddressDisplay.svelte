@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
   import QRCode from 'qrcode'
   import { ClipboardSetText } from '../../../wailsjs/runtime/runtime'
   export let address = ''
   let dataUrl = ''
   let copied = false
-  onMount(async () => { if (address) dataUrl = await QRCode.toDataURL(address, { margin: 1, width: 160 }) })
+  $: if (address) { QRCode.toDataURL(address, { margin: 1, width: 160 }).then((u) => (dataUrl = u)).catch(() => (dataUrl = '')) }
   async function copy() { await ClipboardSetText(address); copied = true; setTimeout(() => (copied = false), 1200) }
 </script>
 <div class="flex items-center gap-4 rounded bg-surface p-4">

@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.17.1",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,7 +13,7 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^1.0.1",
-    "@testing-library/svelte": "^5.4.0",
+    "@testing-library/svelte": "5.3.1",
     "@tsconfig/svelte": "^3.0.0",
     "@types/qrcode": "^1.5.6",
     "autoprefixer": "^10.5.0",
@@ -28,11 +29,15 @@
     "vitest": "^0.34.6"
   },
   "pnpm": {
+    "minimumReleaseAge": 10080,
     "onlyBuiltDependencies": [
       "@parcel/watcher",
       "esbuild",
       "svelte-preprocess"
-    ]
+    ],
+    "overrides": {
+      "nanoid": "3.3.12"
+    }
   },
   "dependencies": {
     "qrcode": "^1.5.4"

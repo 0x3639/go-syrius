@@ -35,11 +35,12 @@ func (a *App) OnStartup(ctx context.Context) {
 
 // OnShutdown locks the wallet and disconnects the node on exit.
 func (a *App) OnShutdown(ctx context.Context) {
+	a.Node.StopAutoReceive()
 	_ = a.Wallet.Lock()
 	_ = a.Node.Disconnect()
 }
 
 // Bindings is the list of structs whose exported methods Wails exposes to JS.
 func (a *App) Bindings() []interface{} {
-	return []interface{}{a.Config, a.Wallet, a.Node}
+	return []interface{}{a.Config, a.Wallet, a.Node, a.Tx}
 }

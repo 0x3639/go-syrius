@@ -8,6 +8,12 @@ export function GetBalances():Promise<Array<app.TokenBalance>>;
 
 export function GetTransactions(arg1:number,arg2:number):Promise<Array<app.TxRecord>>;
 
+export function GetUnreceived():Promise<Array<app.UnreceivedBlock>>;
+
 export function NodeStatus():Promise<app.NodeStatus>;
 
 export function SetNode(arg1:string):Promise<void>;
+
+export function StartAutoReceive():Promise<void>;
+
+export function StopAutoReceive():Promise<void>;

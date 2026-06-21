@@ -14,10 +14,22 @@ export function GetTransactions(arg1, arg2) {
   return window['go']['app']['NodeService']['GetTransactions'](arg1, arg2);
 }
 
+export function GetUnreceived() {
+  return window['go']['app']['NodeService']['GetUnreceived']();
+}
+
 export function NodeStatus() {
   return window['go']['app']['NodeService']['NodeStatus']();
 }
 
 export function SetNode(arg1) {
   return window['go']['app']['NodeService']['SetNode'](arg1);
+}
+
+export function StartAutoReceive() {
+  return window['go']['app']['NodeService']['StartAutoReceive']();
+}
+
+export function StopAutoReceive() {
+  return window['go']['app']['NodeService']['StopAutoReceive']();
 }

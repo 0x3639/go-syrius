@@ -34,11 +34,55 @@ export namespace app {
 	        this.peers = source["peers"];
 	    }
 	}
+	export class SendPreview {
+	    toAddress: string;
+	    symbol: string;
+	    zts: string;
+	    amount: string;
+	    usedPlasma: number;
+	    difficulty: number;
+	    hash: string;
+	    needsPoW: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SendPreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.toAddress = source["toAddress"];
+	        this.symbol = source["symbol"];
+	        this.zts = source["zts"];
+	        this.amount = source["amount"];
+	        this.usedPlasma = source["usedPlasma"];
+	        this.difficulty = source["difficulty"];
+	        this.hash = source["hash"];
+	        this.needsPoW = source["needsPoW"];
+	    }
+	}
+	export class SendRequest {
+	    toAddress: string;
+	    zts: string;
+	    amount: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SendRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.toAddress = source["toAddress"];
+	        this.zts = source["zts"];
+	        this.amount = source["amount"];
+	    }
+	}
 	export class Settings {
 	    nodeUrl: string;
 	    theme: string;
 	    lastWallet: string;
 	    activeAccount: number;
+	    allowMainnetSend: boolean;
+	    autoReceive: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -50,6 +94,8 @@ export namespace app {
 	        this.theme = source["theme"];
 	        this.lastWallet = source["lastWallet"];
 	        this.activeAccount = source["activeAccount"];
+	        this.allowMainnetSend = source["allowMainnetSend"];
+	        this.autoReceive = source["autoReceive"];
 	    }
 	}
 	export class TokenBalance {
@@ -94,6 +140,24 @@ export namespace app {
 	        this.momentumHeight = source["momentumHeight"];
 	        this.confirmed = source["confirmed"];
 	        this.timestamp = source["timestamp"];
+	    }
+	}
+	export class UnreceivedBlock {
+	    fromHash: string;
+	    fromAddress: string;
+	    token: string;
+	    amount: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UnreceivedBlock(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fromHash = source["fromHash"];
+	        this.fromAddress = source["fromAddress"];
+	        this.token = source["token"];
+	        this.amount = source["amount"];
 	    }
 	}
 	export class WalletMeta {

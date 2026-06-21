@@ -12,6 +12,14 @@ export async function unlock(name: string, password: string): Promise<void> {
   wallet.set({ locked: false, walletName: name, accounts, active: 0 })
 }
 
+export async function generateMnemonic(): Promise<string> {
+  return (await W.GenerateMnemonic()) as string
+}
+
+export async function importMnemonic(name: string, password: string, mnemonic: string): Promise<void> {
+  await W.ImportMnemonic(name, password, mnemonic)
+}
+
 export function lock(): void {
   W.Lock().catch(() => {})
   wallet.set({ locked: true, walletName: '', accounts: [], active: 0 })

@@ -6,6 +6,7 @@
   import * as Cfg from '../wailsjs/go/app/ConfigService'
   import * as N from '../wailsjs/go/app/NodeService'
   import Unlock from './routes/Unlock.svelte'
+  import Create from './routes/Create.svelte'
   import Dashboard from './routes/Dashboard.svelte'
   import Send from './routes/Send.svelte'
   onMount(async () => {
@@ -15,7 +16,9 @@
     } catch {}
   })
 </script>
-{#if $wallet.locked}
+{#if $wallet.locked && $view === 'create'}
+  <Create />
+{:else if $wallet.locked}
   <Unlock />
 {:else if $view === 'send'}
   <Send />

@@ -97,6 +97,9 @@ func (s *NomService) PrepareFuse(beneficiary, qsrAmount string) (CallPreview, er
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.PlasmaApi.Fuse(addr, amt)
+	// The callExpect zts MUST match the SDK template's TokenStandard or
+	// TxService.ConfirmPublish's assertMatches rejects the block. The SDK's
+	// PlasmaApi.Fuse builds the block with TokenStandard: types.QsrTokenStandard.
 	return s.tx.prepareCall(template, callExpect{to: types.PlasmaContract, zts: types.QsrTokenStandard, amount: amt},
 		fmt.Sprintf("Fuse %s QSR for %s", qsrAmount, beneficiary))
 }
@@ -113,7 +116,12 @@ func (s *NomService) PrepareCancelFuse(id string) (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.PlasmaApi.Cancel(hash)
-	return s.tx.prepareCall(template, callExpect{to: types.PlasmaContract, zts: types.QsrTokenStandard, amount: big.NewInt(0)},
+	// The callExpect zts MUST match the SDK template's TokenStandard or
+	// TxService.ConfirmPublish's assertMatches rejects the block. The SDK's
+	// PlasmaApi.Cancel builds the block with TokenStandard: types.ZnnTokenStandard
+	// (Amount common.Big0) — NOT QSR, unlike Fuse. amount big.NewInt(0)
+	// Cmp-equals common.Big0.
+	return s.tx.prepareCall(template, callExpect{to: types.PlasmaContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0)},
 		fmt.Sprintf("Cancel fusion %s", id))
 }
 

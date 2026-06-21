@@ -3,7 +3,6 @@
   import { onMount } from 'svelte'
   import { wallet } from './lib/stores/wallet'
   import { view } from './lib/stores/nav'
-  import * as Cfg from '../wailsjs/go/app/ConfigService'
   import * as N from '../wailsjs/go/app/NodeService'
   import Unlock from './routes/Unlock.svelte'
   import Create from './routes/Create.svelte'
@@ -13,8 +12,7 @@
   import Settings from './routes/Settings.svelte'
   onMount(async () => {
     try {
-      const s = await Cfg.GetSettings()
-      if (s.nodeUrl) await N.SetNode(s.nodeUrl)
+      await N.Connect()
     } catch {}
   })
 </script>

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	sdkwallet "github.com/0x3639/znn-sdk-go/wallet"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zenon-network/go-zenon/common/types"
 	"github.com/zenon-network/go-zenon/wallet"
@@ -159,6 +160,35 @@ func (w *WalletService) activeAddress() (types.Address, bool) {
 		return types.Address{}, false
 	}
 	return kp.Address, true
+}
+
+// signingKeyPair derives the SDK keypair for the active account from the
+// unlocked mnemonic and asserts it matches the go-zenon active address (the
+// Phase-0 cross-check). The mnemonic and keypair stay backend-only.
+func (w *WalletService) signingKeyPair() (*sdkwallet.KeyPair, error) {
+	if w.keystore == nil {
+		return nil, errLocked
+	}
+	sdkKs, err := sdkwallet.NewKeyStoreFromMnemonic(w.keystore.Mnemonic)
+	if err != nil {
+		return nil, err
+	}
+	kp, err := sdkKs.GetKeyPair(w.active)
+	if err != nil {
+		return nil, err
+	}
+	addr, err := kp.GetAddress()
+	if err != nil {
+		return nil, err
+	}
+	want, ok := w.activeAddress()
+	if !ok {
+		return nil, errLocked
+	}
+	if *addr != want {
+		return nil, fmt.Errorf("SDK-derived address %s does not match active address %s", addr.String(), want.String())
+	}
+	return kp, nil
 }
 
 func copyFile(src, dst string) error {

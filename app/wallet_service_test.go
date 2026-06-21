@@ -67,6 +67,36 @@ func TestImportListUnlockLock(t *testing.T) {
 	}
 }
 
+func TestSigningKeyPairMatchesActiveAddress(t *testing.T) {
+	ksPath, pw := locateSecretsKeystore(t)
+	w := newTestWalletService(t)
+	meta, err := w.ImportKeystore(ksPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Unlock(meta.Name, pw); err != nil {
+		t.Fatal(err)
+	}
+
+	kp, err := w.signingKeyPair()
+	if err != nil {
+		t.Fatalf("signingKeyPair: %v", err)
+	}
+	addr, err := kp.GetAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := w.activeAddress()
+	if *addr != want {
+		t.Fatalf("sdk keypair address %s != active %s", addr, want)
+	}
+
+	_ = w.Lock()
+	if _, err := w.signingKeyPair(); err == nil {
+		t.Fatal("expected signingKeyPair to fail when locked")
+	}
+}
+
 func TestImportRejectsNonKeystore(t *testing.T) {
 	w := newTestWalletService(t)
 	bad := filepath.Join(t.TempDir(), "notakeystore.json")

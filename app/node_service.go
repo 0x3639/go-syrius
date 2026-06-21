@@ -19,11 +19,12 @@ type NodeService struct {
 	config *ConfigService
 	wallet *WalletService
 
-	mu     sync.RWMutex
-	client *rpc_client.RpcClient
-	url    string
-	height uint64
-	stop   chan struct{}
+	mu      sync.RWMutex
+	client  *rpc_client.RpcClient
+	url     string
+	height  uint64
+	chainID uint64
+	stop    chan struct{}
 }
 
 func newNodeService(c *ConfigService, w *WalletService) *NodeService {
@@ -51,6 +52,7 @@ func (n *NodeService) SetNode(url string) error {
 	n.client = client
 	n.url = url
 	n.height = m.Height
+	n.chainID = m.ChainIdentifier
 	n.mu.Unlock()
 
 	if s, err := n.config.GetSettings(); err == nil {
@@ -211,6 +213,52 @@ func (n *NodeService) GetTransactions(page, count int) ([]TxRecord, error) {
 		out = append(out, toTxRecord(b))
 	}
 	return out, nil
+}
+
+// currentClient returns the connected client or nil, under the read lock.
+func (n *NodeService) currentClient() *rpc_client.RpcClient {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.client
+}
+
+// currentChainID returns the connected node's chain identifier (0 if unknown).
+func (n *NodeService) currentChainID() uint64 {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.chainID
+}
+
+// GetUnreceived lists inbound blocks not yet received by the active address.
+func (n *NodeService) GetUnreceived() ([]UnreceivedBlock, error) {
+	client := n.currentClient()
+	if client == nil {
+		return nil, errors.New("not connected")
+	}
+	addr, ok := n.wallet.activeAddress()
+	if !ok {
+		return nil, errLocked
+	}
+	list, err := client.LedgerApi.GetUnreceivedBlocksByAddress(addr, 0, 50)
+	if err != nil {
+		return nil, err
+	}
+	out := []UnreceivedBlock{}
+	for _, b := range list.List {
+		out = append(out, toUnreceivedBlock(b))
+	}
+	return out, nil
+}
+
+func toUnreceivedBlock(b *api.AccountBlock) UnreceivedBlock {
+	u := UnreceivedBlock{FromHash: b.Hash.String(), FromAddress: b.Address.String(), Amount: "0", Token: b.TokenStandard.String()}
+	if b.Amount != nil {
+		u.Amount = b.Amount.String()
+	}
+	if b.TokenInfo != nil {
+		u.Token = b.TokenInfo.TokenSymbol
+	}
+	return u
 }
 
 func toTokenBalance(zts types.ZenonTokenStandard, bi *api.BalanceInfo) TokenBalance {

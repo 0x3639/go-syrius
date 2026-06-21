@@ -41,6 +41,23 @@ func TestToTxRecordDirection(t *testing.T) {
 	}
 }
 
+func TestToUnreceivedBlock(t *testing.T) {
+	b := &api.AccountBlock{}
+	b.AccountBlock = nom.AccountBlock{
+		Hash:          types.HexToHashPanic("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+		Address:       types.ParseAddressPanic("z1qqjnwjjpnue8xmmpanz6csze6tcmtzzdtfsww7"),
+		Amount:        big.NewInt(150000000),
+		TokenStandard: types.ZnnTokenStandard,
+	}
+	got := toUnreceivedBlock(b)
+	if got.FromAddress != b.Address.String() || got.Amount != "150000000" {
+		t.Fatalf("toUnreceivedBlock = %+v", got)
+	}
+	if got.FromHash != b.Hash.String() {
+		t.Fatalf("fromHash = %s", got.FromHash)
+	}
+}
+
 func TestStatusDefaults(t *testing.T) {
 	n := newNodeService(newConfigService(), newWalletService(newConfigService()))
 	s := n.NodeStatus()

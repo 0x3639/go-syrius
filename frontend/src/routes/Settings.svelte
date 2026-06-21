@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { wallet, changePassword, revealMnemonic } from '../lib/stores/wallet'
   import { view } from '../lib/stores/nav'
-  import { node, getConfig, setMode, setUrl } from '../lib/stores/node'
+  import { node, sync, getConfig, setMode, setUrl, getEmbeddedInfo, deleteEmbeddedData } from '../lib/stores/node'
 
   let nodeMode = 'remote'
   let remoteUrl = ''
@@ -17,6 +17,12 @@
   let modeDirty = false
   let remoteDirty = false
   let localDirty = false
+  let showEmbeddedConfirm = false
+  let embeddedSize = 0
+
+  async function refreshEmbedded() {
+    try { embeddedSize = (await getEmbeddedInfo()).sizeBytes } catch {}
+  }
 
   onMount(async () => {
     const c = await getConfig()
@@ -26,10 +32,13 @@
     if (!modeDirty) nodeMode = c.mode
     if (!remoteDirty) remoteUrl = c.remoteUrl
     if (!localDirty) localUrl = c.localUrl
+    await refreshEmbedded()
   })
 
   async function applyNode() {
     nodeMsg = ''; nodeErr = ''
+    // Embedded mode is gated behind an explicit warning before we ever start it.
+    if (nodeMode === 'embedded' && loadedMode !== 'embedded') { showEmbeddedConfirm = true; return }
     try {
       const remoteEdited = remoteDirty && remoteUrl !== loadedRemote
       const localEdited = localDirty && localUrl !== loadedLocal
@@ -40,7 +49,25 @@
       nodeMsg = 'Node settings applied'
     } catch (e: any) { nodeErr = e?.message ?? String(e) }
   }
-  async function retryNode() { await setMode(nodeMode) }
+  async function confirmStartEmbedded() {
+    nodeMsg = ''; nodeErr = ''
+    try { await setMode('embedded'); loadedMode = 'embedded'; modeDirty = false; nodeMsg = 'Node settings applied' }
+    catch (e: any) { nodeErr = e?.message ?? String(e) }
+    finally { showEmbeddedConfirm = false }
+  }
+  async function doDeleteEmbedded() {
+    nodeErr = ''
+    try { await deleteEmbeddedData(); await refreshEmbedded() } catch (e: any) { nodeErr = e?.message ?? String(e) }
+  }
+  function fmtEta(s: number): string {
+    if (s <= 0) return ''
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
+    return h > 0 ? `${h}h ${m}m` : `${m}m`
+  }
+  async function retryNode() {
+    nodeMsg = ''; nodeErr = ''
+    try { await setMode(nodeMode) } catch (e: any) { nodeErr = e?.message ?? String(e) }
+  }
 
   let oldP = '', newP = '', confirmP = '', cpMsg = '', cpErr = ''
   $: canChange = oldP.length > 0 && newP.length > 0 && newP === confirmP
@@ -92,6 +119,35 @@
     <input class="w-full rounded bg-bg px-3 py-2 font-mono text-sm" bind:value={remoteUrl} on:input={() => remoteDirty = true} aria-label="wss endpoint url" />
     <label class="flex items-center gap-2"><input type="radio" bind:group={nodeMode} value="local" on:change={() => modeDirty = true} /> Local</label>
     <input class="w-full rounded bg-bg px-3 py-2 font-mono text-sm" bind:value={localUrl} on:input={() => localDirty = true} aria-label="ws endpoint url" />
+    <label class="flex items-center gap-2"><input type="radio" bind:group={nodeMode} value="embedded" on:change={() => modeDirty = true} /> Embedded</label>
+    <p class="text-xs text-muted">Runs a full node in-app at ws://127.0.0.1:35998</p>
+
+    {#if $node.mode === 'embedded' && $sync}
+      <div class="rounded bg-bg p-3 space-y-1 text-sm">
+        {#if $sync.targetHeight === 0}
+          <p class="text-muted">connecting to peers…</p>
+        {:else}
+          <div class="h-2 w-full rounded bg-surface"><div class="h-2 rounded bg-accent" style="width:{$sync.percent}%"></div></div>
+          <p>{$sync.state} · {$sync.currentHeight} / {$sync.targetHeight} ({$sync.percent.toFixed(1)}%){#if $sync.etaSeconds > 0} · ETA {fmtEta($sync.etaSeconds)}{/if}</p>
+        {/if}
+        <p class="text-muted">{$sync.peers} peers · {(embeddedSize / 1e9).toFixed(2)} GB on disk</p>
+      </div>
+    {/if}
+
+    {#if $node.mode !== 'embedded'}
+      <button class="rounded border border-muted/40 px-3 py-1 text-muted" on:click={doDeleteEmbedded}>Delete embedded data ({(embeddedSize / 1e9).toFixed(2)} GB)</button>
+    {/if}
+
+    {#if showEmbeddedConfirm}
+      <div class="rounded border border-warn/40 bg-bg p-3 space-y-2">
+        <p class="text-warn text-sm">Embedded mode runs a full Zenon node in-app: it needs several GB of disk and can take hours to fully sync. Continue?</p>
+        <div class="flex gap-2">
+          <button class="rounded bg-accent px-3 py-1 text-bg" on:click={confirmStartEmbedded}>Start embedded</button>
+          <button class="rounded border border-muted/40 px-3 py-1 text-muted" on:click={() => (showEmbeddedConfirm = false)}>Cancel</button>
+        </div>
+      </div>
+    {/if}
+
     <div class="flex items-center gap-3">
       <button class="rounded bg-accent px-3 py-1 text-bg" on:click={applyNode} aria-label="Apply node">Apply node</button>
       {#if !$node.connected}<button class="rounded border border-muted/40 px-3 py-1 text-muted" on:click={retryNode}>Retry</button>{/if}

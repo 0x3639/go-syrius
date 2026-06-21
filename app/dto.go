@@ -5,7 +5,27 @@ const (
 	EventNodeStatus   = "node:status"
 	EventMomentumTick = "momentum:tick"
 	EventWalletLocked = "wallet:locked"
+	EventNodeSync     = "node:sync"
 )
+
+const defaultEmbeddedNodeURL = "ws://127.0.0.1:35998"
+
+// EmbeddedInfo describes the embedded node's data on disk.
+type EmbeddedInfo struct {
+	Running   bool   `json:"running"`
+	DataDir   string `json:"dataDir"`
+	SizeBytes int64  `json:"sizeBytes"`
+}
+
+// SyncStatus is the embedded sync snapshot pushed via EventNodeSync.
+type SyncStatus struct {
+	State         string  `json:"state"`
+	CurrentHeight uint64  `json:"currentHeight"`
+	TargetHeight  uint64  `json:"targetHeight"`
+	Percent       float64 `json:"percent"`
+	EtaSeconds    int64   `json:"etaSeconds"`
+	Peers         int     `json:"peers"`
+}
 
 // Settings is the persisted user configuration.
 type Settings struct {
@@ -25,10 +45,14 @@ type Settings struct {
 
 // ActiveNodeURL returns the URL for the current NodeMode.
 func (s Settings) ActiveNodeURL() string {
-	if s.NodeMode == "local" {
+	switch s.NodeMode {
+	case "local":
 		return s.LocalNodeURL
+	case "embedded":
+		return defaultEmbeddedNodeURL
+	default:
+		return s.RemoteNodeURL
 	}
-	return s.RemoteNodeURL
 }
 
 // NodeConfig is the node mode + per-mode URLs for the settings UI.

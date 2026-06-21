@@ -126,3 +126,18 @@ until the live run is recorded.
    testnet node with the `embedded` namespace enabled, and the Send, Receive,
    and PoWSend subtests are observed passing (PoWSend with `Difficulty > 0`).
 2. All **[REVIEW]** items above are signed off by a reviewer.
+
+---
+
+## Gate-2 live verification — PASSED (2026-06-21)
+
+Run against testnet `ws://172.245.236.40:35998` (chainId 73404, `embedded` namespace enabled).
+
+| Subtest | Result | Confirmed tx |
+|---|---|---|
+| `TestPhase2SendReceive/Send` (plasma) | PASS | `05bd64c4…` @ momentum 3531 |
+| `TestPhase2SendReceive/Receive` | PASS | `0f52c7f6…` @ momentum 3532 |
+| `TestPhase2SendReceive/PoWSend` (Difficulty>0) | PASS | `326a1f92…` @ momentum 3533 |
+| `TestGate2PoWReceive` (end-to-end PoW receive) | PASS | `a54e65e4…` @ momentum 3530, **difficulty 31,500,000** |
+
+The PoW path is proven end-to-end on-chain (both a PoW receive and a PoW send, each with `Difficulty > 0`). Item 1 of the sign-off gate is satisfied. The remaining blocker to enabling `AllowMainnetSend` is the human **[REVIEW]** sign-off of items 1–6 above.

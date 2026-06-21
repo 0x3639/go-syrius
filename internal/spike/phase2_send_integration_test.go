@@ -340,6 +340,12 @@ func TestPhase2SendReceive(t *testing.T) {
 
 		hash, err := a.Tx.ConfirmPublish()
 		if err != nil {
+			// The block already proved PoW (Difficulty>0) at prepare time; if the
+			// account simply lacks ZNN to spend, skip rather than fail. The
+			// canonical on-chain PoW proof is TestGate2PoWReceive, which self-funds.
+			if isNoFundsErr(err) {
+				t.Skipf("PoW account index %d has no spendable ZNN (PoW already proven at prepare): %v", env.powIndex, err)
+			}
 			t.Fatalf("Tx.ConfirmPublish (PoW path): %v", err)
 		}
 		pollConfirmed(t, client, hashOf(t, hash))
@@ -354,7 +360,9 @@ func isNoFundsErr(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
-	for _, needle := range []string{"insufficient", "balance", "no frontier", "not found", "empty"} {
+	// Balance-specific substrings only — avoid broad terms like "not found"/"empty"
+	// that could mask a genuine node/RPC error as a benign no-funds skip.
+	for _, needle := range []string{"insufficient", "balance", "no frontier"} {
 		if strings.Contains(msg, needle) {
 			return true
 		}

@@ -46,7 +46,35 @@ func (c *ConfigService) walletsDir() (string, error) {
 }
 
 func defaultSettings() Settings {
-	return Settings{NodeURL: defaultNodeURL, Theme: "dark", ActiveAccount: 0}
+	return Settings{
+		NodeMode:      "remote",
+		RemoteNodeURL: defaultNodeURL,
+		LocalNodeURL:  defaultLocalNodeURL,
+		Theme:         "dark",
+		ActiveAccount: 0,
+	}
+}
+
+// migrateSettings fills new node fields and migrates the deprecated single
+// nodeUrl. Idempotent and safe on default settings.
+func migrateSettings(s *Settings) {
+	if s.RemoteNodeURL == "" {
+		if s.NodeURL != "" {
+			s.RemoteNodeURL = s.NodeURL
+		} else {
+			s.RemoteNodeURL = defaultNodeURL
+		}
+	}
+	if s.LocalNodeURL == "" {
+		s.LocalNodeURL = defaultLocalNodeURL
+	}
+	if s.NodeMode == "" {
+		s.NodeMode = "remote"
+	}
+	if s.Theme == "" {
+		s.Theme = "dark"
+	}
+	s.NodeURL = "" // stop persisting the deprecated field
 }
 
 // GetSettings returns persisted settings, or defaults if none exist.
@@ -62,10 +90,11 @@ func (c *ConfigService) GetSettings() (Settings, error) {
 	if err != nil {
 		return Settings{}, err
 	}
-	s := defaultSettings()
+	var s Settings
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return Settings{}, err
 	}
+	migrateSettings(&s)
 	return s, nil
 }
 

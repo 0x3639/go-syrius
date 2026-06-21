@@ -9,7 +9,11 @@ const (
 
 // Settings is the persisted user configuration.
 type Settings struct {
-	NodeURL          string `json:"nodeUrl"`
+	// Deprecated: read-only for migration from the pre-4a single-URL format.
+	NodeURL          string `json:"nodeUrl,omitempty"`
+	NodeMode         string `json:"nodeMode"`
+	RemoteNodeURL    string `json:"remoteNodeUrl"`
+	LocalNodeURL     string `json:"localNodeUrl"`
 	Theme            string `json:"theme"`
 	LastWallet       string `json:"lastWallet"`
 	ActiveAccount    int    `json:"activeAccount"`
@@ -17,6 +21,21 @@ type Settings struct {
 	AutoReceive      bool   `json:"autoReceive"`
 	// AccountLabels maps "<wallet>:<index>" to a human label for an account.
 	AccountLabels map[string]string `json:"accountLabels"`
+}
+
+// ActiveNodeURL returns the URL for the current NodeMode.
+func (s Settings) ActiveNodeURL() string {
+	if s.NodeMode == "local" {
+		return s.LocalNodeURL
+	}
+	return s.RemoteNodeURL
+}
+
+// NodeConfig is the node mode + per-mode URLs for the settings UI.
+type NodeConfig struct {
+	Mode      string `json:"mode"`
+	RemoteURL string `json:"remoteUrl"`
+	LocalURL  string `json:"localUrl"`
 }
 
 // WalletMeta identifies a keystore without exposing secrets.
@@ -62,6 +81,7 @@ type TxRecord struct {
 }
 
 const defaultNodeURL = "wss://my.hc1node.com:35998"
+const defaultLocalNodeURL = "ws://127.0.0.1:35998"
 
 // Phase 2 transaction event names.
 const (

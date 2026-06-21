@@ -59,7 +59,7 @@ func (n *NodeService) SetNode(url string) error {
 	n.mu.Unlock()
 
 	if s, err := n.config.GetSettings(); err == nil {
-		s.NodeURL = url
+		s.RemoteNodeURL = url
 		_ = n.config.SetSettings(s)
 	}
 	n.emitStatus(true)

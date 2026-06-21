@@ -222,6 +222,36 @@ func TestRevealMnemonic(t *testing.T) {
 	}
 }
 
+func TestRejectsTraversalNames(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+
+	if _, err := w.ImportMnemonic("../evil", "pw", m); err == nil || !strings.Contains(err.Error(), "invalid wallet name") {
+		t.Fatalf("ImportMnemonic traversal: expected invalid name error, got %v", err)
+	}
+	if err := w.Unlock("../evil", "pw"); err == nil || !strings.Contains(err.Error(), "invalid wallet name") {
+		t.Fatalf("Unlock traversal: expected invalid name error, got %v", err)
+	}
+	if err := w.ChangePassword("../evil", "a", "b"); err == nil || !strings.Contains(err.Error(), "invalid wallet name") {
+		t.Fatalf("ChangePassword traversal: expected invalid name error, got %v", err)
+	}
+}
+
+func TestRejectsEmptyPassword(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+
+	if _, err := w.ImportMnemonic("ok.dat", "", m); err == nil {
+		t.Fatal("expected ImportMnemonic with empty password to fail")
+	}
+	if _, err := w.ImportMnemonic("ok.dat", "pw", m); err != nil {
+		t.Fatalf("ImportMnemonic: %v", err)
+	}
+	if err := w.ChangePassword("ok.dat", "pw", ""); err == nil {
+		t.Fatal("expected ChangePassword to empty new password to fail")
+	}
+}
+
 func TestAccountLabels(t *testing.T) {
 	w := newTestWalletService(t)
 	m, _ := w.GenerateMnemonic()

@@ -8,7 +8,7 @@
   let words: string[] = []
   let error = ''
 
-  // backup-verify: 3 deterministic positions spread across the phrase
+  // backup-verify: 3 randomly chosen distinct positions in the phrase
   let positions: number[] = []
   let answers: Record<number, string> = {}
 
@@ -21,8 +21,7 @@
       mnemonic = await generateMnemonic()
       words = mnemonic.split(/\s+/)
       const idx = new Set<number>()
-      let n = 1
-      while (idx.size < 3 && n <= 4) { idx.add(Math.floor((words.length * n) / 4)); n++ }
+      while (idx.size < 3) idx.add(Math.floor(Math.random() * words.length))
       positions = [...idx].sort((a, b) => a - b)
     } catch (e: any) { error = e?.message ?? String(e) }
   })

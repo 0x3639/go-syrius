@@ -10,6 +10,9 @@
 wallet*.json
 *.keystore
 
+# macOS
+.DS_Store
+
 # Local SDD scratch
 /.superpowers/
 

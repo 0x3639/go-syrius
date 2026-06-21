@@ -15,7 +15,7 @@ Covered by Go unit tests (offline, go-zenon-verified):
 ## Manual round-trip acceptance (Phase 3 Gate) — PENDING user GUI run
 Requires a real syrius install (cannot be done headless):
 1. Launch `build/bin/syrius.app` → Unlock screen → "Create new wallet".
-2. Record the 24 words; pass the 3-word backup verify (positions 7/13/19, i.e. indices 6/12/18); set a name + password; land on the dashboard (zero balances).
+2. Record the 24 words; pass the 3-word backup verify (3 randomly chosen positions); set a name + password; land on the dashboard (zero balances).
 3. Locate the keystore at `~/Library/Application Support/go-syrius/wallets/<name>`.
 4. **Open that keystore in real syrius** with the same password → confirm syrius shows the SAME index-0 `z1…` address. (THE GATE.)
 5. In the app: change the password, re-unlock with the new one; reveal the mnemonic (matches what was recorded); set an account label and confirm it persists across lock/unlock.

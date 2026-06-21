@@ -48,6 +48,20 @@ func newWalletService(c *ConfigService) *WalletService {
 	return &WalletService{config: c}
 }
 
+// walletPath validates a wallet file name and returns its absolute path inside
+// the wallets dir. It rejects empty names, ".", "..", and any name containing a
+// path separator or absolute path, preventing traversal outside walletsDir.
+func (w *WalletService) walletPath(name string) (string, error) {
+	if name == "" || name == "." || name == ".." || name != filepath.Base(name) {
+		return "", fmt.Errorf("invalid wallet name %q", name)
+	}
+	dir, err := w.config.walletsDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, name), nil
+}
+
 // ListWallets returns metadata for each keystore file, without decrypting.
 func (w *WalletService) ListWallets() ([]WalletMeta, error) {
 	dir, err := w.config.walletsDir()
@@ -78,12 +92,11 @@ func (w *WalletService) ImportKeystore(srcPath string) (WalletMeta, error) {
 	if err != nil {
 		return WalletMeta{}, fmt.Errorf("not a valid syrius keystore: %w", err)
 	}
-	dir, err := w.config.walletsDir()
+	name := filepath.Base(srcPath)
+	dst, err := w.walletPath(name)
 	if err != nil {
 		return WalletMeta{}, err
 	}
-	name := filepath.Base(srcPath)
-	dst := filepath.Join(dir, name)
 	if _, err := os.Stat(dst); err == nil {
 		return WalletMeta{}, fmt.Errorf("a wallet named %q already exists", name)
 	}
@@ -113,6 +126,9 @@ func (w *WalletService) ImportMnemonic(name, password, mnemonic string) (WalletM
 // writeKeystoreFromMnemonic assembles a go-zenon KeyStore from the mnemonic and
 // writes it as a syrius-compatible keyfile, refusing to overwrite an existing file.
 func (w *WalletService) writeKeystoreFromMnemonic(name, password, mnemonic string) (WalletMeta, error) {
+	if password == "" {
+		return WalletMeta{}, errors.New("password must not be empty")
+	}
 	if !bip39.IsMnemonicValid(mnemonic) {
 		return WalletMeta{}, errors.New("invalid mnemonic")
 	}
@@ -132,11 +148,10 @@ func (w *WalletService) writeKeystoreFromMnemonic(name, password, mnemonic strin
 	}
 	ks.BaseAddress = kp.Address
 
-	dir, err := w.config.walletsDir()
+	dst, err := w.walletPath(name)
 	if err != nil {
 		return WalletMeta{}, err
 	}
-	dst := filepath.Join(dir, name)
 	if _, err := os.Stat(dst); err == nil {
 		return WalletMeta{}, fmt.Errorf("a wallet named %q already exists", name)
 	}
@@ -162,11 +177,11 @@ func (w *WalletService) PickKeystoreFile() (string, error) {
 
 // Unlock decrypts the named keystore and holds it in memory.
 func (w *WalletService) Unlock(name, password string) error {
-	dir, err := w.config.walletsDir()
+	path, err := w.walletPath(name)
 	if err != nil {
 		return err
 	}
-	kf, err := wallet.ReadKeyFile(filepath.Join(dir, name))
+	kf, err := wallet.ReadKeyFile(path)
 	if err != nil {
 		return fmt.Errorf("cannot read keystore: %w", err)
 	}
@@ -186,11 +201,13 @@ func (w *WalletService) Unlock(name, password string) error {
 // ChangePassword re-encrypts the named keystore under a new password, writing
 // atomically (temp file + rename) so a failure never corrupts the original.
 func (w *WalletService) ChangePassword(name, oldPassword, newPassword string) error {
-	dir, err := w.config.walletsDir()
+	if newPassword == "" {
+		return errors.New("new password must not be empty")
+	}
+	path, err := w.walletPath(name)
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(dir, name)
 	kf, err := wallet.ReadKeyFile(path)
 	if err != nil {
 		return fmt.Errorf("cannot read keystore: %w", err)
@@ -386,11 +403,11 @@ func (w *WalletService) RevealMnemonic(password string) (string, error) {
 	if locked {
 		return "", errLocked
 	}
-	dir, err := w.config.walletsDir()
+	path, err := w.walletPath(name)
 	if err != nil {
 		return "", err
 	}
-	kf, err := wallet.ReadKeyFile(filepath.Join(dir, name))
+	kf, err := wallet.ReadKeyFile(path)
 	if err != nil {
 		return "", err
 	}

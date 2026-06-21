@@ -7,7 +7,8 @@ import UnreceivedPanel from './UnreceivedPanel.svelte'
 describe('UnreceivedPanel', () => {
   it('lists unreceived blocks', async () => {
     render(UnreceivedPanel)
-    expect(await screen.findByText(/1 ZNN|1\b/)).toBeTruthy()
-    expect(await screen.findByRole('button', { name: /receive/i })).toBeTruthy()
+    expect(await screen.findByText('1 ZNN')).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Receive' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Receive all' })).toBeTruthy()
   })
 })

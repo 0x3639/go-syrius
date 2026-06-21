@@ -9,8 +9,8 @@
 </script>
 <div class="rounded bg-surface p-4">
   <div class="mb-2 flex items-center justify-between">
-    <h2 class="text-sm text-muted">Unreceived</h2>
-    {#if $unreceived.length}<button class="text-xs text-accent" on:click={receiveAll}>Claim all</button>{/if}
+    <h2 class="text-sm text-muted">Unreceived ({$unreceived.length})</h2>
+    {#if $unreceived.length}<button class="text-xs text-accent" on:click={receiveAll}>Receive all</button>{/if}
   </div>
   {#each $unreceived as u}
     <div class="flex items-center justify-between py-1 text-sm">

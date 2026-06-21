@@ -9,6 +9,7 @@
   import ImportMnemonic from './routes/ImportMnemonic.svelte'
   import Dashboard from './routes/Dashboard.svelte'
   import Send from './routes/Send.svelte'
+  import Plasma from './routes/Plasma.svelte'
   import Settings from './routes/Settings.svelte'
   onMount(async () => {
     try {
@@ -24,6 +25,8 @@
   <Unlock />
 {:else if $view === 'send'}
   <Send />
+{:else if $view === 'plasma'}
+  <Plasma />
 {:else if $view === 'settings'}
   <Settings />
 {:else}

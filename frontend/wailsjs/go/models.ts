@@ -16,6 +16,34 @@ export namespace app {
 	        this.label = source["label"];
 	    }
 	}
+	export class CallPreview {
+	    toAddress: string;
+	    zts: string;
+	    symbol: string;
+	    amount: string;
+	    hash: string;
+	    summary: string;
+	    usedPlasma: number;
+	    difficulty: number;
+	    needsPoW: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new CallPreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.toAddress = source["toAddress"];
+	        this.zts = source["zts"];
+	        this.symbol = source["symbol"];
+	        this.amount = source["amount"];
+	        this.hash = source["hash"];
+	        this.summary = source["summary"];
+	        this.usedPlasma = source["usedPlasma"];
+	        this.difficulty = source["difficulty"];
+	        this.needsPoW = source["needsPoW"];
+	    }
+	}
 	export class EmbeddedInfo {
 	    running: boolean;
 	    dataDir: string;
@@ -30,6 +58,26 @@ export namespace app {
 	        this.running = source["running"];
 	        this.dataDir = source["dataDir"];
 	        this.sizeBytes = source["sizeBytes"];
+	    }
+	}
+	export class FusionEntry {
+	    id: string;
+	    beneficiary: string;
+	    qsrAmount: string;
+	    expirationHeight: number;
+	    isRevocable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new FusionEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.beneficiary = source["beneficiary"];
+	        this.qsrAmount = source["qsrAmount"];
+	        this.expirationHeight = source["expirationHeight"];
+	        this.isRevocable = source["isRevocable"];
 	    }
 	}
 	export class NodeConfig {
@@ -66,6 +114,22 @@ export namespace app {
 	        this.syncing = source["syncing"];
 	        this.height = source["height"];
 	        this.peers = source["peers"];
+	    }
+	}
+	export class PlasmaInfo {
+	    qsrFused: string;
+	    currentPlasma: number;
+	    maxPlasma: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlasmaInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.qsrFused = source["qsrFused"];
+	        this.currentPlasma = source["currentPlasma"];
+	        this.maxPlasma = source["maxPlasma"];
 	    }
 	}
 	export class SendPreview {

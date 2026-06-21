@@ -34,3 +34,11 @@ export async function refreshAccounts(): Promise<void> {
   const accounts = (await W.CurrentAccounts()) as unknown as Account[]
   wallet.update((s) => ({ ...s, accounts }))
 }
+
+export async function changePassword(name: string, oldPassword: string, newPassword: string): Promise<void> {
+  await W.ChangePassword(name, oldPassword, newPassword)
+}
+
+export async function revealMnemonic(password: string): Promise<string> {
+  return (await W.RevealMnemonic(password)) as string
+}

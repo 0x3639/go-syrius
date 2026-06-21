@@ -10,6 +10,7 @@
   import ImportMnemonic from './routes/ImportMnemonic.svelte'
   import Dashboard from './routes/Dashboard.svelte'
   import Send from './routes/Send.svelte'
+  import Settings from './routes/Settings.svelte'
   onMount(async () => {
     try {
       const s = await Cfg.GetSettings()
@@ -25,6 +26,8 @@
   <Unlock />
 {:else if $view === 'send'}
   <Send />
+{:else if $view === 'settings'}
+  <Settings />
 {:else}
   <Dashboard />
 {/if}

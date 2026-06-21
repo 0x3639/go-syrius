@@ -26,6 +26,7 @@ type TxService struct {
 	mu         sync.Mutex
 	pending    *nom.AccountBlock
 	pendingReq SendRequest
+	pendingGen uint64 // wallet session generation captured at PrepareSend
 }
 
 func newTxService(c *ConfigService, w *WalletService, n *NodeService) *TxService {
@@ -98,6 +99,9 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 	if err := t.guard(); err != nil {
 		return SendPreview{}, err
 	}
+	// Snapshot the wallet session at the START. If a Lock/Unlock happens while we
+	// build (PoW can take seconds), we must NOT store the resulting pending block.
+	gen := t.wallet.sessionGen()
 	client := t.node.currentClient()
 	if client == nil {
 		return SendPreview{}, errors.New("not connected")
@@ -123,9 +127,16 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 		return SendPreview{}, err
 	}
 
+	// If the wallet session changed mid-prepare (lock or unlock), the block was
+	// built against a now-stale wallet state; refuse to hold it.
+	if t.wallet.sessionGen() != gen {
+		return SendPreview{}, errors.New("wallet state changed during prepare")
+	}
+
 	t.mu.Lock()
 	t.pending = built
 	t.pendingReq = req
+	t.pendingGen = gen
 	t.mu.Unlock()
 
 	return SendPreview{
@@ -150,10 +161,18 @@ func (t *TxService) ConfirmPublish() (string, error) {
 		return "", err
 	}
 	t.mu.Lock()
-	b, req := t.pending, t.pendingReq
+	b, req, pendingGen := t.pending, t.pendingReq, t.pendingGen
 	t.mu.Unlock()
 	if b == nil {
 		return "", errors.New("no pending transaction")
+	}
+
+	// Refuse to publish if the wallet was locked or its session changed since the
+	// block was prepared (lock/unlock TOCTOU). Clear pending: the held block is
+	// no longer trustworthy and the user must re-prepare.
+	if _, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != pendingGen {
+		t.clearPending()
+		return "", errors.New("wallet locked or changed; not publishing")
 	}
 
 	to, zts, amount, err := t.parseRequest(req)
@@ -166,9 +185,16 @@ func (t *TxService) ConfirmPublish() (string, error) {
 		return "", errors.New("prepared block does not match the request; not publishing")
 	}
 
+	// Snapshot the client and verify the prepared block's chain matches the
+	// currently connected node. A node change between prepare and confirm could
+	// otherwise broadcast a cross-chain block. Keep pending on mismatch so the
+	// user can reconnect to the original network and retry.
 	client := t.node.currentClient()
 	if client == nil {
 		return "", errors.New("not connected")
+	}
+	if b.ChainIdentifier != t.node.currentChainID() {
+		return "", errors.New("connected node chain differs from the prepared transaction; reconnect to the original network and retry")
 	}
 	if err := client.LedgerApi.PublishRawTransaction(b); err != nil {
 		return "", err
@@ -217,5 +243,6 @@ func (t *TxService) clearPending() {
 	t.mu.Lock()
 	t.pending = nil
 	t.pendingReq = SendRequest{}
+	t.pendingGen = 0
 	t.mu.Unlock()
 }

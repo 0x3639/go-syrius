@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"sync"
+
 	sdkwallet "github.com/0x3639/znn-sdk-go/wallet"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zenon-network/go-zenon/common/types"
@@ -24,8 +26,13 @@ type WalletService struct {
 	ctx    context.Context
 	config *ConfigService
 
+	// mu protects keystore/active/gen. Go mutexes are NOT reentrant, so internal
+	// callers must use the *Locked() helpers while public methods take the lock
+	// once. No method calls another lock-taking method while holding mu.
+	mu       sync.Mutex
 	keystore *wallet.KeyStore // nil when locked
 	active   int
+	gen      uint64 // session generation, bumped on each Unlock and Lock
 
 	onLock func() // optional callback invoked on Lock (e.g. clear pending tx)
 }
@@ -106,19 +113,27 @@ func (w *WalletService) Unlock(name, password string) error {
 	if err != nil {
 		return errors.New("incorrect password")
 	}
+	w.mu.Lock()
 	w.keystore = ks
 	w.active = 0
+	w.gen++
+	w.mu.Unlock()
 	return nil
 }
 
 // Lock zeroes and drops the decrypted keystore.
 func (w *WalletService) Lock() error {
+	w.mu.Lock()
 	if w.keystore != nil {
 		w.keystore.Zero()
 		w.keystore = nil
 	}
-	if w.onLock != nil {
-		w.onLock()
+	w.gen++
+	onLock := w.onLock
+	w.mu.Unlock()
+
+	if onLock != nil {
+		onLock()
 	}
 	if w.ctx != nil {
 		runtime.EventsEmit(w.ctx, EventWalletLocked)
@@ -126,8 +141,18 @@ func (w *WalletService) Lock() error {
 	return nil
 }
 
+// sessionGen returns the current session generation under the lock. It changes
+// on every Unlock and Lock, letting callers detect a wallet state change.
+func (w *WalletService) sessionGen() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.gen
+}
+
 // CurrentAccounts derives indices 0..accountRange-1 from the unlocked keystore.
 func (w *WalletService) CurrentAccounts() ([]AccountInfo, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if w.keystore == nil {
 		return nil, errLocked
 	}
@@ -144,13 +169,17 @@ func (w *WalletService) CurrentAccounts() ([]AccountInfo, error) {
 
 // SelectAccount sets the active account index and persists it.
 func (w *WalletService) SelectAccount(index int) error {
-	if w.keystore == nil {
-		return errLocked
-	}
 	if index < 0 || index >= accountRange {
 		return fmt.Errorf("account index %d out of range", index)
 	}
+	w.mu.Lock()
+	if w.keystore == nil {
+		w.mu.Unlock()
+		return errLocked
+	}
 	w.active = index
+	w.mu.Unlock()
+
 	s, err := w.config.GetSettings()
 	if err == nil {
 		s.ActiveAccount = index
@@ -161,6 +190,14 @@ func (w *WalletService) SelectAccount(index int) error {
 
 // activeAddress returns the active account's address, false if locked.
 func (w *WalletService) activeAddress() (types.Address, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.activeAddressLocked()
+}
+
+// activeAddressLocked is the lock-free core of activeAddress. Callers MUST hold
+// w.mu.
+func (w *WalletService) activeAddressLocked() (types.Address, bool) {
 	if w.keystore == nil {
 		return types.Address{}, false
 	}
@@ -175,6 +212,8 @@ func (w *WalletService) activeAddress() (types.Address, bool) {
 // unlocked mnemonic and asserts it matches the go-zenon active address (the
 // Phase-0 cross-check). The mnemonic and keypair stay backend-only.
 func (w *WalletService) signingKeyPair() (*sdkwallet.KeyPair, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if w.keystore == nil {
 		return nil, errLocked
 	}
@@ -190,7 +229,7 @@ func (w *WalletService) signingKeyPair() (*sdkwallet.KeyPair, error) {
 	if err != nil {
 		return nil, err
 	}
-	want, ok := w.activeAddress()
+	want, ok := w.activeAddressLocked()
 	if !ok {
 		return nil, errLocked
 	}

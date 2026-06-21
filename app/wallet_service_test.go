@@ -196,3 +196,28 @@ func TestImportRejectsNonKeystore(t *testing.T) {
 		t.Fatal("expected ImportKeystore to reject a non-keystore file")
 	}
 }
+
+func TestRevealMnemonic(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+	if _, err := w.ImportMnemonic("rv.dat", "pw", m); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := w.RevealMnemonic("pw"); err == nil {
+		t.Fatal("expected RevealMnemonic to fail when locked")
+	}
+	if err := w.Unlock("rv.dat", "pw"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.RevealMnemonic("wrong"); err == nil {
+		t.Fatal("expected wrong password to fail")
+	}
+	got, err := w.RevealMnemonic("pw")
+	if err != nil {
+		t.Fatalf("RevealMnemonic: %v", err)
+	}
+	if got != m {
+		t.Fatalf("revealed mnemonic mismatch")
+	}
+}

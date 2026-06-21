@@ -335,6 +335,37 @@ func (w *WalletService) signingKeyPair() (*sdkwallet.KeyPair, error) {
 	return kp, nil
 }
 
+// RevealMnemonic returns the active wallet's mnemonic after re-verifying the
+// password against the keystore file. Requires an unlocked wallet. The mnemonic
+// is never logged.
+func (w *WalletService) RevealMnemonic(password string) (string, error) {
+	w.mu.Lock()
+	locked := w.keystore == nil
+	name := w.activeWallet
+	mnemonic := ""
+	if w.keystore != nil {
+		mnemonic = w.keystore.Mnemonic
+	}
+	w.mu.Unlock()
+	if locked {
+		return "", errLocked
+	}
+	dir, err := w.config.walletsDir()
+	if err != nil {
+		return "", err
+	}
+	kf, err := wallet.ReadKeyFile(filepath.Join(dir, name))
+	if err != nil {
+		return "", err
+	}
+	ks, err := kf.Decrypt(password)
+	if err != nil {
+		return "", errors.New("incorrect password")
+	}
+	ks.Zero()
+	return mnemonic, nil
+}
+
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {

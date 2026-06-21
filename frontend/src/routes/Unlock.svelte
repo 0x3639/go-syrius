@@ -49,5 +49,6 @@
   {/if}
   <button class="w-full rounded border border-muted/40 py-2 text-muted" on:click={doImport}>Import keystore…</button>
   <button class="w-full rounded border border-muted/40 py-2 text-muted" on:click={() => view.set('create')}>Create new wallet</button>
+  <button class="w-full rounded border border-muted/40 py-2 text-muted" on:click={() => view.set('import')}>Import mnemonic</button>
   {#if error}<p class="text-error" role="alert">{error}</p>{/if}
 </div>

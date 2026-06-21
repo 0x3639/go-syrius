@@ -7,6 +7,7 @@
   import * as N from '../wailsjs/go/app/NodeService'
   import Unlock from './routes/Unlock.svelte'
   import Create from './routes/Create.svelte'
+  import ImportMnemonic from './routes/ImportMnemonic.svelte'
   import Dashboard from './routes/Dashboard.svelte'
   import Send from './routes/Send.svelte'
   onMount(async () => {
@@ -18,6 +19,8 @@
 </script>
 {#if $wallet.locked && $view === 'create'}
   <Create />
+{:else if $wallet.locked && $view === 'import'}
+  <ImportMnemonic />
 {:else if $wallet.locked}
   <Unlock />
 {:else if $view === 'send'}

@@ -40,12 +40,11 @@ frontend/src/lib/format.ts    # amount/address formatting + its test
 ## Task 1: Scaffold the Wails app and merge into the module
 
 **Files:**
-- Create: `main.go`, `wails.json`, `frontend/` (Svelte-TS template), `build/`
+- Create: `main.go` (scaffold default), `wails.json`, `frontend/` (Svelte-TS template), `build/`
 - Modify: `go.mod`, `go.sum`
-- Create: `app/app.go`
 
 **Interfaces:**
-- Produces: a buildable Wails app; `app.App` struct with `OnStartup(ctx context.Context)` storing `ctx`.
+- Produces: a buildable Wails app using the **scaffold's default** `main.go`/`app.go`. Our service-wiring `main.go` + `app/app.go` are created in Task 5 (after the services exist), keeping every commit buildable.
 
 - [ ] **Step 1: Install the Wails CLI**
 
@@ -78,98 +77,22 @@ Edit `wails.json` so `"name": "syrius"` and the frontend install/build commands 
 { "frontend:install": "pnpm install", "frontend:build": "pnpm run build" }
 ```
 
-- [ ] **Step 4: Replace the scaffold App with our package-based App**
+- [ ] **Step 4: Keep the scaffold's default app buildable**
 
-Overwrite `main.go`:
-```go
-package main
+Do **not** create our `app/app.go` yet (the services it wires don't exist until Tasks 2–4; creating it now would break the build). Leave the scaffold's default `main.go` and its generated `app.go` (the template's example struct) in place so this commit builds and runs. Our service-wiring `main.go` + `app/app.go` are introduced in Task 5.
 
-import (
-	"embed"
-
-	"github.com/0x3639/go-syrius/app"
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-)
-
-//go:embed all:frontend/dist
-var assets embed.FS
-
-func main() {
-	a := app.New()
-	if err := wails.Run(&options.App{
-		Title:  "syrius",
-		Width:  1100,
-		Height: 720,
-		AssetServer: &assetserver.Options{Assets: assets},
-		OnStartup:  a.OnStartup,
-		OnShutdown: a.OnShutdown,
-		Bind:       a.Bindings(),
-	}); err != nil {
-		panic(err)
-	}
-}
-```
-
-Create `app/app.go`:
-```go
-// Package app holds the Wails-bound services that form the binding boundary
-// between the Svelte frontend and the Go backend. It is one package so App can
-// wire unexported context and dependencies into the services directly.
-package app
-
-import "context"
-
-// App owns the service instances and the Wails runtime context.
-type App struct {
-	ctx    context.Context
-	Config *ConfigService
-	Wallet *WalletService
-	Node   *NodeService
-}
-
-// New constructs the App and its services (not yet started).
-func New() *App {
-	cfg := newConfigService()
-	w := newWalletService(cfg)
-	n := newNodeService(cfg, w)
-	return &App{Config: cfg, Wallet: w, Node: n}
-}
-
-// OnStartup receives the Wails runtime context and distributes it.
-func (a *App) OnStartup(ctx context.Context) {
-	a.ctx = ctx
-	a.Config.ctx = ctx
-	a.Wallet.ctx = ctx
-	a.Node.ctx = ctx
-}
-
-// OnShutdown locks the wallet and disconnects the node on exit.
-func (a *App) OnShutdown(ctx context.Context) {
-	_ = a.Wallet.Lock()
-	_ = a.Node.Disconnect()
-}
-
-// Bindings is the list of structs whose exported methods Wails exposes to JS.
-func (a *App) Bindings() []interface{} {
-	return []interface{}{a.Config, a.Wallet, a.Node}
-}
-```
-
-> Note: `newConfigService`, `newWalletService`, `newNodeService`, and the `ctx`/`Lock`/`Disconnect` members are defined in Tasks 2–4. Until those exist this file will not compile; implement Task 1 through Step 3 (buildable scaffold), then return to verify the full build at the end of Task 4. For Step 5 below, temporarily stub `app.New()` returning `&App{}` with no services if you want an early window — but the recommended path is to do Tasks 2–4 before the first full `wails build`.
-
-- [ ] **Step 5: Verify the toolchain builds the frontend**
+- [ ] **Step 5: Verify the toolchain builds**
 
 ```bash
 cd frontend && pnpm install && pnpm run build && cd ..
+go build ./...
 ```
-Expected: `frontend/dist` produced, no errors.
+Expected: `frontend/dist` produced; `go build ./...` succeeds on the default scaffold.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add main.go wails.json frontend build go.mod go.sum app/app.go
+git add main.go app.go wails.json frontend build go.mod go.sum
 git commit -m "chore: scaffold Wails svelte-ts app and merge into module"
 ```
 
@@ -993,33 +916,117 @@ git commit -m "feat(app): NodeService (remote connect, status events, balance/tx
 
 ---
 
-## Task 5: Generate bindings and verify the app boots
+## Task 5: Wire services into the app, bind, generate bindings
 
 **Files:**
+- Create: `app/app.go`; overwrite `main.go`; remove scaffold root `app.go`
 - Modify: `frontend/wailsjs/` (generated)
 
 **Interfaces:**
-- Produces: TypeScript bindings under `frontend/wailsjs/go/app/*` for ConfigService/WalletService/NodeService, consumed by the frontend.
+- Consumes: `newConfigService`/`newWalletService`/`newNodeService` and the services' `ctx` fields + `Lock`/`Disconnect` (Tasks 2–4).
+- Produces: `app.App` (`New`, `OnStartup`, `OnShutdown`, `Bindings`); TS bindings under `frontend/wailsjs/go/app/*` for ConfigService/WalletService/NodeService.
 
-- [ ] **Step 1: Generate bindings**
+- [ ] **Step 1: Create the App wiring and rewire main.go**
+
+Create `app/app.go`:
+```go
+// Package app holds the Wails-bound services that form the binding boundary
+// between the Svelte frontend and the Go backend. It is one package so App can
+// wire unexported context and dependencies into the services directly.
+package app
+
+import "context"
+
+// App owns the service instances and the Wails runtime context.
+type App struct {
+	ctx    context.Context
+	Config *ConfigService
+	Wallet *WalletService
+	Node   *NodeService
+}
+
+// New constructs the App and its services (not yet started).
+func New() *App {
+	cfg := newConfigService()
+	w := newWalletService(cfg)
+	n := newNodeService(cfg, w)
+	return &App{Config: cfg, Wallet: w, Node: n}
+}
+
+// OnStartup receives the Wails runtime context and distributes it.
+func (a *App) OnStartup(ctx context.Context) {
+	a.ctx = ctx
+	a.Config.ctx = ctx
+	a.Wallet.ctx = ctx
+	a.Node.ctx = ctx
+}
+
+// OnShutdown locks the wallet and disconnects the node on exit.
+func (a *App) OnShutdown(ctx context.Context) {
+	_ = a.Wallet.Lock()
+	_ = a.Node.Disconnect()
+}
+
+// Bindings is the list of structs whose exported methods Wails exposes to JS.
+func (a *App) Bindings() []interface{} {
+	return []interface{}{a.Config, a.Wallet, a.Node}
+}
+```
+
+Remove the scaffold's root `app.go` (the template's example struct) and overwrite `main.go`:
+```go
+package main
+
+import (
+	"embed"
+
+	"github.com/0x3639/go-syrius/app"
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+)
+
+//go:embed all:frontend/dist
+var assets embed.FS
+
+func main() {
+	a := app.New()
+	if err := wails.Run(&options.App{
+		Title:       "syrius",
+		Width:       1100,
+		Height:      720,
+		AssetServer: &assetserver.Options{Assets: assets},
+		OnStartup:   a.OnStartup,
+		OnShutdown:  a.OnShutdown,
+		Bind:        a.Bindings(),
+	}); err != nil {
+		panic(err)
+	}
+}
+```
+
+Run: `go build ./...` — expect success (services now exist).
+
+- [ ] **Step 2: Generate bindings**
 
 ```bash
 "$(go env GOPATH)/bin/wails" generate module
 ls frontend/wailsjs/go/app   # expect ConfigService.* WalletService.* NodeService.*
 ```
 
-- [ ] **Step 2: Verify a dev build boots (manual)**
+- [ ] **Step 3: Verify a dev build boots (manual)**
 
 ```bash
 "$(go env GOPATH)/bin/wails" dev
 ```
-Expected: a window opens (default template UI for now). Close it. (If running headless, `wails build` instead and confirm it produces `build/bin/syrius`.)
+Expected: a window opens (default template UI for now). Close it. (If running headless, run `"$(go env GOPATH)/bin/wails" build` instead and confirm it produces `build/bin/syrius`.)
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add frontend/wailsjs
-git commit -m "chore: generate Wails TS bindings for app services"
+git add main.go app/app.go frontend/wailsjs
+git rm --cached app.go 2>/dev/null || true
+git commit -m "feat(app): wire services into Wails app and generate TS bindings"
 ```
 
 ---

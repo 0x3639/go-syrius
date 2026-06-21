@@ -150,6 +150,22 @@ type CallPreview struct {
 	NeedsPoW   bool   `json:"needsPoW"`
 }
 
+// PlasmaInfo is the active address's plasma snapshot.
+type PlasmaInfo struct {
+	QsrFused      string `json:"qsrFused"`
+	CurrentPlasma uint64 `json:"currentPlasma"`
+	MaxPlasma     uint64 `json:"maxPlasma"`
+}
+
+// FusionEntry is one QSR fusion. IsRevocable is derived (frontier >= expiration).
+type FusionEntry struct {
+	Id               string `json:"id"`
+	Beneficiary      string `json:"beneficiary"`
+	QsrAmount        string `json:"qsrAmount"`
+	ExpirationHeight uint64 `json:"expirationHeight"`
+	IsRevocable      bool   `json:"isRevocable"`
+}
+
 // UnreceivedBlock is one inbound, not-yet-received transaction.
 type UnreceivedBlock struct {
 	FromHash    string `json:"fromHash"`

@@ -12,6 +12,7 @@ type App struct {
 	Wallet *WalletService
 	Node   *NodeService
 	Tx     *TxService
+	Nom    *NomService
 }
 
 // New constructs the App and its services (not yet started).
@@ -20,9 +21,10 @@ func New() *App {
 	w := newWalletService(cfg)
 	n := newNodeService(cfg, w)
 	t := newTxService(cfg, w, n)
+	nom := newNomService(n, w, t)
 	n.setReceiveFunc(t.Receive)
 	w.setOnLock(t.clearPending)
-	return &App{Config: cfg, Wallet: w, Node: n, Tx: t}
+	return &App{Config: cfg, Wallet: w, Node: n, Tx: t, Nom: nom}
 }
 
 // OnStartup receives the Wails runtime context and distributes it.
@@ -44,5 +46,5 @@ func (a *App) OnShutdown(ctx context.Context) {
 
 // Bindings is the list of structs whose exported methods Wails exposes to JS.
 func (a *App) Bindings() []interface{} {
-	return []interface{}{a.Config, a.Wallet, a.Node, a.Tx}
+	return []interface{}{a.Config, a.Wallet, a.Node, a.Tx, a.Nom}
 }

@@ -188,6 +188,30 @@ func TestSetNodeModeEmbeddedPersistsAndStarts(t *testing.T) {
 	}
 }
 
+func TestConnectStartsEmbeddedWhenModePersisted(t *testing.T) {
+	n := newTestNode(t)
+	// Persist embedded mode as if a prior session selected it.
+	s, err := n.config.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.NodeMode = "embedded"
+	if err := n.config.SetSettings(s); err != nil {
+		t.Fatal(err)
+	}
+	started := false
+	// Stub starter returns an unreachable handle so the connect fails; we only
+	// assert that Connect() started the embedded node.
+	n.embeddedStart = func(dataDir string) (embeddedHandle, error) {
+		started = true
+		return stubHandle{url: "ws://127.0.0.1:1", dir: dataDir}, nil
+	}
+	_ = n.Connect() // connect will fail (unreachable); ignore
+	if !started {
+		t.Fatal("Connect() did not start embedded node when embedded mode persisted")
+	}
+}
+
 func TestDeleteEmbeddedData(t *testing.T) {
 	n := newTestNode(t)
 	dir, _ := n.config.dataDir()

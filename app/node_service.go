@@ -231,25 +231,32 @@ func (n *NodeService) SetNodeMode(mode string) error {
 	n.mu.Unlock()
 
 	if mode == "embedded" {
-		dir, derr := n.config.dataDir()
-		if derr != nil {
-			return derr
-		}
-		h, serr := n.embeddedStart(dir)
-		if serr != nil {
-			n.emitStatus(false)
-			return fmt.Errorf("start embedded node: %w", serr)
-		}
-		n.mu.Lock()
-		n.embedded = h
-		n.mu.Unlock()
-		if cerr := n.SetNode(h.WSURL()); cerr != nil {
-			return cerr
-		}
-		n.startSyncPoller()
-		return nil
+		return n.startEmbedded()
 	}
 	return n.SetNode(s.ActiveNodeURL())
+}
+
+// startEmbedded starts the embedded node, connects to it, and starts the sync
+// poller. The caller has already persisted/marked mode == "embedded". Mutex
+// discipline: mu is never held across embeddedStart/SetNode/startSyncPoller.
+func (n *NodeService) startEmbedded() error {
+	dir, err := n.config.dataDir()
+	if err != nil {
+		return err
+	}
+	h, serr := n.embeddedStart(dir)
+	if serr != nil {
+		n.emitStatus(false)
+		return fmt.Errorf("start embedded node: %w", serr)
+	}
+	n.mu.Lock()
+	n.embedded = h
+	n.mu.Unlock()
+	if cerr := n.SetNode(h.WSURL()); cerr != nil {
+		return cerr
+	}
+	n.startSyncPoller()
+	return nil
 }
 
 // SetNodeURL persists a mode's URL (validated) and reconnects if it is active.
@@ -387,6 +394,9 @@ func (n *NodeService) Connect() error {
 	n.mu.Lock()
 	n.mode = s.NodeMode
 	n.mu.Unlock()
+	if s.NodeMode == "embedded" {
+		return n.startEmbedded()
+	}
 	return n.SetNode(s.ActiveNodeURL())
 }
 

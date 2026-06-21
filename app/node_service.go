@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/0x3639/znn-sdk-go/rpc_client"
@@ -20,6 +21,7 @@ type NodeService struct {
 	wallet *WalletService
 
 	mu      sync.RWMutex
+	mode    string
 	client  *rpc_client.RpcClient
 	url     string
 	height  uint64
@@ -58,10 +60,6 @@ func (n *NodeService) SetNode(url string) error {
 	n.chainID = m.ChainIdentifier
 	n.mu.Unlock()
 
-	if s, err := n.config.GetSettings(); err == nil {
-		s.RemoteNodeURL = url
-		_ = n.config.SetSettings(s)
-	}
 	n.emitStatus(true)
 
 	if err := n.startMomentumLoop(); err != nil {
@@ -159,8 +157,12 @@ func (n *NodeService) NodeStatus() NodeStatus {
 	n.mu.RLock()
 	connected := n.client != nil
 	height := n.height
+	mode := n.mode
 	n.mu.RUnlock()
-	return NodeStatus{Mode: "remote", Connected: connected, Syncing: false, Height: height, Peers: 0}
+	if mode == "" {
+		mode = "remote"
+	}
+	return NodeStatus{Mode: mode, Connected: connected, Syncing: false, Height: height, Peers: 0}
 }
 
 func (n *NodeService) emitStatus(connected bool) {
@@ -168,13 +170,85 @@ func (n *NodeService) emitStatus(connected bool) {
 	ctx := n.ctx
 	clientNil := n.client == nil
 	height := n.height
+	mode := n.mode
 	n.mu.RUnlock()
 
 	if ctx == nil {
 		return
 	}
-	st := NodeStatus{Mode: "remote", Connected: connected && !clientNil, Height: height}
+	if mode == "" {
+		mode = "remote"
+	}
+	st := NodeStatus{Mode: mode, Connected: connected && !clientNil, Height: height}
 	runtime.EventsEmit(ctx, EventNodeStatus, st)
+}
+
+// SetNodeMode persists the node mode and connects to that mode's URL. The mode
+// is persisted before connecting, so an unreachable node leaves the chosen mode
+// in effect (the UI shows disconnected + Retry).
+func (n *NodeService) SetNodeMode(mode string) error {
+	if mode != "remote" && mode != "local" {
+		return fmt.Errorf("unknown node mode %q", mode)
+	}
+	s, err := n.config.GetSettings()
+	if err != nil {
+		return err
+	}
+	s.NodeMode = mode
+	if err := n.config.SetSettings(s); err != nil {
+		return err
+	}
+	n.mu.Lock()
+	n.mode = mode
+	n.mu.Unlock()
+	return n.SetNode(s.ActiveNodeURL())
+}
+
+// SetNodeURL persists a mode's URL (validated) and reconnects if it is active.
+func (n *NodeService) SetNodeURL(mode, url string) error {
+	if mode != "remote" && mode != "local" {
+		return fmt.Errorf("unknown node mode %q", mode)
+	}
+	if !strings.HasPrefix(url, "ws://") && !strings.HasPrefix(url, "wss://") {
+		return fmt.Errorf("node url must start with ws:// or wss://")
+	}
+	s, err := n.config.GetSettings()
+	if err != nil {
+		return err
+	}
+	if mode == "local" {
+		s.LocalNodeURL = url
+	} else {
+		s.RemoteNodeURL = url
+	}
+	if err := n.config.SetSettings(s); err != nil {
+		return err
+	}
+	if mode == s.NodeMode {
+		return n.SetNode(url)
+	}
+	return nil
+}
+
+// Connect connects to the active mode's URL using persisted settings.
+func (n *NodeService) Connect() error {
+	s, err := n.config.GetSettings()
+	if err != nil {
+		return err
+	}
+	n.mu.Lock()
+	n.mode = s.NodeMode
+	n.mu.Unlock()
+	return n.SetNode(s.ActiveNodeURL())
+}
+
+// GetNodeConfig returns the node mode and per-mode URLs for the settings UI.
+func (n *NodeService) GetNodeConfig() (NodeConfig, error) {
+	s, err := n.config.GetSettings()
+	if err != nil {
+		return NodeConfig{}, err
+	}
+	return NodeConfig{Mode: s.NodeMode, RemoteURL: s.RemoteNodeURL, LocalURL: s.LocalNodeURL}, nil
 }
 
 // GetBalances returns the active address's balances.

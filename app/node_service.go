@@ -36,8 +36,9 @@ func newNodeService(c *ConfigService, w *WalletService) *NodeService {
 	return &NodeService{config: c, wallet: w}
 }
 
-// SetNode connects to url, verifies reachability, persists it, and starts the
-// momentum subscription that drives status/height events.
+// SetNode connects to url, verifies reachability, and starts the momentum
+// subscription that drives status/height events. URL persistence belongs to
+// SetNodeMode/SetNodeURL; SetNode is a pure connect.
 func (n *NodeService) SetNode(url string) error {
 	n.mu.Lock()
 	n.disconnectLocked()

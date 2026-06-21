@@ -19,11 +19,15 @@ type NodeService struct {
 	config *ConfigService
 	wallet *WalletService
 
-	mu     sync.RWMutex
-	client *rpc_client.RpcClient
-	url    string
-	height uint64
-	stop   chan struct{}
+	mu      sync.RWMutex
+	client  *rpc_client.RpcClient
+	url     string
+	height  uint64
+	chainID uint64
+	stop    chan struct{}
+
+	receiveFn func(fromHash string) (string, error)
+	autoStop  chan struct{}
 }
 
 func newNodeService(c *ConfigService, w *WalletService) *NodeService {
@@ -51,6 +55,7 @@ func (n *NodeService) SetNode(url string) error {
 	n.client = client
 	n.url = url
 	n.height = m.Height
+	n.chainID = m.ChainIdentifier
 	n.mu.Unlock()
 
 	if s, err := n.config.GetSettings(); err == nil {
@@ -127,10 +132,17 @@ func (n *NodeService) disconnectLocked() {
 		close(n.stop)
 		n.stop = nil
 	}
+	if n.autoStop != nil {
+		close(n.autoStop)
+		n.autoStop = nil
+	}
 	if n.client != nil {
 		n.client.Stop()
 		n.client = nil
 	}
+	// Reset the cached chain identifier so a stale value (e.g. testnet) can't be
+	// read by currentChainID() after disconnect and bypass the mainnet guard.
+	n.chainID = 0
 }
 
 // Disconnect closes the connection and stops the subscription.
@@ -211,6 +223,127 @@ func (n *NodeService) GetTransactions(page, count int) ([]TxRecord, error) {
 		out = append(out, toTxRecord(b))
 	}
 	return out, nil
+}
+
+// currentClient returns the connected client or nil, under the read lock.
+func (n *NodeService) currentClient() *rpc_client.RpcClient {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.client
+}
+
+// currentChainID returns the connected node's chain identifier (0 if unknown).
+func (n *NodeService) currentChainID() uint64 {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.chainID
+}
+
+// setReceiveFunc wires the callback used by auto-receive to receive each block.
+func (n *NodeService) setReceiveFunc(fn func(string) (string, error)) { n.receiveFn = fn }
+
+// StartAutoReceive subscribes to unreceived blocks for the active address and
+// receives each via receiveFn. Idempotent; StopAutoReceive stops it.
+func (n *NodeService) StartAutoReceive() error {
+	// Claim the running slot under the lock before subscribing so a concurrent
+	// or repeated call returns early instead of orphaning a goroutine.
+	n.mu.Lock()
+	if n.autoStop != nil {
+		n.mu.Unlock()
+		return nil // already running
+	}
+	stop := make(chan struct{})
+	n.autoStop = stop
+	n.mu.Unlock()
+
+	// releaseSlot clears the reserved slot iff it's still ours, so a failed
+	// start never leaves a phantom "running" state.
+	releaseSlot := func() {
+		n.mu.Lock()
+		if n.autoStop == stop {
+			n.autoStop = nil
+		}
+		n.mu.Unlock()
+	}
+
+	client := n.currentClient()
+	if client == nil {
+		releaseSlot()
+		return errors.New("not connected")
+	}
+	addr, ok := n.wallet.activeAddress()
+	if !ok {
+		releaseSlot()
+		return errLocked
+	}
+	ctx := n.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	sub, ch, err := client.SubscriberApi.ToUnreceivedAccountBlocksByAddress(ctx, addr)
+	if err != nil {
+		releaseSlot()
+		return err
+	}
+	go func() {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case <-stop:
+				return
+			case blocks := <-ch:
+				if n.receiveFn == nil {
+					continue
+				}
+				for _, b := range blocks {
+					_, _ = n.receiveFn(b.Hash.String())
+				}
+			}
+		}
+	}()
+	return nil
+}
+
+// StopAutoReceive stops the auto-receive subscription if running.
+func (n *NodeService) StopAutoReceive() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.autoStop != nil {
+		close(n.autoStop)
+		n.autoStop = nil
+	}
+}
+
+// GetUnreceived lists inbound blocks not yet received by the active address.
+func (n *NodeService) GetUnreceived() ([]UnreceivedBlock, error) {
+	client := n.currentClient()
+	if client == nil {
+		return nil, errors.New("not connected")
+	}
+	addr, ok := n.wallet.activeAddress()
+	if !ok {
+		return nil, errLocked
+	}
+	list, err := client.LedgerApi.GetUnreceivedBlocksByAddress(addr, 0, 50)
+	if err != nil {
+		return nil, err
+	}
+	out := []UnreceivedBlock{}
+	for _, b := range list.List {
+		out = append(out, toUnreceivedBlock(b))
+	}
+	return out, nil
+}
+
+func toUnreceivedBlock(b *api.AccountBlock) UnreceivedBlock {
+	u := UnreceivedBlock{FromHash: b.Hash.String(), FromAddress: b.Address.String(), Amount: "0", Token: b.TokenStandard.String()}
+	if b.Amount != nil {
+		u.Amount = b.Amount.String()
+	}
+	if b.TokenInfo != nil {
+		u.Token = b.TokenInfo.TokenSymbol
+	}
+	return u
 }
 
 func toTokenBalance(zts types.ZenonTokenStandard, bi *api.BalanceInfo) TokenBalance {

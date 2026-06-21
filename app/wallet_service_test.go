@@ -5,7 +5,29 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	bip39 "github.com/tyler-smith/go-bip39"
+	"github.com/zenon-network/go-zenon/wallet"
 )
+
+// unlockTestWallet installs a deterministic, offline keystore into w (no secrets
+// file or RPC needed) and advances the session generation, mirroring Unlock.
+// Useful for ConfirmPublish tests that only need activeAddress()+sessionGen().
+func unlockTestWallet(t *testing.T, w *WalletService) {
+	t.Helper()
+	const mnemonic = "test test test test test test test test test test test junk"
+	ks := &wallet.KeyStore{Mnemonic: mnemonic, Seed: bip39.NewSeed(mnemonic, "")}
+	if _, kp, err := ks.DeriveForIndexPath(0); err == nil {
+		ks.BaseAddress = kp.Address
+	} else {
+		t.Fatalf("derive base address: %v", err)
+	}
+	w.mu.Lock()
+	w.keystore = ks
+	w.active = 0
+	w.gen++
+	w.mu.Unlock()
+}
 
 // locateSecretsKeystore returns the gitignored real keystore + password, or skips.
 func locateSecretsKeystore(t *testing.T) (path, password string) {
@@ -64,6 +86,36 @@ func TestImportListUnlockLock(t *testing.T) {
 	}
 	if _, err := w.CurrentAccounts(); err == nil {
 		t.Fatal("expected CurrentAccounts to fail after Lock")
+	}
+}
+
+func TestSigningKeyPairMatchesActiveAddress(t *testing.T) {
+	ksPath, pw := locateSecretsKeystore(t)
+	w := newTestWalletService(t)
+	meta, err := w.ImportKeystore(ksPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Unlock(meta.Name, pw); err != nil {
+		t.Fatal(err)
+	}
+
+	kp, err := w.signingKeyPair()
+	if err != nil {
+		t.Fatalf("signingKeyPair: %v", err)
+	}
+	addr, err := kp.GetAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := w.activeAddress()
+	if *addr != want {
+		t.Fatalf("sdk keypair address %s != active %s", addr, want)
+	}
+
+	_ = w.Lock()
+	if _, err := w.signingKeyPair(); err == nil {
+		t.Fatal("expected signingKeyPair to fail when locked")
 	}
 }
 

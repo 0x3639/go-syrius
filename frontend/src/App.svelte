@@ -2,10 +2,12 @@
   import './app.css'
   import { onMount } from 'svelte'
   import { wallet } from './lib/stores/wallet'
+  import { view } from './lib/stores/nav'
   import * as Cfg from '../wailsjs/go/app/ConfigService'
   import * as N from '../wailsjs/go/app/NodeService'
   import Unlock from './routes/Unlock.svelte'
   import Dashboard from './routes/Dashboard.svelte'
+  import Send from './routes/Send.svelte'
   onMount(async () => {
     try {
       const s = await Cfg.GetSettings()
@@ -15,6 +17,8 @@
 </script>
 {#if $wallet.locked}
   <Unlock />
+{:else if $view === 'send'}
+  <Send />
 {:else}
   <Dashboard />
 {/if}

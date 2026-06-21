@@ -21,6 +21,7 @@ func New() *App {
 	n := newNodeService(cfg, w)
 	t := newTxService(cfg, w, n)
 	n.setReceiveFunc(t.Receive)
+	w.setOnLock(t.clearPending)
 	return &App{Config: cfg, Wallet: w, Node: n, Tx: t}
 }
 

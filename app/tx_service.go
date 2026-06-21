@@ -143,6 +143,12 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 // ConfirmPublish broadcasts the held block after re-asserting it matches the
 // originating request, then clears it.
 func (t *TxService) ConfirmPublish() (string, error) {
+	// Re-assert the mainnet guard before publishing. If it fails (e.g. the block
+	// was prepared on testnet but we are now connected to mainnet), refuse to
+	// publish WITHOUT clearing pending so the user can reconnect and retry.
+	if err := t.guard(); err != nil {
+		return "", err
+	}
 	t.mu.Lock()
 	b, req := t.pending, t.pendingReq
 	t.mu.Unlock()

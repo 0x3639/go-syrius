@@ -26,7 +26,13 @@ type WalletService struct {
 
 	keystore *wallet.KeyStore // nil when locked
 	active   int
+
+	onLock func() // optional callback invoked on Lock (e.g. clear pending tx)
 }
+
+// setOnLock wires a callback invoked when the wallet is locked, mirroring the
+// NodeService.setReceiveFunc pattern to avoid a hard WalletService→TxService dep.
+func (w *WalletService) setOnLock(fn func()) { w.onLock = fn }
 
 func newWalletService(c *ConfigService) *WalletService {
 	return &WalletService{config: c}
@@ -110,6 +116,9 @@ func (w *WalletService) Lock() error {
 	if w.keystore != nil {
 		w.keystore.Zero()
 		w.keystore = nil
+	}
+	if w.onLock != nil {
+		w.onLock()
 	}
 	if w.ctx != nil {
 		runtime.EventsEmit(w.ctx, EventWalletLocked)

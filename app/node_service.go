@@ -140,6 +140,9 @@ func (n *NodeService) disconnectLocked() {
 		n.client.Stop()
 		n.client = nil
 	}
+	// Reset the cached chain identifier so a stale value (e.g. testnet) can't be
+	// read by currentChainID() after disconnect and bypass the mainnet guard.
+	n.chainID = 0
 }
 
 // Disconnect closes the connection and stops the subscription.

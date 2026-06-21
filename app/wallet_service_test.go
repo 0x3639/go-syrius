@@ -221,3 +221,28 @@ func TestRevealMnemonic(t *testing.T) {
 		t.Fatalf("revealed mnemonic mismatch")
 	}
 }
+
+func TestAccountLabels(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+	if _, err := w.ImportMnemonic("lbl.dat", "pw", m); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Unlock("lbl.dat", "pw"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := w.SetAccountLabel(0, "Savings"); err != nil {
+		t.Fatalf("SetAccountLabel: %v", err)
+	}
+	accts, err := w.CurrentAccounts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accts[0].Label != "Savings" {
+		t.Fatalf("label not applied: %+v", accts[0])
+	}
+	if err := w.SetAccountLabel(99, "x"); err == nil {
+		t.Fatal("expected out-of-range index to fail")
+	}
+}

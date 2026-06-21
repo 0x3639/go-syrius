@@ -245,20 +245,34 @@ func (w *WalletService) sessionGen() uint64 {
 	return w.gen
 }
 
+// labelKey is the settings map key for a given wallet's account index.
+func labelKey(wallet string, index int) string { return fmt.Sprintf("%s:%d", wallet, index) }
+
 // CurrentAccounts derives indices 0..accountRange-1 from the unlocked keystore.
 func (w *WalletService) CurrentAccounts() ([]AccountInfo, error) {
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	if w.keystore == nil {
+		w.mu.Unlock()
 		return nil, errLocked
 	}
+	name := w.activeWallet
 	out := make([]AccountInfo, 0, accountRange)
 	for i := 0; i < accountRange; i++ {
 		_, kp, err := w.keystore.DeriveForIndexPath(uint32(i))
 		if err != nil {
+			w.mu.Unlock()
 			return nil, err
 		}
 		out = append(out, AccountInfo{Index: i, Address: kp.Address.String()})
+	}
+	w.mu.Unlock()
+
+	// Load labels once, off the lock, to avoid holding mu across disk I/O. A
+	// missing/empty AccountLabels map yields "" for every account.
+	if s, err := w.config.GetSettings(); err == nil {
+		for i := range out {
+			out[i].Label = s.AccountLabels[labelKey(name, i)]
+		}
 	}
 	return out, nil
 }
@@ -282,6 +296,28 @@ func (w *WalletService) SelectAccount(index int) error {
 		_ = w.config.SetSettings(s)
 	}
 	return nil
+}
+
+// SetAccountLabel persists a human label for the active wallet's account index.
+func (w *WalletService) SetAccountLabel(index int, label string) error {
+	if index < 0 || index >= accountRange {
+		return fmt.Errorf("account index %d out of range", index)
+	}
+	w.mu.Lock()
+	name := w.activeWallet
+	w.mu.Unlock()
+	if name == "" {
+		return errLocked
+	}
+	s, err := w.config.GetSettings()
+	if err != nil {
+		return err
+	}
+	if s.AccountLabels == nil {
+		s.AccountLabels = map[string]string{}
+	}
+	s.AccountLabels[labelKey(name, index)] = label
+	return w.config.SetSettings(s)
 }
 
 // activeAddress returns the active account's address, false if locked.

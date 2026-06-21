@@ -16,3 +16,8 @@ wallet*.json
 # Go build artifacts
 /bin/
 *.test
+
+# Frontend build artifacts and dependencies
+node_modules/
+frontend/dist/
+build/bin

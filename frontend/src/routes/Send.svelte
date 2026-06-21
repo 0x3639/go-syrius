@@ -1,6 +1,7 @@
 <script lang="ts">
   import { balances } from '../lib/stores/balances'
   import { tx, prepare } from '../lib/stores/tx'
+  import { view } from '../lib/stores/nav'
   import SendForm from '../lib/components/SendForm.svelte'
   import TxModal from '../lib/components/TxModal.svelte'
   import TxResult from '../lib/components/TxResult.svelte'
@@ -20,7 +21,10 @@
 </script>
 
 <div class="mx-auto mt-8 w-[28rem] space-y-4">
-  <h1 class="text-xl">Send</h1>
+  <div class="flex items-center justify-between">
+    <h1 class="text-xl">Send</h1>
+    <button class="rounded border border-muted/40 px-2 py-1 text-xs text-muted" on:click={() => view.set('dashboard')}>Back</button>
+  </div>
   <SendForm on:send={onSend} />
   {#if $tx.status === 'preparing'}<p class="text-muted">Preparing… (PoW if required)</p>{/if}
   {#if $tx.status === 'error'}<p class="text-error" role="alert">{$tx.error}</p>{/if}

@@ -20,4 +20,10 @@ describe('Plasma', () => {
     const btn = await screen.findByRole('button', { name: /cancel fusion/i })
     expect((btn as HTMLButtonElement).disabled).toBe(true)
   })
+
+  it('renders the fusion-entry QSR amount in human form', async () => {
+    render(Plasma)
+    // mock qsrAmount '10000000000' (base units, 8 decimals) → '100 QSR'
+    expect(await screen.findByText(/100 QSR/)).toBeTruthy()
+  })
 })

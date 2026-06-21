@@ -4,10 +4,35 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
 	"github.com/zenon-network/go-zenon/common/types"
 )
+
+// formatBaseAmount renders a base-unit integer string as a human decimal string
+// with the given number of decimals (trailing zeros trimmed), e.g.
+// formatBaseAmount("10000000000", 8) == "100".
+func formatBaseAmount(base string, decimals int) string {
+	neg := strings.HasPrefix(base, "-")
+	digits := base
+	if neg {
+		digits = base[1:]
+	}
+	for len(digits) <= decimals {
+		digits = "0" + digits
+	}
+	intPart := digits[:len(digits)-decimals]
+	frac := strings.TrimRight(digits[len(digits)-decimals:], "0")
+	out := intPart
+	if frac != "" {
+		out = intPart + "." + frac
+	}
+	if neg {
+		out = "-" + out
+	}
+	return out
+}
 
 // NomService exposes Network-of-Momentum embedded-contract reads and builds
 // state-changing templates that it hands to TxService for confirm/publish.
@@ -69,6 +94,7 @@ func (s *NomService) GetFusionEntries() ([]FusionEntry, error) {
 }
 
 // EstimatePlasma returns the plasma a QSR amount would yield (pure SDK helper).
+// qsr is in whole QSR (not base units): GetPlasmaByQsr expects whole QSR.
 func (s *NomService) EstimatePlasma(qsr string) (uint64, error) {
 	client := s.node.currentClient()
 	if client == nil {
@@ -100,8 +126,8 @@ func (s *NomService) PrepareFuse(beneficiary, qsrAmount string) (CallPreview, er
 	// The callExpect zts MUST match the SDK template's TokenStandard or
 	// TxService.ConfirmPublish's assertMatches rejects the block. The SDK's
 	// PlasmaApi.Fuse builds the block with TokenStandard: types.QsrTokenStandard.
-	return s.tx.prepareCall(template, callExpect{to: types.PlasmaContract, zts: types.QsrTokenStandard, amount: amt},
-		fmt.Sprintf("Fuse %s QSR for %s", qsrAmount, beneficiary))
+	return s.tx.prepareCall(template, callExpect{to: types.PlasmaContract, zts: types.QsrTokenStandard, amount: amt, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Fuse %s QSR for %s", formatBaseAmount(qsrAmount, 8), beneficiary))
 }
 
 // PrepareCancelFuse builds a Cancel template for a fusion id (no funds move; the
@@ -121,7 +147,7 @@ func (s *NomService) PrepareCancelFuse(id string) (CallPreview, error) {
 	// PlasmaApi.Cancel builds the block with TokenStandard: types.ZnnTokenStandard
 	// (Amount common.Big0) — NOT QSR, unlike Fuse. amount big.NewInt(0)
 	// Cmp-equals common.Big0.
-	return s.tx.prepareCall(template, callExpect{to: types.PlasmaContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0)},
+	return s.tx.prepareCall(template, callExpect{to: types.PlasmaContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
 		fmt.Sprintf("Cancel fusion %s", id))
 }
 

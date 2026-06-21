@@ -172,6 +172,18 @@ func TestAssertMatches(t *testing.T) {
 			t.Fatalf("divergent block must be rejected: %+v", bad)
 		}
 	}
+
+	// Contract-call Data must also match: identical to/zts/amount but different
+	// Data (e.g. a tampered Fuse beneficiary) must be rejected.
+	ed := callExpect{to: to, zts: types.QsrTokenStandard, amount: big.NewInt(100), data: []byte{1, 2, 3}}
+	okData := &nom.AccountBlock{ToAddress: to, TokenStandard: types.QsrTokenStandard, Amount: big.NewInt(100), Data: []byte{1, 2, 3}}
+	if err := assertMatches(okData, ed); err != nil {
+		t.Fatalf("matching Data block should pass: %v", err)
+	}
+	badData := &nom.AccountBlock{ToAddress: to, TokenStandard: types.QsrTokenStandard, Amount: big.NewInt(100), Data: []byte{1, 2, 4}}
+	if err := assertMatches(badData, ed); err == nil {
+		t.Fatal("block with divergent Data must be rejected")
+	}
 }
 
 func TestReceiveRejectsBadHash(t *testing.T) {

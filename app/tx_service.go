@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -35,11 +36,13 @@ type callExpect struct {
 	to     types.Address
 	zts    types.ZenonTokenStandard
 	amount *big.Int
+	data   []byte
 }
 
-// assertMatches verifies a built block moves exactly the expected funds.
+// assertMatches verifies a built block moves exactly the expected funds and
+// carries the expected contract-call data (Fuse beneficiary / Cancel id).
 func assertMatches(b *nom.AccountBlock, e callExpect) error {
-	if b.ToAddress != e.to || b.TokenStandard != e.zts || b.Amount == nil || e.amount == nil || b.Amount.Cmp(e.amount) != 0 {
+	if b.ToAddress != e.to || b.TokenStandard != e.zts || b.Amount == nil || e.amount == nil || b.Amount.Cmp(e.amount) != 0 || !bytes.Equal(b.Data, e.data) {
 		return errors.New("prepared block does not match the expected effect; not publishing")
 	}
 	return nil
@@ -151,7 +154,7 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 
 	t.mu.Lock()
 	t.pending = built
-	t.pendingExpect = callExpect{to: to, zts: zts, amount: amount}
+	t.pendingExpect = callExpect{to: to, zts: zts, amount: new(big.Int).Set(amount), data: append([]byte(nil), built.Data...)}
 	t.pendingGen = gen
 	t.mu.Unlock()
 
@@ -248,7 +251,7 @@ func (t *TxService) prepareCall(template *nom.AccountBlock, expect callExpect, s
 	}
 	t.mu.Lock()
 	t.pending = built
-	t.pendingExpect = expect
+	t.pendingExpect = callExpect{to: expect.to, zts: expect.zts, amount: new(big.Int).Set(expect.amount), data: append([]byte(nil), expect.data...)}
 	t.pendingGen = gen
 	t.mu.Unlock()
 	return CallPreview{

@@ -21,3 +21,4 @@ wallet*.json
 node_modules/
 frontend/dist/
 build/bin
+frontend/package.json.md5

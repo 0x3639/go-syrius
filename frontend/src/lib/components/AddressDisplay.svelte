@@ -3,8 +3,19 @@
   import { ClipboardSetText } from '../../../wailsjs/runtime/runtime'
   export let address = ''
   let dataUrl = ''
+  let reqId = 0
   let copied = false
-  $: if (address) { QRCode.toDataURL(address, { margin: 1, width: 160 }).then((u) => (dataUrl = u)).catch(() => (dataUrl = '')) }
+  $: void renderQR(address)
+  async function renderQR(addr: string) {
+    const id = ++reqId
+    if (!addr) { dataUrl = ''; return }
+    try {
+      const u = await QRCode.toDataURL(addr, { margin: 1, width: 160 })
+      if (id === reqId) dataUrl = u
+    } catch {
+      if (id === reqId) dataUrl = ''
+    }
+  }
   async function copy() { await ClipboardSetText(address); copied = true; setTimeout(() => (copied = false), 1200) }
 </script>
 <div class="flex items-center gap-4 rounded bg-surface p-4">

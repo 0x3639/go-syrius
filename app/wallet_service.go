@@ -181,5 +181,9 @@ func copyFile(src, dst string) error {
 		os.Remove(dst)
 		return err
 	}
-	return out.Close()
+	if err := out.Close(); err != nil {
+		os.Remove(dst)
+		return err
+	}
+	return nil
 }

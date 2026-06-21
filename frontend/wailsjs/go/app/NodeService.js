@@ -6,12 +6,20 @@ export function Connect() {
   return window['go']['app']['NodeService']['Connect']();
 }
 
+export function DeleteEmbeddedData() {
+  return window['go']['app']['NodeService']['DeleteEmbeddedData']();
+}
+
 export function Disconnect() {
   return window['go']['app']['NodeService']['Disconnect']();
 }
 
 export function GetBalances() {
   return window['go']['app']['NodeService']['GetBalances']();
+}
+
+export function GetEmbeddedInfo() {
+  return window['go']['app']['NodeService']['GetEmbeddedInfo']();
 }
 
 export function GetNodeConfig() {

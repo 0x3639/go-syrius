@@ -16,6 +16,22 @@ export namespace app {
 	        this.label = source["label"];
 	    }
 	}
+	export class EmbeddedInfo {
+	    running: boolean;
+	    dataDir: string;
+	    sizeBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new EmbeddedInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.running = source["running"];
+	        this.dataDir = source["dataDir"];
+	        this.sizeBytes = source["sizeBytes"];
+	    }
+	}
 	export class NodeConfig {
 	    mode: string;
 	    remoteUrl: string;

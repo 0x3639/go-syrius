@@ -4,9 +4,13 @@ import {app} from '../models';
 
 export function Connect():Promise<void>;
 
+export function DeleteEmbeddedData():Promise<void>;
+
 export function Disconnect():Promise<void>;
 
 export function GetBalances():Promise<Array<app.TokenBalance>>;
+
+export function GetEmbeddedInfo():Promise<app.EmbeddedInfo>;
 
 export function GetNodeConfig():Promise<app.NodeConfig>;
 

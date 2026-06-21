@@ -29,3 +29,24 @@ func TestFusionEntryDTORevocable(t *testing.T) {
 		t.Fatal("should be revocable above expiration")
 	}
 }
+
+func TestPrepareFuseValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	// Bad beneficiary and bad amount are rejected BEFORE any node/client use.
+	if _, err := s.PrepareFuse("not-an-address", "100"); err == nil {
+		t.Fatal("expected invalid beneficiary to be rejected")
+	}
+	if _, err := s.PrepareFuse("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz", "0"); err == nil {
+		t.Fatal("expected zero amount to be rejected")
+	}
+	if _, err := s.PrepareFuse("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz", "abc"); err == nil {
+		t.Fatal("expected non-numeric amount to be rejected")
+	}
+}
+
+func TestPrepareCancelFuseValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	if _, err := s.PrepareCancelFuse("not-a-hash"); err == nil {
+		t.Fatal("expected invalid id to be rejected")
+	}
+}

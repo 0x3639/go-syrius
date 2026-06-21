@@ -2,9 +2,11 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
+	"github.com/zenon-network/go-zenon/common/types"
 )
 
 // NomService exposes Network-of-Momentum embedded-contract reads and builds
@@ -77,6 +79,42 @@ func (s *NomService) EstimatePlasma(qsr string) (uint64, error) {
 		return 0, errors.New("invalid qsr amount")
 	}
 	return client.PlasmaApi.GetPlasmaByQsr(amt).Uint64(), nil
+}
+
+// PrepareFuse builds a Fuse template for the beneficiary and hands it to TxService
+// for confirm-what-you-sign. Inputs are validated before any node use.
+func (s *NomService) PrepareFuse(beneficiary, qsrAmount string) (CallPreview, error) {
+	addr, err := types.ParseAddress(beneficiary)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid beneficiary: %w", err)
+	}
+	amt, ok := new(big.Int).SetString(qsrAmount, 10)
+	if !ok || amt.Sign() <= 0 {
+		return CallPreview{}, errors.New("invalid QSR amount")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.PlasmaApi.Fuse(addr, amt)
+	return s.tx.prepareCall(template, callExpect{to: types.PlasmaContract, zts: types.QsrTokenStandard, amount: amt},
+		fmt.Sprintf("Fuse %s QSR for %s", qsrAmount, beneficiary))
+}
+
+// PrepareCancelFuse builds a Cancel template for a fusion id (no funds move; the
+// fused QSR returns to the sender on confirmation).
+func (s *NomService) PrepareCancelFuse(id string) (CallPreview, error) {
+	hash, err := types.HexToHash(id)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid fusion id: %w", err)
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.PlasmaApi.Cancel(hash)
+	return s.tx.prepareCall(template, callExpect{to: types.PlasmaContract, zts: types.QsrTokenStandard, amount: big.NewInt(0)},
+		fmt.Sprintf("Cancel fusion %s", id))
 }
 
 // fusionEntryDTO maps an SDK FusionEntry, deriving revocability from the frontier height.

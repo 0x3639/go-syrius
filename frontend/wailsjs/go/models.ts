@@ -16,6 +16,22 @@ export namespace app {
 	        this.label = source["label"];
 	    }
 	}
+	export class NodeConfig {
+	    mode: string;
+	    remoteUrl: string;
+	    localUrl: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NodeConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.remoteUrl = source["remoteUrl"];
+	        this.localUrl = source["localUrl"];
+	    }
+	}
 	export class NodeStatus {
 	    mode: string;
 	    connected: boolean;
@@ -79,7 +95,10 @@ export namespace app {
 	    }
 	}
 	export class Settings {
-	    nodeUrl: string;
+	    nodeUrl?: string;
+	    nodeMode: string;
+	    remoteNodeUrl: string;
+	    localNodeUrl: string;
 	    theme: string;
 	    lastWallet: string;
 	    activeAccount: number;
@@ -94,6 +113,9 @@ export namespace app {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.nodeUrl = source["nodeUrl"];
+	        this.nodeMode = source["nodeMode"];
+	        this.remoteNodeUrl = source["remoteNodeUrl"];
+	        this.localNodeUrl = source["localNodeUrl"];
 	        this.theme = source["theme"];
 	        this.lastWallet = source["lastWallet"];
 	        this.activeAccount = source["activeAccount"];

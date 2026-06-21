@@ -132,6 +132,10 @@ func (n *NodeService) disconnectLocked() {
 		close(n.stop)
 		n.stop = nil
 	}
+	if n.autoStop != nil {
+		close(n.autoStop)
+		n.autoStop = nil
+	}
 	if n.client != nil {
 		n.client.Stop()
 		n.client = nil
@@ -238,12 +242,35 @@ func (n *NodeService) setReceiveFunc(fn func(string) (string, error)) { n.receiv
 // StartAutoReceive subscribes to unreceived blocks for the active address and
 // receives each via receiveFn. Idempotent; StopAutoReceive stops it.
 func (n *NodeService) StartAutoReceive() error {
+	// Claim the running slot under the lock before subscribing so a concurrent
+	// or repeated call returns early instead of orphaning a goroutine.
+	n.mu.Lock()
+	if n.autoStop != nil {
+		n.mu.Unlock()
+		return nil // already running
+	}
+	stop := make(chan struct{})
+	n.autoStop = stop
+	n.mu.Unlock()
+
+	// releaseSlot clears the reserved slot iff it's still ours, so a failed
+	// start never leaves a phantom "running" state.
+	releaseSlot := func() {
+		n.mu.Lock()
+		if n.autoStop == stop {
+			n.autoStop = nil
+		}
+		n.mu.Unlock()
+	}
+
 	client := n.currentClient()
 	if client == nil {
+		releaseSlot()
 		return errors.New("not connected")
 	}
 	addr, ok := n.wallet.activeAddress()
 	if !ok {
+		releaseSlot()
 		return errLocked
 	}
 	ctx := n.ctx
@@ -252,12 +279,9 @@ func (n *NodeService) StartAutoReceive() error {
 	}
 	sub, ch, err := client.SubscriberApi.ToUnreceivedAccountBlocksByAddress(ctx, addr)
 	if err != nil {
+		releaseSlot()
 		return err
 	}
-	n.mu.Lock()
-	n.autoStop = make(chan struct{})
-	stop := n.autoStop
-	n.mu.Unlock()
 	go func() {
 		defer sub.Unsubscribe()
 		for {

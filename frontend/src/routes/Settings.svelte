@@ -50,9 +50,10 @@
     } catch (e: any) { nodeErr = e?.message ?? String(e) }
   }
   async function confirmStartEmbedded() {
-    showEmbeddedConfirm = false
+    nodeMsg = ''; nodeErr = ''
     try { await setMode('embedded'); loadedMode = 'embedded'; modeDirty = false; nodeMsg = 'Node settings applied' }
     catch (e: any) { nodeErr = e?.message ?? String(e) }
+    finally { showEmbeddedConfirm = false }
   }
   async function doDeleteEmbedded() {
     nodeErr = ''
@@ -63,7 +64,10 @@
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
     return h > 0 ? `${h}h ${m}m` : `${m}m`
   }
-  async function retryNode() { await setMode(nodeMode) }
+  async function retryNode() {
+    nodeMsg = ''; nodeErr = ''
+    try { await setMode(nodeMode) } catch (e: any) { nodeErr = e?.message ?? String(e) }
+  }
 
   let oldP = '', newP = '', confirmP = '', cpMsg = '', cpErr = ''
   $: canChange = oldP.length > 0 && newP.length > 0 && newP === confirmP

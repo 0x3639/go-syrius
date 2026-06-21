@@ -49,6 +49,17 @@ describe('Settings embedded', () => {
     expect(N.SetNodeMode).toHaveBeenCalledWith('embedded')
   })
 
+  it('surfaces an error and does not report success when embedded start fails', async () => {
+    ;(N.SetNodeMode as any).mockRejectedValueOnce(new Error('start failed'))
+    render(Settings)
+    const emb = await screen.findByLabelText(/embedded/i)
+    await fireEvent.click(emb)
+    await fireEvent.click(screen.getByRole('button', { name: /apply node/i }))
+    await fireEvent.click(screen.getByRole('button', { name: /start embedded/i }))
+    expect(await screen.findByText(/start failed/i)).toBeTruthy()
+    expect(screen.queryByText(/Node settings applied/i)).toBeNull()
+  })
+
   it('shows connecting-to-peers when target is 0', async () => {
     node.set({ mode: 'embedded', connected: false, syncing: true, height: 0, peers: 0 })
     sync.set({ state: 'starting', currentHeight: 10, targetHeight: 0, percent: 0, etaSeconds: 0, peers: 0 })

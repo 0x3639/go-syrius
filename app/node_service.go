@@ -240,6 +240,13 @@ func (n *NodeService) SetNodeMode(mode string) error {
 // poller. The caller has already persisted/marked mode == "embedded". Mutex
 // discipline: mu is never held across embeddedStart/SetNode/startSyncPoller.
 func (n *NodeService) startEmbedded() error {
+	// Switching to embedded supersedes any current connection; drop it first so a
+	// failed embedded start cannot leave the old client emitting as "embedded".
+	n.mu.Lock()
+	n.disconnectLocked()
+	n.mu.Unlock()
+	n.emitStatus(false)
+
 	dir, err := n.config.dataDir()
 	if err != nil {
 		return err

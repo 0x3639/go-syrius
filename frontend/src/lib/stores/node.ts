@@ -23,7 +23,7 @@ export async function getConfig(): Promise<NodeConfig> {
   return (await N.GetNodeConfig()) as NodeConfig
 }
 export async function setMode(mode: string): Promise<void> {
-  try { await N.SetNodeMode(mode) } catch { /* status event reflects disconnected */ }
+  await N.SetNodeMode(mode)
 }
 export async function setUrl(mode: string, url: string): Promise<void> {
   await N.SetNodeURL(mode, url)

@@ -36,7 +36,7 @@ func buildConfig(dataDir string) node.Config {
 		WSHost:     "127.0.0.1",
 		WSPort:     EmbeddedWSPort,
 		EnableHTTP: false,
-		WSOrigins:  []string{"*"},
+		WSOrigins:  []string{},
 	}
 	return cfg
 }
@@ -65,6 +65,7 @@ func Start(dataDir string) (*Handle, error) {
 		return nil, fmt.Errorf("create embedded node: %w", err)
 	}
 	if err := n.Start(); err != nil {
+		_ = n.Stop()
 		return nil, fmt.Errorf("start embedded node: %w", err)
 	}
 	addr := fmt.Sprintf("127.0.0.1:%d", EmbeddedWSPort)

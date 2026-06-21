@@ -253,6 +253,7 @@ func (n *NodeService) startEmbedded() error {
 	n.embedded = h
 	n.mu.Unlock()
 	if cerr := n.SetNode(h.WSURL()); cerr != nil {
+		n.stopEmbedded() // tear down the just-started node so Retry can start fresh
 		return cerr
 	}
 	n.startSyncPoller()

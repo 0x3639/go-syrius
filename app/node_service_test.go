@@ -188,6 +188,25 @@ func TestSetNodeModeEmbeddedPersistsAndStarts(t *testing.T) {
 	}
 }
 
+func TestStartEmbeddedTearsDownOnConnectFailure(t *testing.T) {
+	n := newTestNode(t)
+	// Stub the starter to return an unreachable handle so SetNode fails.
+	n.embeddedStart = func(dataDir string) (embeddedHandle, error) {
+		return stubHandle{url: "ws://127.0.0.1:1", dir: dataDir}, nil
+	}
+	if err := n.SetNodeMode("embedded"); err == nil {
+		t.Fatal("expected SetNodeMode to return connect error")
+	}
+	// Teardown must have cleared n.embedded so a Retry can start fresh.
+	info, err := n.GetEmbeddedInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Running {
+		t.Fatal("embedded node should have been torn down after connect failure")
+	}
+}
+
 func TestConnectStartsEmbeddedWhenModePersisted(t *testing.T) {
 	n := newTestNode(t)
 	// Persist embedded mode as if a prior session selected it.

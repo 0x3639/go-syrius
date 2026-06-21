@@ -10,6 +10,8 @@ export function ListWallets():Promise<Array<app.WalletMeta>>;
 
 export function Lock():Promise<void>;
 
+export function PickKeystoreFile():Promise<string>;
+
 export function SelectAccount(arg1:number):Promise<void>;
 
 export function Unlock(arg1:string,arg2:string):Promise<void>;

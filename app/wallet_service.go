@@ -76,6 +76,15 @@ func (w *WalletService) ImportKeystore(srcPath string) (WalletMeta, error) {
 	return WalletMeta{Name: name, BaseAddress: kf.BaseAddress.String()}, nil
 }
 
+// PickKeystoreFile opens a native file dialog and returns the chosen absolute
+// path, or "" if the user cancels.
+func (w *WalletService) PickKeystoreFile() (string, error) {
+	return runtime.OpenFileDialog(w.ctx, runtime.OpenDialogOptions{
+		Title:   "Import keystore",
+		Filters: []runtime.FileFilter{{DisplayName: "Keystore (*.json, *.dat)", Pattern: "*.json;*.dat;*"}},
+	})
+}
+
 // Unlock decrypts the named keystore and holds it in memory.
 func (w *WalletService) Unlock(name, password string) error {
 	dir, err := w.config.walletsDir()

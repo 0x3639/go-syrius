@@ -11,7 +11,6 @@
   let password = ''
   let error = ''
   let busy = false
-  let fileInput: HTMLInputElement
 
   async function refresh() {
     wallets = ((await W.ListWallets()) ?? []) as { name: string; baseAddress: string }[]
@@ -26,17 +25,12 @@
     finally { busy = false; password = '' }
   }
 
-  function pickFile() { error = ''; fileInput?.click() }
-
-  async function onFileChange(event: Event) {
-    const input = event.target as HTMLInputElement
-    const file = input.files?.[0]
-    input.value = ''
-    if (!file) return
+  async function doImport() {
     error = ''
     try {
-      const path = (file as any).path ?? file.name
-      await W.ImportKeystore(path as string)
+      const path = await W.PickKeystoreFile()
+      if (!path) return            // cancelled
+      await W.ImportKeystore(path)
       await refresh()
     } catch (e: any) { error = e?.message ?? String(e) }
   }
@@ -52,7 +46,6 @@
     <button class="w-full rounded bg-accent py-2 text-bg disabled:opacity-50"
       disabled={busy || !selected} on:click={doUnlock} aria-label="Unlock">Unlock</button>
   {/if}
-  <button class="w-full rounded border border-muted/40 py-2 text-muted" on:click={pickFile}>Import keystore…</button>
-  <input bind:this={fileInput} type="file" class="hidden" on:change={onFileChange} />
+  <button class="w-full rounded border border-muted/40 py-2 text-muted" on:click={doImport}>Import keystore…</button>
   {#if error}<p class="text-error" role="alert">{error}</p>{/if}
 </div>

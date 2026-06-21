@@ -18,6 +18,10 @@ export function Lock() {
   return window['go']['app']['WalletService']['Lock']();
 }
 
+export function PickKeystoreFile() {
+  return window['go']['app']['WalletService']['PickKeystoreFile']();
+}
+
 export function SelectAccount(arg1) {
   return window['go']['app']['WalletService']['SelectAccount'](arg1);
 }

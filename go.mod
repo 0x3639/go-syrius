@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	github.com/0x3639/znn-sdk-go v0.1.16
+	github.com/tyler-smith/go-bip39 v1.1.0
 	github.com/wailsapp/wails/v2 v2.10.1
 	github.com/zenon-network/go-zenon v0.0.8-alphanet.0.20250515170359-667a69d9e9a4
 )
@@ -45,7 +46,6 @@ require (
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/tkrajina/go-reflector v0.5.8 // indirect
-	github.com/tyler-smith/go-bip39 v1.1.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.19 // indirect

@@ -119,6 +119,51 @@ func TestSigningKeyPairMatchesActiveAddress(t *testing.T) {
 	}
 }
 
+func TestGenerateMnemonic24Words(t *testing.T) {
+	w := newTestWalletService(t)
+	m, err := w.GenerateMnemonic()
+	if err != nil {
+		t.Fatalf("GenerateMnemonic: %v", err)
+	}
+	if n := len(strings.Fields(m)); n != 24 {
+		t.Fatalf("expected 24 words, got %d", n)
+	}
+	m2, _ := w.GenerateMnemonic()
+	if m == m2 {
+		t.Fatal("expected distinct mnemonics")
+	}
+}
+
+func TestImportMnemonicRoundTrip(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+
+	meta, err := w.ImportMnemonic("created.dat", "pw123", m)
+	if err != nil {
+		t.Fatalf("ImportMnemonic: %v", err)
+	}
+	if !strings.HasPrefix(meta.BaseAddress, "z1") {
+		t.Fatalf("bad baseAddress %q", meta.BaseAddress)
+	}
+
+	// The written keystore must open via go-zenon and derive the same address.
+	if err := w.Unlock("created.dat", "pw123"); err != nil {
+		t.Fatalf("Unlock created wallet: %v", err)
+	}
+	accts, err := w.CurrentAccounts()
+	if err != nil || accts[0].Address != meta.BaseAddress {
+		t.Fatalf("round-trip address mismatch: %v / %v", accts, err)
+	}
+
+	// Refuse overwrite; reject invalid mnemonic.
+	if _, err := w.ImportMnemonic("created.dat", "pw123", m); err == nil {
+		t.Fatal("expected overwrite to be refused")
+	}
+	if _, err := w.ImportMnemonic("bad.dat", "pw", "not a valid mnemonic phrase"); err == nil {
+		t.Fatal("expected invalid mnemonic to be rejected")
+	}
+}
+
 func TestImportRejectsNonKeystore(t *testing.T) {
 	w := newTestWalletService(t)
 	bad := filepath.Join(t.TempDir(), "notakeystore.json")

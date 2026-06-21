@@ -7,10 +7,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"sync"
 
 	sdkwallet "github.com/0x3639/znn-sdk-go/wallet"
+	bip39 "github.com/tyler-smith/go-bip39"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zenon-network/go-zenon/common/types"
 	"github.com/zenon-network/go-zenon/wallet"
@@ -88,6 +90,64 @@ func (w *WalletService) ImportKeystore(srcPath string) (WalletMeta, error) {
 		return WalletMeta{}, err
 	}
 	return WalletMeta{Name: name, BaseAddress: kf.BaseAddress.String()}, nil
+}
+
+// GenerateMnemonic returns a fresh 24-word (256-bit) BIP-39 mnemonic. It
+// persists nothing — the create wizard shows it for backup before calling
+// ImportMnemonic.
+func (w *WalletService) GenerateMnemonic() (string, error) {
+	entropy, err := bip39.NewEntropy(256)
+	if err != nil {
+		return "", err
+	}
+	return bip39.NewMnemonic(entropy)
+}
+
+// ImportMnemonic creates a keystore from a BIP-39 mnemonic (used for both
+// "create new" after backup-verify and "import existing").
+func (w *WalletService) ImportMnemonic(name, password, mnemonic string) (WalletMeta, error) {
+	return w.writeKeystoreFromMnemonic(name, password, strings.TrimSpace(mnemonic))
+}
+
+// writeKeystoreFromMnemonic assembles a go-zenon KeyStore from the mnemonic and
+// writes it as a syrius-compatible keyfile, refusing to overwrite an existing file.
+func (w *WalletService) writeKeystoreFromMnemonic(name, password, mnemonic string) (WalletMeta, error) {
+	if !bip39.IsMnemonicValid(mnemonic) {
+		return WalletMeta{}, errors.New("invalid mnemonic")
+	}
+	entropy, err := bip39.EntropyFromMnemonic(mnemonic)
+	if err != nil {
+		return WalletMeta{}, fmt.Errorf("invalid mnemonic: %w", err)
+	}
+	ks := &wallet.KeyStore{
+		Entropy:  entropy,
+		Seed:     bip39.NewSeed(mnemonic, ""),
+		Mnemonic: mnemonic,
+	}
+	defer ks.Zero()
+	_, kp, err := ks.DeriveForIndexPath(0)
+	if err != nil {
+		return WalletMeta{}, err
+	}
+	ks.BaseAddress = kp.Address
+
+	dir, err := w.config.walletsDir()
+	if err != nil {
+		return WalletMeta{}, err
+	}
+	dst := filepath.Join(dir, name)
+	if _, err := os.Stat(dst); err == nil {
+		return WalletMeta{}, fmt.Errorf("a wallet named %q already exists", name)
+	}
+	kf, err := ks.Encrypt(password)
+	if err != nil {
+		return WalletMeta{}, err
+	}
+	kf.Path = dst
+	if err := kf.Write(); err != nil {
+		return WalletMeta{}, err
+	}
+	return WalletMeta{Name: name, BaseAddress: ks.BaseAddress.String()}, nil
 }
 
 // PickKeystoreFile opens a native file dialog and returns the chosen absolute

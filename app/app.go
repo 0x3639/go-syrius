@@ -11,6 +11,7 @@ type App struct {
 	Config *ConfigService
 	Wallet *WalletService
 	Node   *NodeService
+	Tx     *TxService
 }
 
 // New constructs the App and its services (not yet started).
@@ -18,7 +19,9 @@ func New() *App {
 	cfg := newConfigService()
 	w := newWalletService(cfg)
 	n := newNodeService(cfg, w)
-	return &App{Config: cfg, Wallet: w, Node: n}
+	t := newTxService(cfg, w, n)
+	n.setReceiveFunc(t.Receive)
+	return &App{Config: cfg, Wallet: w, Node: n, Tx: t}
 }
 
 // OnStartup receives the Wails runtime context and distributes it.
@@ -27,6 +30,7 @@ func (a *App) OnStartup(ctx context.Context) {
 	a.Config.ctx = ctx
 	a.Wallet.ctx = ctx
 	a.Node.ctx = ctx
+	a.Tx.ctx = ctx
 }
 
 // OnShutdown locks the wallet and disconnects the node on exit.

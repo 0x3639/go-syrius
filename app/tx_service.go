@@ -175,6 +175,32 @@ func (t *TxService) ConfirmPublish() (string, error) {
 	return hash, nil
 }
 
+// Receive receives a single inbound block by its send-block hash.
+func (t *TxService) Receive(fromHash string) (string, error) {
+	hash, err := types.HexToHash(fromHash)
+	if err != nil {
+		return "", fmt.Errorf("invalid block hash: %w", err)
+	}
+	client := t.node.currentClient()
+	if client == nil {
+		return "", errors.New("not connected")
+	}
+	kp, err := t.wallet.signingKeyPair()
+	if err != nil {
+		return "", err
+	}
+	template := client.LedgerApi.ReceiveTemplate(hash)
+	published, err := zenon.NewZenon(client).Send(template, kp)
+	if err != nil {
+		return "", err
+	}
+	h := published.Hash.String()
+	if t.ctx != nil {
+		runtime.EventsEmit(t.ctx, EventTxReceived, map[string]string{"hash": h})
+	}
+	return h, nil
+}
+
 // CancelPending discards the held block.
 func (t *TxService) CancelPending() error {
 	t.clearPending()

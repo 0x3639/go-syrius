@@ -25,6 +25,9 @@ type NodeService struct {
 	height  uint64
 	chainID uint64
 	stop    chan struct{}
+
+	receiveFn func(fromHash string) (string, error)
+	autoStop  chan struct{}
 }
 
 func newNodeService(c *ConfigService, w *WalletService) *NodeService {
@@ -227,6 +230,61 @@ func (n *NodeService) currentChainID() uint64 {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
 	return n.chainID
+}
+
+// setReceiveFunc wires the callback used by auto-receive to receive each block.
+func (n *NodeService) setReceiveFunc(fn func(string) (string, error)) { n.receiveFn = fn }
+
+// StartAutoReceive subscribes to unreceived blocks for the active address and
+// receives each via receiveFn. Idempotent; StopAutoReceive stops it.
+func (n *NodeService) StartAutoReceive() error {
+	client := n.currentClient()
+	if client == nil {
+		return errors.New("not connected")
+	}
+	addr, ok := n.wallet.activeAddress()
+	if !ok {
+		return errLocked
+	}
+	ctx := n.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	sub, ch, err := client.SubscriberApi.ToUnreceivedAccountBlocksByAddress(ctx, addr)
+	if err != nil {
+		return err
+	}
+	n.mu.Lock()
+	n.autoStop = make(chan struct{})
+	stop := n.autoStop
+	n.mu.Unlock()
+	go func() {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case <-stop:
+				return
+			case blocks := <-ch:
+				if n.receiveFn == nil {
+					continue
+				}
+				for _, b := range blocks {
+					_, _ = n.receiveFn(b.Hash.String())
+				}
+			}
+		}
+	}()
+	return nil
+}
+
+// StopAutoReceive stops the auto-receive subscription if running.
+func (n *NodeService) StopAutoReceive() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.autoStop != nil {
+		close(n.autoStop)
+		n.autoStop = nil
+	}
 }
 
 // GetUnreceived lists inbound blocks not yet received by the active address.

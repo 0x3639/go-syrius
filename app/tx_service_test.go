@@ -48,6 +48,13 @@ func TestConfirmPublishRejectsTamperedBlock(t *testing.T) {
 	}
 }
 
+func TestReceiveRejectsBadHash(t *testing.T) {
+	tx := newTestTxService(t)
+	if _, err := tx.Receive("not-a-hash"); err == nil {
+		t.Fatal("expected error for invalid hash")
+	}
+}
+
 func TestSymbolFor(t *testing.T) {
 	tx := newTestTxService(t)
 	if tx.symbolFor(types.ZnnTokenStandard.String()) != "ZNN" || tx.symbolFor(types.QsrTokenStandard.String()) != "QSR" {

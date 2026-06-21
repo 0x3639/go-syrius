@@ -119,6 +119,73 @@ func TestSigningKeyPairMatchesActiveAddress(t *testing.T) {
 	}
 }
 
+func TestGenerateMnemonic24Words(t *testing.T) {
+	w := newTestWalletService(t)
+	m, err := w.GenerateMnemonic()
+	if err != nil {
+		t.Fatalf("GenerateMnemonic: %v", err)
+	}
+	if n := len(strings.Fields(m)); n != 24 {
+		t.Fatalf("expected 24 words, got %d", n)
+	}
+	m2, _ := w.GenerateMnemonic()
+	if m == m2 {
+		t.Fatal("expected distinct mnemonics")
+	}
+}
+
+func TestImportMnemonicRoundTrip(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+
+	meta, err := w.ImportMnemonic("created.dat", "pw123", m)
+	if err != nil {
+		t.Fatalf("ImportMnemonic: %v", err)
+	}
+	if !strings.HasPrefix(meta.BaseAddress, "z1") {
+		t.Fatalf("bad baseAddress %q", meta.BaseAddress)
+	}
+
+	// The written keystore must open via go-zenon and derive the same address.
+	if err := w.Unlock("created.dat", "pw123"); err != nil {
+		t.Fatalf("Unlock created wallet: %v", err)
+	}
+	accts, err := w.CurrentAccounts()
+	if err != nil || accts[0].Address != meta.BaseAddress {
+		t.Fatalf("round-trip address mismatch: %v / %v", accts, err)
+	}
+
+	// Refuse overwrite; reject invalid mnemonic.
+	if _, err := w.ImportMnemonic("created.dat", "pw123", m); err == nil {
+		t.Fatal("expected overwrite to be refused")
+	}
+	if _, err := w.ImportMnemonic("bad.dat", "pw", "not a valid mnemonic phrase"); err == nil {
+		t.Fatal("expected invalid mnemonic to be rejected")
+	}
+}
+
+func TestChangePassword(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+	if _, err := w.ImportMnemonic("cp.dat", "old-pw", m); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := w.ChangePassword("cp.dat", "wrong", "new-pw"); err == nil {
+		t.Fatal("expected wrong old password to fail")
+	}
+	if err := w.ChangePassword("cp.dat", "old-pw", "new-pw"); err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+
+	if err := w.Unlock("cp.dat", "old-pw"); err == nil {
+		t.Fatal("old password should no longer work")
+	}
+	if err := w.Unlock("cp.dat", "new-pw"); err != nil {
+		t.Fatalf("new password should work: %v", err)
+	}
+}
+
 func TestImportRejectsNonKeystore(t *testing.T) {
 	w := newTestWalletService(t)
 	bad := filepath.Join(t.TempDir(), "notakeystore.json")
@@ -127,5 +194,85 @@ func TestImportRejectsNonKeystore(t *testing.T) {
 	}
 	if _, err := w.ImportKeystore(bad); err == nil {
 		t.Fatal("expected ImportKeystore to reject a non-keystore file")
+	}
+}
+
+func TestRevealMnemonic(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+	if _, err := w.ImportMnemonic("rv.dat", "pw", m); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := w.RevealMnemonic("pw"); err == nil {
+		t.Fatal("expected RevealMnemonic to fail when locked")
+	}
+	if err := w.Unlock("rv.dat", "pw"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.RevealMnemonic("wrong"); err == nil {
+		t.Fatal("expected wrong password to fail")
+	}
+	got, err := w.RevealMnemonic("pw")
+	if err != nil {
+		t.Fatalf("RevealMnemonic: %v", err)
+	}
+	if got != m {
+		t.Fatalf("revealed mnemonic mismatch")
+	}
+}
+
+func TestRejectsTraversalNames(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+
+	if _, err := w.ImportMnemonic("../evil", "pw", m); err == nil || !strings.Contains(err.Error(), "invalid wallet name") {
+		t.Fatalf("ImportMnemonic traversal: expected invalid name error, got %v", err)
+	}
+	if err := w.Unlock("../evil", "pw"); err == nil || !strings.Contains(err.Error(), "invalid wallet name") {
+		t.Fatalf("Unlock traversal: expected invalid name error, got %v", err)
+	}
+	if err := w.ChangePassword("../evil", "a", "b"); err == nil || !strings.Contains(err.Error(), "invalid wallet name") {
+		t.Fatalf("ChangePassword traversal: expected invalid name error, got %v", err)
+	}
+}
+
+func TestRejectsEmptyPassword(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+
+	if _, err := w.ImportMnemonic("ok.dat", "", m); err == nil {
+		t.Fatal("expected ImportMnemonic with empty password to fail")
+	}
+	if _, err := w.ImportMnemonic("ok.dat", "pw", m); err != nil {
+		t.Fatalf("ImportMnemonic: %v", err)
+	}
+	if err := w.ChangePassword("ok.dat", "pw", ""); err == nil {
+		t.Fatal("expected ChangePassword to empty new password to fail")
+	}
+}
+
+func TestAccountLabels(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+	if _, err := w.ImportMnemonic("lbl.dat", "pw", m); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Unlock("lbl.dat", "pw"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := w.SetAccountLabel(0, "Savings"); err != nil {
+		t.Fatalf("SetAccountLabel: %v", err)
+	}
+	accts, err := w.CurrentAccounts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accts[0].Label != "Savings" {
+		t.Fatalf("label not applied: %+v", accts[0])
+	}
+	if err := w.SetAccountLabel(99, "x"); err == nil {
+		t.Fatal("expected out-of-range index to fail")
 	}
 }

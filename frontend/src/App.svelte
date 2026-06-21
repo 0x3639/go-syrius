@@ -6,8 +6,11 @@
   import * as Cfg from '../wailsjs/go/app/ConfigService'
   import * as N from '../wailsjs/go/app/NodeService'
   import Unlock from './routes/Unlock.svelte'
+  import Create from './routes/Create.svelte'
+  import ImportMnemonic from './routes/ImportMnemonic.svelte'
   import Dashboard from './routes/Dashboard.svelte'
   import Send from './routes/Send.svelte'
+  import Settings from './routes/Settings.svelte'
   onMount(async () => {
     try {
       const s = await Cfg.GetSettings()
@@ -15,10 +18,16 @@
     } catch {}
   })
 </script>
-{#if $wallet.locked}
+{#if $wallet.locked && $view === 'create'}
+  <Create />
+{:else if $wallet.locked && $view === 'import'}
+  <ImportMnemonic />
+{:else if $wallet.locked}
   <Unlock />
 {:else if $view === 'send'}
   <Send />
+{:else if $view === 'settings'}
+  <Settings />
 {:else}
   <Dashboard />
 {/if}

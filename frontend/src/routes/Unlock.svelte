@@ -2,6 +2,7 @@
   import { createEventDispatcher, onMount } from 'svelte'
   import * as W from '../../wailsjs/go/app/WalletService'
   import { unlock } from '../lib/stores/wallet'
+  import { view } from '../lib/stores/nav'
   import PasswordInput from '../lib/components/PasswordInput.svelte'
   import WalletPicker from '../lib/components/WalletPicker.svelte'
 
@@ -47,5 +48,7 @@
       disabled={busy || !selected} on:click={doUnlock} aria-label="Unlock">Unlock</button>
   {/if}
   <button class="w-full rounded border border-muted/40 py-2 text-muted" on:click={doImport}>Import keystore…</button>
+  <button class="w-full rounded border border-muted/40 py-2 text-muted" on:click={() => view.set('create')}>Create new wallet</button>
+  <button class="w-full rounded border border-muted/40 py-2 text-muted" on:click={() => view.set('import')}>Import mnemonic</button>
   {#if error}<p class="text-error" role="alert">{error}</p>{/if}
 </div>

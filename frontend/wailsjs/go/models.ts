@@ -3,6 +3,7 @@ export namespace app {
 	export class AccountInfo {
 	    index: number;
 	    address: string;
+	    label: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AccountInfo(source);
@@ -12,6 +13,7 @@ export namespace app {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.index = source["index"];
 	        this.address = source["address"];
+	        this.label = source["label"];
 	    }
 	}
 	export class NodeStatus {
@@ -83,6 +85,7 @@ export namespace app {
 	    activeAccount: number;
 	    allowMainnetSend: boolean;
 	    autoReceive: boolean;
+	    accountLabels: Record<string, string>;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -96,6 +99,7 @@ export namespace app {
 	        this.activeAccount = source["activeAccount"];
 	        this.allowMainnetSend = source["allowMainnetSend"];
 	        this.autoReceive = source["autoReceive"];
+	        this.accountLabels = source["accountLabels"];
 	    }
 	}
 	export class TokenBalance {

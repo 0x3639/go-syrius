@@ -15,6 +15,8 @@ type Settings struct {
 	ActiveAccount    int    `json:"activeAccount"`
 	AllowMainnetSend bool   `json:"allowMainnetSend"`
 	AutoReceive      bool   `json:"autoReceive"`
+	// AccountLabels maps "<wallet>:<index>" to a human label for an account.
+	AccountLabels map[string]string `json:"accountLabels"`
 }
 
 // WalletMeta identifies a keystore without exposing secrets.
@@ -27,6 +29,7 @@ type WalletMeta struct {
 type AccountInfo struct {
 	Index   int    `json:"index"`
 	Address string `json:"address"`
+	Label   string `json:"label"`
 }
 
 // NodeStatus is the connection/sync snapshot pushed via EventNodeStatus.

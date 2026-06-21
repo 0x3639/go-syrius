@@ -82,6 +82,21 @@ func TestSettingsMigrationFromLegacyNodeURL(t *testing.T) {
 	}
 }
 
+func TestSettingsNormalizesInvalidNodeMode(t *testing.T) {
+	c := newTestConfig(t)
+	d, _ := c.dataDir()
+	if err := os.WriteFile(filepath.Join(d, "settings.json"), []byte(`{"nodeMode":"bogus","remoteNodeUrl":"wss://x"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := c.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.NodeMode != "remote" {
+		t.Fatalf("invalid NodeMode should normalize to remote, got %q", s.NodeMode)
+	}
+}
+
 func TestSettingsDefaultsWhenNoFile(t *testing.T) {
 	c := newTestConfig(t)
 	s, err := c.GetSettings()

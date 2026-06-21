@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	neturl "net/url"
 	"sync"
 
 	"github.com/0x3639/znn-sdk-go/rpc_client"
@@ -46,11 +46,13 @@ func (n *NodeService) SetNode(url string) error {
 
 	client, err := rpc_client.NewRpcClient(url)
 	if err != nil {
+		n.emitStatus(false)
 		return fmt.Errorf("connect: %w", err)
 	}
 	m, err := client.LedgerApi.GetFrontierMomentum()
 	if err != nil {
 		client.Stop()
+		n.emitStatus(false)
 		return fmt.Errorf("node unreachable: %w", err)
 	}
 
@@ -142,6 +144,7 @@ func (n *NodeService) disconnectLocked() {
 	// Reset the cached chain identifier so a stale value (e.g. testnet) can't be
 	// read by currentChainID() after disconnect and bypass the mainnet guard.
 	n.chainID = 0
+	n.height = 0
 }
 
 // Disconnect closes the connection and stops the subscription.
@@ -210,8 +213,9 @@ func (n *NodeService) SetNodeURL(mode, url string) error {
 	if mode != "remote" && mode != "local" {
 		return fmt.Errorf("unknown node mode %q", mode)
 	}
-	if !strings.HasPrefix(url, "ws://") && !strings.HasPrefix(url, "wss://") {
-		return fmt.Errorf("node url must start with ws:// or wss://")
+	u, perr := neturl.Parse(url)
+	if perr != nil || (u.Scheme != "ws" && u.Scheme != "wss") || u.Host == "" {
+		return fmt.Errorf("node url must be a ws:// or wss:// URL with a host")
 	}
 	s, err := n.config.GetSettings()
 	if err != nil {

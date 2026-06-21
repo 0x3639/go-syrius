@@ -113,6 +113,47 @@ func TestSetNodeURLValidatesAndPersists(t *testing.T) {
 	}
 }
 
+func TestSetNodeFailedConnectLeavesCleanStatus(t *testing.T) {
+	n := newTestNode(t)
+	// Unreachable address: the connect/reachability check fails. After a failed
+	// connect the status must be a clean disconnected state (not stale).
+	err := n.SetNode("ws://127.0.0.1:1")
+	if err == nil {
+		t.Fatal("expected SetNode to fail against an unreachable node")
+	}
+	st := n.NodeStatus()
+	if st.Connected {
+		t.Fatalf("status should be disconnected after failed connect, got %+v", st)
+	}
+	if st.Height != 0 {
+		t.Fatalf("height should be 0 after failed connect, got %d", st.Height)
+	}
+}
+
+func TestSetNodeURLStrictValidation(t *testing.T) {
+	n := newTestNode(t)
+	if err := n.SetNodeURL("remote", "ws://"); err == nil {
+		t.Fatal("expected ws:// with no host to error")
+	}
+	if err := n.SetNodeURL("remote", "wss:// "); err == nil {
+		t.Fatal("expected wss:// with trailing space to error")
+	}
+	if err := n.SetNodeURL("remote", "not-a-url"); err == nil {
+		t.Fatal("expected non-url to error")
+	}
+	// Success on the non-active mode (local) so it persists without connecting.
+	if err := n.SetNodeURL("local", "wss://host.example:35998"); err != nil {
+		t.Fatalf("SetNodeURL(local, valid): %v", err)
+	}
+	cfg, err := n.GetNodeConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LocalURL != "wss://host.example:35998" {
+		t.Fatalf("LocalURL not persisted: %q", cfg.LocalURL)
+	}
+}
+
 func TestGetNodeConfigDefaults(t *testing.T) {
 	n := newTestNode(t)
 	cfg, err := n.GetNodeConfig()

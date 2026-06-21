@@ -68,7 +68,7 @@ func migrateSettings(s *Settings) {
 	if s.LocalNodeURL == "" {
 		s.LocalNodeURL = defaultLocalNodeURL
 	}
-	if s.NodeMode == "" {
+	if s.NodeMode != "local" && s.NodeMode != "remote" {
 		s.NodeMode = "remote"
 	}
 	if s.Theme == "" {

@@ -37,6 +37,7 @@ func (a *App) OnStartup(ctx context.Context) {
 // OnShutdown locks the wallet and disconnects the node on exit.
 func (a *App) OnShutdown(ctx context.Context) {
 	a.Node.StopAutoReceive()
+	a.Node.stopEmbedded()
 	_ = a.Wallet.Lock()
 	_ = a.Node.Disconnect()
 }

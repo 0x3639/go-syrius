@@ -5,14 +5,25 @@ import (
 	"errors"
 	"fmt"
 	neturl "net/url"
+	"os"
+	"path/filepath"
 	"sync"
+	"time"
 
+	"github.com/0x3639/go-syrius/internal/embeddednode"
 	"github.com/0x3639/znn-sdk-go/rpc_client"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zenon-network/go-zenon/chain/nom"
 	"github.com/zenon-network/go-zenon/common/types"
 	api "github.com/zenon-network/go-zenon/rpc/api"
 )
+
+// embeddedHandle abstracts a running embedded node (real or test stub).
+type embeddedHandle interface {
+	WSURL() string
+	DataDir() string
+	Stop() error
+}
 
 // NodeService owns the remote RPC connection and surfaces reads + status events.
 type NodeService struct {
@@ -30,10 +41,18 @@ type NodeService struct {
 
 	receiveFn func(fromHash string) (string, error)
 	autoStop  chan struct{}
+
+	embedded      embeddedHandle
+	embeddedStart func(dataDir string) (embeddedHandle, error)
+	syncStop      chan struct{}
 }
 
 func newNodeService(c *ConfigService, w *WalletService) *NodeService {
-	return &NodeService{config: c, wallet: w}
+	n := &NodeService{config: c, wallet: w}
+	n.embeddedStart = func(dataDir string) (embeddedHandle, error) {
+		return embeddednode.Start(dataDir)
+	}
+	return n
 }
 
 // SetNode connects to url, verifies reachability, and starts the momentum
@@ -191,7 +210,7 @@ func (n *NodeService) emitStatus(connected bool) {
 // is persisted before connecting, so an unreachable node leaves the chosen mode
 // in effect (the UI shows disconnected + Retry).
 func (n *NodeService) SetNodeMode(mode string) error {
-	if mode != "remote" && mode != "local" {
+	if mode != "remote" && mode != "local" && mode != "embedded" {
 		return fmt.Errorf("unknown node mode %q", mode)
 	}
 	s, err := n.config.GetSettings()
@@ -202,14 +221,42 @@ func (n *NodeService) SetNodeMode(mode string) error {
 	if err := n.config.SetSettings(s); err != nil {
 		return err
 	}
+
+	// Tear down any running embedded node when leaving embedded mode.
+	if mode != "embedded" {
+		n.stopEmbedded()
+	}
 	n.mu.Lock()
 	n.mode = mode
 	n.mu.Unlock()
+
+	if mode == "embedded" {
+		dir, derr := n.config.dataDir()
+		if derr != nil {
+			return derr
+		}
+		h, serr := n.embeddedStart(dir)
+		if serr != nil {
+			n.emitStatus(false)
+			return fmt.Errorf("start embedded node: %w", serr)
+		}
+		n.mu.Lock()
+		n.embedded = h
+		n.mu.Unlock()
+		if cerr := n.SetNode(h.WSURL()); cerr != nil {
+			return cerr
+		}
+		n.startSyncPoller()
+		return nil
+	}
 	return n.SetNode(s.ActiveNodeURL())
 }
 
 // SetNodeURL persists a mode's URL (validated) and reconnects if it is active.
 func (n *NodeService) SetNodeURL(mode, url string) error {
+	if mode == "embedded" {
+		return fmt.Errorf("embedded node url is fixed and cannot be changed")
+	}
 	if mode != "remote" && mode != "local" {
 		return fmt.Errorf("unknown node mode %q", mode)
 	}
@@ -233,6 +280,102 @@ func (n *NodeService) SetNodeURL(mode, url string) error {
 		return n.SetNode(url)
 	}
 	return nil
+}
+
+// stopEmbedded halts the embedded node + sync poller if running.
+func (n *NodeService) stopEmbedded() {
+	n.mu.Lock()
+	if n.syncStop != nil {
+		close(n.syncStop)
+		n.syncStop = nil
+	}
+	h := n.embedded
+	n.embedded = nil
+	n.mu.Unlock()
+	if h != nil {
+		_ = h.Stop()
+	}
+}
+
+// startSyncPoller polls StatsApi sync info every 2s and emits node:sync.
+func (n *NodeService) startSyncPoller() {
+	n.mu.Lock()
+	if n.syncStop != nil {
+		close(n.syncStop)
+	}
+	stop := make(chan struct{})
+	n.syncStop = stop
+	client := n.client
+	ctx := n.ctx
+	n.mu.Unlock()
+	if client == nil || ctx == nil {
+		return
+	}
+	go func() {
+		var samples []heightSample
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case now := <-ticker.C:
+				info, err := client.StatsApi.SyncInfo()
+				if err != nil {
+					continue
+				}
+				peers := 0
+				if ni, nerr := client.StatsApi.NetworkInfo(); nerr == nil {
+					peers = ni.NumPeers
+				}
+				samples = append(samples, heightSample{T: now, Height: info.CurrentHeight})
+				if len(samples) > 10 {
+					samples = samples[len(samples)-10:]
+				}
+				st := computeSync(samples, info.CurrentHeight, info.TargetHeight, peers, mapSyncState(info.State))
+				runtime.EventsEmit(ctx, EventNodeSync, st)
+			}
+		}
+	}()
+}
+
+// GetEmbeddedInfo reports whether the embedded node is running and its data size.
+func (n *NodeService) GetEmbeddedInfo() (EmbeddedInfo, error) {
+	dir, err := n.config.dataDir()
+	if err != nil {
+		return EmbeddedInfo{}, err
+	}
+	emb := filepath.Join(dir, "embedded")
+	n.mu.RLock()
+	running := n.embedded != nil
+	n.mu.RUnlock()
+	return EmbeddedInfo{Running: running, DataDir: emb, SizeBytes: dirSize(emb)}, nil
+}
+
+// DeleteEmbeddedData removes the embedded chain DB. Refuses while running.
+func (n *NodeService) DeleteEmbeddedData() error {
+	n.mu.RLock()
+	running := n.embedded != nil
+	n.mu.RUnlock()
+	if running {
+		return errors.New("stop the embedded node first")
+	}
+	dir, err := n.config.dataDir()
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(filepath.Join(dir, "embedded"))
+}
+
+func dirSize(path string) int64 {
+	var total int64
+	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err == nil && info != nil && !info.IsDir() {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total
 }
 
 // Connect connects to the active mode's URL using persisted settings.

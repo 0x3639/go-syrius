@@ -2,12 +2,20 @@ package app
 
 import (
 	"math/big"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/zenon-network/go-zenon/chain/nom"
 	"github.com/zenon-network/go-zenon/common/types"
 	api "github.com/zenon-network/go-zenon/rpc/api"
 )
+
+type stubHandle struct{ url, dir string }
+
+func (s stubHandle) WSURL() string   { return s.url }
+func (s stubHandle) DataDir() string { return s.dir }
+func (s stubHandle) Stop() error     { return nil }
 
 func TestToTokenBalance(t *testing.T) {
 	bi := &api.BalanceInfo{
@@ -151,6 +159,72 @@ func TestSetNodeURLStrictValidation(t *testing.T) {
 	}
 	if cfg.LocalURL != "wss://host.example:35998" {
 		t.Fatalf("LocalURL not persisted: %q", cfg.LocalURL)
+	}
+}
+
+func TestSetNodeURLRejectsEmbedded(t *testing.T) {
+	n := newTestNode(t)
+	if err := n.SetNodeURL("embedded", "ws://127.0.0.1:35998"); err == nil {
+		t.Fatal("embedded URL is fixed; SetNodeURL must reject mode embedded")
+	}
+}
+
+func TestSetNodeModeEmbeddedPersistsAndStarts(t *testing.T) {
+	n := newTestNode(t)
+	started := false
+	// Stub the starter so no real node is spun up; return a handle whose URL is
+	// unreachable so the subsequent connect fails — mode must still persist.
+	n.embeddedStart = func(dataDir string) (embeddedHandle, error) {
+		started = true
+		return stubHandle{url: "ws://127.0.0.1:1", dir: dataDir}, nil
+	}
+	_ = n.SetNodeMode("embedded") // connect will fail (unreachable); ignore
+	if !started {
+		t.Fatal("embedded starter not invoked")
+	}
+	cfg, _ := n.GetNodeConfig()
+	if cfg.Mode != "embedded" {
+		t.Fatalf("mode should persist embedded, got %q", cfg.Mode)
+	}
+}
+
+func TestDeleteEmbeddedData(t *testing.T) {
+	n := newTestNode(t)
+	dir, _ := n.config.dataDir()
+	emb := filepath.Join(dir, "embedded")
+	if err := os.MkdirAll(emb, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(emb, "x"), []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.DeleteEmbeddedData(); err != nil {
+		t.Fatalf("DeleteEmbeddedData: %v", err)
+	}
+	if _, err := os.Stat(emb); !os.IsNotExist(err) {
+		t.Fatal("embedded dir should be gone")
+	}
+	// absent dir is fine
+	if err := n.DeleteEmbeddedData(); err != nil {
+		t.Fatalf("delete absent: %v", err)
+	}
+}
+
+func TestGetEmbeddedInfoSize(t *testing.T) {
+	n := newTestNode(t)
+	dir, _ := n.config.dataDir()
+	emb := filepath.Join(dir, "embedded")
+	os.MkdirAll(emb, 0o700)
+	os.WriteFile(filepath.Join(emb, "x"), make([]byte, 1234), 0o600)
+	info, err := n.GetEmbeddedInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.SizeBytes < 1234 {
+		t.Fatalf("size = %d", info.SizeBytes)
+	}
+	if info.Running {
+		t.Fatal("not running")
 	}
 }
 

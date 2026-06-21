@@ -136,6 +136,20 @@ type SendPreview struct {
 	NeedsPoW   bool   `json:"needsPoW"`
 }
 
+// CallPreview is the confirm-what-you-sign preview for an embedded-contract call,
+// rendered from the built, signed block plus a human action summary.
+type CallPreview struct {
+	ToAddress  string `json:"toAddress"`
+	Zts        string `json:"zts"`
+	Symbol     string `json:"symbol"`
+	Amount     string `json:"amount"`
+	Hash       string `json:"hash"`
+	Summary    string `json:"summary"`
+	UsedPlasma uint64 `json:"usedPlasma"`
+	Difficulty uint64 `json:"difficulty"`
+	NeedsPoW   bool   `json:"needsPoW"`
+}
+
 // UnreceivedBlock is one inbound, not-yet-received transaction.
 type UnreceivedBlock struct {
 	FromHash    string `json:"fromHash"`

@@ -23,10 +23,26 @@ type TxService struct {
 	wallet *WalletService
 	node   *NodeService
 
-	mu         sync.Mutex
-	pending    *nom.AccountBlock
-	pendingReq SendRequest
-	pendingGen uint64 // wallet session generation captured at PrepareSend
+	mu            sync.Mutex
+	pending       *nom.AccountBlock
+	pendingExpect callExpect
+	pendingGen    uint64 // wallet session generation captured at PrepareSend
+}
+
+// callExpect captures the funds-moving effect a prepared block must match before
+// it may be published (confirm-what-you-sign).
+type callExpect struct {
+	to     types.Address
+	zts    types.ZenonTokenStandard
+	amount *big.Int
+}
+
+// assertMatches verifies a built block moves exactly the expected funds.
+func assertMatches(b *nom.AccountBlock, e callExpect) error {
+	if b.ToAddress != e.to || b.TokenStandard != e.zts || b.Amount == nil || e.amount == nil || b.Amount.Cmp(e.amount) != 0 {
+		return errors.New("prepared block does not match the expected effect; not publishing")
+	}
+	return nil
 }
 
 func newTxService(c *ConfigService, w *WalletService, n *NodeService) *TxService {
@@ -135,7 +151,7 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 
 	t.mu.Lock()
 	t.pending = built
-	t.pendingReq = req
+	t.pendingExpect = callExpect{to: to, zts: zts, amount: amount}
 	t.pendingGen = gen
 	t.mu.Unlock()
 
@@ -161,7 +177,7 @@ func (t *TxService) ConfirmPublish() (string, error) {
 		return "", err
 	}
 	t.mu.Lock()
-	b, req, pendingGen := t.pending, t.pendingReq, t.pendingGen
+	b, expect, pendingGen := t.pending, t.pendingExpect, t.pendingGen
 	t.mu.Unlock()
 	if b == nil {
 		return "", errors.New("no pending transaction")
@@ -175,14 +191,9 @@ func (t *TxService) ConfirmPublish() (string, error) {
 		return "", errors.New("wallet locked or changed; not publishing")
 	}
 
-	to, zts, amount, err := t.parseRequest(req)
-	if err != nil {
+	if err := assertMatches(b, expect); err != nil {
 		t.clearPending()
 		return "", err
-	}
-	if b.ToAddress != to || b.TokenStandard != zts || b.Amount == nil || b.Amount.Cmp(amount) != 0 {
-		t.clearPending()
-		return "", errors.New("prepared block does not match the request; not publishing")
 	}
 
 	// Snapshot the client and verify the prepared block's chain matches the
@@ -205,6 +216,52 @@ func (t *TxService) ConfirmPublish() (string, error) {
 		runtime.EventsEmit(t.ctx, EventTxPublished, map[string]string{"hash": hash})
 	}
 	return hash, nil
+}
+
+// prepareCall builds, PoWs, and signs an embedded-contract call template (without
+// publishing), holding it for ConfirmPublish. Reuses the Send guard/PoW path.
+func (t *TxService) prepareCall(template *nom.AccountBlock, expect callExpect, summary string) (CallPreview, error) {
+	if err := t.guard(); err != nil {
+		return CallPreview{}, err
+	}
+	gen := t.wallet.sessionGen()
+	client := t.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	kp, err := t.wallet.signingKeyPair()
+	if err != nil {
+		return CallPreview{}, err
+	}
+	z := zenon.NewZenon(client)
+	if t.ctx != nil {
+		z.PowCallback = func(s pow.PowStatus) {
+			runtime.EventsEmit(t.ctx, EventTxPowProgress, map[string]string{"state": s.String()})
+		}
+	}
+	built, err := z.PrepareBlock(template, kp)
+	if err != nil {
+		return CallPreview{}, err
+	}
+	if t.wallet.sessionGen() != gen {
+		return CallPreview{}, errors.New("wallet state changed during prepare")
+	}
+	t.mu.Lock()
+	t.pending = built
+	t.pendingExpect = expect
+	t.pendingGen = gen
+	t.mu.Unlock()
+	return CallPreview{
+		ToAddress:  built.ToAddress.String(),
+		Zts:        built.TokenStandard.String(),
+		Symbol:     t.symbolFor(built.TokenStandard.String()),
+		Amount:     built.Amount.String(),
+		Hash:       built.Hash.String(),
+		Summary:    summary,
+		UsedPlasma: built.FusedPlasma,
+		Difficulty: built.Difficulty,
+		NeedsPoW:   built.Difficulty > 0,
+	}, nil
 }
 
 // Receive receives a single inbound block by its send-block hash.
@@ -242,7 +299,7 @@ func (t *TxService) CancelPending() error {
 func (t *TxService) clearPending() {
 	t.mu.Lock()
 	t.pending = nil
-	t.pendingReq = SendRequest{}
+	t.pendingExpect = callExpect{}
 	t.pendingGen = 0
 	t.mu.Unlock()
 }

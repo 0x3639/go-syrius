@@ -16,6 +16,15 @@ export async function prepare(toAddress: string, zts: string, amount: string): P
   }
 }
 
+// awaitConfirm seats an already-prepared block's preview into the tx flow. The
+// Go side (e.g. NomService.PrepareFuse) has already built+held the pending
+// block; this only surfaces the confirm-what-you-sign preview so TxModal can
+// drive the shared confirm()/ConfirmPublish() path. CallPreview is a superset
+// of SendPreview (it adds `summary`), so it slots in directly.
+export function awaitConfirm(preview: SendPreview): void {
+  tx.set({ status: 'awaiting', preview, hash: '', error: '' })
+}
+
 export async function confirm(): Promise<void> {
   tx.update((s) => ({ ...s, status: 'publishing' }))
   try {

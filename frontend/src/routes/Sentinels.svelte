@@ -64,12 +64,12 @@
       {#if deposited < QSR_REQUIRED}
         <p class="text-sm">Deposited {formatAmount($depositedQsr, 8)} / 50,000 QSR</p>
         <button class="rounded bg-accent px-3 py-1 text-bg" on:click={depositQsr} aria-label="deposit qsr">Deposit {formatAmount(shortfall.toString(), 8)} QSR</button>
-        {#if deposited > ZERO}
-          <button class="rounded border border-muted/40 px-2 py-0.5 text-xs" on:click={withdrawQsr} aria-label="withdraw qsr">Withdraw deposited QSR</button>
-        {/if}
       {:else}
         <p class="text-sm">50,000 QSR deposited. Ready to register.</p>
         <button class="rounded bg-accent px-3 py-1 text-bg" on:click={register} aria-label="register sentinel">Register Sentinel (5,000 ZNN)</button>
+      {/if}
+      {#if deposited > ZERO}
+        <button class="rounded border border-muted/40 px-2 py-0.5 text-xs" on:click={withdrawQsr} aria-label="withdraw qsr">Withdraw deposited QSR</button>
       {/if}
     </section>
   {/if}

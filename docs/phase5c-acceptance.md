@@ -20,8 +20,13 @@ Run against the testnet node `ws://172.245.236.40:35998` (opt-in integration tes
   each with rank/weight/giveReward%. This proves the node exposes the `embedded` RPC namespace
   (a `ledger`-only node would return `embedded.* does not exist`) and that NomService's exact read
   path works end-to-end against a live node. Read-only — no PoW, no signing.
-- `PillarApi.GetDelegatedPillar` / `GetUncollectedReward` (per-address): PENDING a `ZNN_TEST_ADDR`
-  z1 address (re-run `ZNN_NODE_URL=ws://172.245.236.40:35998 ZNN_TEST_ADDR=z1… go test -tags integration ./internal/spike -run TestReadOnlyPillars -v`).
+- `PillarApi.GetDelegatedPillar` / `GetUncollectedReward` (per-address): **PASSED** against three
+  testnet addresses — both code paths exercised on live data:
+  - `z1qrr0dvun0p0nrsx6h9ppnfrgl8e6r7a8wpcjmg` → delegated: `name="Testnet-P1" status=1 weight=5000000000000` (50,000 ZNN); uncollected reward `znn=0 qsr=0`.
+  - `z1qzu5wkg93qlsk24w5cjkg7w9y0q42e5g7dvgpn` → **not delegated** (empty-Name → `DelegationInfo{}` mapping confirmed live); reward `znn=0 qsr=0`.
+  - `z1qqsfews4dyjghnqh4l5jp6y7qz70j4a6d4a8ec` → **not delegated**; reward `znn=0 qsr=0`.
+
+  Repro: `ZNN_NODE_URL=ws://172.245.236.40:35998 ZNN_TEST_ADDR=<z1…> GOWORK=off go test -tags integration ./internal/spike -run TestReadOnlyPillars -v -count=1`.
 
 ## Post-merge carry-forward cleanup (2026-06-22) — DONE (commit 5dbfce7)
 From the whole-branch review's tracked follow-ups:

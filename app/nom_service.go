@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -299,4 +300,99 @@ func fusionEntryDTO(e *embedded.FusionEntry, currentHeight uint64) FusionEntry {
 		ExpirationHeight: e.ExpirationHeight,
 		IsRevocable:      currentHeight >= e.ExpirationHeight,
 	}
+}
+
+// pillarSummaryDTO maps an SDK PillarInfo to the delegation-picker summary.
+func pillarSummaryDTO(p *embedded.PillarInfo) PillarSummary {
+	weight := "0"
+	if p.Weight != nil {
+		weight = p.Weight.String()
+	}
+	return PillarSummary{
+		Name:                  p.Name,
+		Rank:                  int(p.Rank),
+		Weight:                weight,
+		DelegateRewardPercent: int(p.GiveDelegateRewardPercentage),
+		ProducerAddress:       p.ProducerAddress.String(),
+	}
+}
+
+// sortPillarsByRank orders pillars by ascending rank (in place).
+func sortPillarsByRank(ps []PillarSummary) {
+	sort.Slice(ps, func(i, j int) bool { return ps[i].Rank < ps[j].Rank })
+}
+
+// GetPillarList returns all pillars (rank-sorted) for the delegation picker.
+func (s *NomService) GetPillarList() ([]PillarSummary, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return nil, errors.New("not connected")
+	}
+	out := []PillarSummary{}
+	var pageIndex uint32 = 0
+	const pageSize uint32 = 100
+	for {
+		list, err := client.PillarApi.GetAll(pageIndex, pageSize)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range list.List {
+			out = append(out, pillarSummaryDTO(p))
+		}
+		if len(out) >= list.Count || len(list.List) == 0 {
+			break
+		}
+		pageIndex++
+	}
+	sortPillarsByRank(out)
+	return out, nil
+}
+
+// GetDelegation returns the active address's current pillar delegation.
+// An empty Name means not delegated.
+func (s *NomService) GetDelegation() (DelegationInfo, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return DelegationInfo{}, errors.New("not connected")
+	}
+	addr, ok := s.wallet.activeAddress()
+	if !ok {
+		return DelegationInfo{}, errLocked
+	}
+	d, err := client.PillarApi.GetDelegatedPillar(addr)
+	if err != nil {
+		return DelegationInfo{}, err
+	}
+	if d == nil {
+		return DelegationInfo{}, nil
+	}
+	weight := "0"
+	if d.Weight != nil {
+		weight = d.Weight.String()
+	}
+	return DelegationInfo{Name: d.Name, Status: int(d.Status), Weight: weight}, nil
+}
+
+// GetPillarReward returns the active address's uncollected delegation reward.
+func (s *NomService) GetPillarReward() (RewardInfo, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return RewardInfo{}, errors.New("not connected")
+	}
+	addr, ok := s.wallet.activeAddress()
+	if !ok {
+		return RewardInfo{}, errLocked
+	}
+	r, err := client.PillarApi.GetUncollectedReward(addr)
+	if err != nil {
+		return RewardInfo{}, err
+	}
+	znn, qsr := "0", "0"
+	if r.ZnnAmount != nil {
+		znn = r.ZnnAmount.String()
+	}
+	if r.QsrAmount != nil {
+		qsr = r.QsrAmount.String()
+	}
+	return RewardInfo{Znn: znn, Qsr: qsr}, nil
 }

@@ -220,3 +220,29 @@ func TestPillarTemplateTokenStandards(t *testing.T) {
 		}
 	}
 }
+
+func TestSentinelDTO(t *testing.T) {
+	owner, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
+	s := &embedded.SentinelInfo{
+		Owner:                 owner,
+		RegistrationTimestamp: 1718000000,
+		IsRevocable:           true,
+		RevokeCooldown:        0,
+		Active:                true,
+	}
+	d := sentinelDTO(s)
+	if d.Owner != owner.String() || d.RegistrationTimestamp != 1718000000 {
+		t.Fatalf("bad mapping: %+v", d)
+	}
+	if !d.IsRevocable || !d.Active {
+		t.Fatalf("bad flags: %+v", d)
+	}
+	// no sentinel: nil → empty Owner
+	if sentinelDTO(nil).Owner != "" {
+		t.Fatal("nil should map to empty Owner")
+	}
+	// no sentinel: zero RegistrationTimestamp → empty Owner (treated as none)
+	if sentinelDTO(&embedded.SentinelInfo{Owner: owner}).Owner != "" {
+		t.Fatal("zero RegistrationTimestamp should map to empty Owner")
+	}
+}

@@ -212,3 +212,13 @@ type DelegationInfo struct {
 	Status int    `json:"status"`
 	Weight string `json:"weight"`
 }
+
+// SentinelInfo is the active address's sentinel. An empty Owner means the
+// address has no sentinel.
+type SentinelInfo struct {
+	Owner                 string `json:"owner"`
+	RegistrationTimestamp int64  `json:"registrationTimestamp"`
+	IsRevocable           bool   `json:"isRevocable"`
+	RevokeCooldown        int64  `json:"revokeCooldown"`
+	Active                bool   `json:"active"`
+}

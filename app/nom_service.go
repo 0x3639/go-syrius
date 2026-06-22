@@ -439,3 +439,80 @@ func (s *NomService) GetPillarReward() (RewardInfo, error) {
 	}
 	return RewardInfo{Znn: znn, Qsr: qsr}, nil
 }
+
+// sentinelDTO maps an SDK SentinelInfo to the DTO. A nil result or a zero
+// RegistrationTimestamp means the address has no sentinel (empty Owner).
+func sentinelDTO(s *embedded.SentinelInfo) SentinelInfo {
+	if s == nil || s.RegistrationTimestamp == 0 {
+		return SentinelInfo{}
+	}
+	return SentinelInfo{
+		Owner:                 s.Owner.String(),
+		RegistrationTimestamp: s.RegistrationTimestamp,
+		IsRevocable:           s.IsRevocable,
+		RevokeCooldown:        s.RevokeCooldown,
+		Active:                s.Active,
+	}
+}
+
+// GetSentinel returns the active address's sentinel (empty Owner = none).
+func (s *NomService) GetSentinel() (SentinelInfo, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return SentinelInfo{}, errors.New("not connected")
+	}
+	addr, ok := s.wallet.activeAddress()
+	if !ok {
+		return SentinelInfo{}, errLocked
+	}
+	info, err := client.SentinelApi.GetByOwner(addr)
+	if err != nil {
+		return SentinelInfo{}, err
+	}
+	return sentinelDTO(info), nil
+}
+
+// GetDepositedQsr returns the active address's QSR escrowed toward registration
+// (base-unit decimal string; "0" if none).
+func (s *NomService) GetDepositedQsr() (string, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return "", errors.New("not connected")
+	}
+	addr, ok := s.wallet.activeAddress()
+	if !ok {
+		return "", errLocked
+	}
+	q, err := client.SentinelApi.GetDepositedQsr(addr)
+	if err != nil {
+		return "", err
+	}
+	if q == nil {
+		return "0", nil
+	}
+	return q.String(), nil
+}
+
+// GetSentinelReward returns the active address's uncollected sentinel reward.
+func (s *NomService) GetSentinelReward() (RewardInfo, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return RewardInfo{}, errors.New("not connected")
+	}
+	addr, ok := s.wallet.activeAddress()
+	if !ok {
+		return RewardInfo{}, errLocked
+	}
+	r, err := client.SentinelApi.GetUncollectedReward(addr)
+	if err != nil {
+		return RewardInfo{}, err
+	}
+	znn, qsr := "0", "0"
+	if r.ZnnAmount != nil {
+		znn = r.ZnnAmount.String()
+	}
+	if r.QsrAmount != nil {
+		qsr = r.QsrAmount.String()
+	}
+	return RewardInfo{Znn: znn, Qsr: qsr}, nil
+}

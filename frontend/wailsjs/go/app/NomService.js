@@ -10,6 +10,10 @@ export function GetDelegation() {
   return window['go']['app']['NomService']['GetDelegation']();
 }
 
+export function GetDepositedQsr() {
+  return window['go']['app']['NomService']['GetDepositedQsr']();
+}
+
 export function GetFusionEntries() {
   return window['go']['app']['NomService']['GetFusionEntries']();
 }
@@ -24,6 +28,14 @@ export function GetPillarReward() {
 
 export function GetPlasmaInfo() {
   return window['go']['app']['NomService']['GetPlasmaInfo']();
+}
+
+export function GetSentinel() {
+  return window['go']['app']['NomService']['GetSentinel']();
+}
+
+export function GetSentinelReward() {
+  return window['go']['app']['NomService']['GetSentinelReward']();
 }
 
 export function GetStakeList() {
@@ -50,12 +62,28 @@ export function PrepareCollectReward() {
   return window['go']['app']['NomService']['PrepareCollectReward']();
 }
 
+export function PrepareCollectSentinelReward() {
+  return window['go']['app']['NomService']['PrepareCollectSentinelReward']();
+}
+
 export function PrepareDelegate(arg1) {
   return window['go']['app']['NomService']['PrepareDelegate'](arg1);
 }
 
+export function PrepareDepositQsr(arg1) {
+  return window['go']['app']['NomService']['PrepareDepositQsr'](arg1);
+}
+
 export function PrepareFuse(arg1, arg2) {
   return window['go']['app']['NomService']['PrepareFuse'](arg1, arg2);
+}
+
+export function PrepareRegisterSentinel() {
+  return window['go']['app']['NomService']['PrepareRegisterSentinel']();
+}
+
+export function PrepareRevokeSentinel() {
+  return window['go']['app']['NomService']['PrepareRevokeSentinel']();
 }
 
 export function PrepareStake(arg1, arg2) {
@@ -64,4 +92,8 @@ export function PrepareStake(arg1, arg2) {
 
 export function PrepareUndelegate() {
   return window['go']['app']['NomService']['PrepareUndelegate']();
+}
+
+export function PrepareWithdrawQsr() {
+  return window['go']['app']['NomService']['PrepareWithdrawQsr']();
 }

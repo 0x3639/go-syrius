@@ -190,3 +190,33 @@ func TestPlasmaTemplateTokenStandards(t *testing.T) {
 		t.Fatal("QSR and ZNN token standards must be distinct")
 	}
 }
+
+func TestPrepareDelegateValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	// empty / whitespace name rejected before any node use.
+	if _, err := s.PrepareDelegate(""); err == nil {
+		t.Fatal("expected empty name to be rejected")
+	}
+	if _, err := s.PrepareDelegate("   "); err == nil {
+		t.Fatal("expected whitespace name to be rejected")
+	}
+}
+
+func TestPillarTemplateTokenStandards(t *testing.T) {
+	api := embedded.NewPillarApi(nil) // builders construct blocks from args; no client deref
+	for name, b := range map[string]*nom.AccountBlock{
+		"delegate":   api.Delegate("Pillar-A"),
+		"undelegate": api.Undelegate(),
+		"collect":    api.CollectReward(),
+	} {
+		if b.ToAddress != types.PillarContract {
+			t.Fatalf("%s: ToAddress=%v want PillarContract", name, b.ToAddress)
+		}
+		if b.TokenStandard != types.ZnnTokenStandard {
+			t.Fatalf("%s: TokenStandard=%v want ZNN", name, b.TokenStandard)
+		}
+		if b.Amount == nil || b.Amount.Sign() != 0 {
+			t.Fatalf("%s: Amount=%v want 0", name, b.Amount)
+		}
+	}
+}

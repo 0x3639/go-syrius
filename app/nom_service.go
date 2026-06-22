@@ -373,6 +373,49 @@ func (s *NomService) GetDelegation() (DelegationInfo, error) {
 	return DelegationInfo{Name: d.Name, Status: int(d.Status), Weight: weight}, nil
 }
 
+// PrepareDelegate builds a Delegate template (delegates the account's ZNN weight
+// to the named pillar; no funds move) and hands it to TxService. Name validated
+// before any node use.
+func (s *NomService) PrepareDelegate(name string) (CallPreview, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return CallPreview{}, errors.New("pillar name is required")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.PillarApi.Delegate(name)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Delegate to %s", name))
+}
+
+// PrepareUndelegate builds an Undelegate template (removes the current delegation).
+func (s *NomService) PrepareUndelegate() (CallPreview, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.PillarApi.Undelegate()
+	return s.tx.prepareCall(template,
+		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		"Undelegate from current pillar")
+}
+
+// PrepareCollectPillarReward builds a CollectReward template (claims accrued
+// delegation rewards).
+func (s *NomService) PrepareCollectPillarReward() (CallPreview, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.PillarApi.CollectReward()
+	return s.tx.prepareCall(template,
+		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		"Collect delegation rewards")
+}
+
 // GetPillarReward returns the active address's uncollected delegation reward.
 func (s *NomService) GetPillarReward() (RewardInfo, error) {
 	client := s.node.currentClient()

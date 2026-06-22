@@ -21,14 +21,21 @@ On testnet (Staking route):
 4. Cancel a matured stake → ZNN returns; the entry disappears.
 5. Mainnet guard: with AllowMainnetSend false on a mainnet node, PrepareStake is blocked.
 
-### Result (fill in after the manual run)
-- view stakes + uncollected reward: PASS / FAIL
-- stake X ZNN for N months + appears: PASS / FAIL
-- collect rewards (QSR arrives): PASS / FAIL
-- cancel matured stake returns ZNN: PASS / FAIL
-- confirm-modal renders built block + human ZNN amount + summary: PASS / FAIL
-- mainnet-gated: PASS / FAIL
-- testnet tx hashes observed: ____
+### Result (manual run — 2026-06-21, testnet node ws://172.245.236.40:35998, chainId 73404)
+- view stakes + uncollected reward: PASS
+- stake X ZNN for N months + appears: PASS
+- collect rewards (QSR arrives): PENDING — rewards not yet accrued; retest once uncollected QSR > 0
+- cancel matured stake returns ZNN: PENDING — requires a stake past its 30-day expiration
+- confirm-modal renders built block + human ZNN amount + summary: PASS
+- mainnet-gated: not retested this run (guard unchanged from 5a; AllowMainnetSend=false)
+- testnet tx hashes observed: ____ (record on next run)
+
+> Node prerequisite discovered during acceptance: the connected node must expose the
+> `embedded` RPC namespace (whitelisted via go-zenon `RPC.Endpoints`). A node serving only
+> `ledger` returns `embedded.plasma.getRequiredPoWForAccountBlock does not exist/is not
+> available` for every PoW-requiring action (fuse, stake, send-without-plasma). Verified the
+> fix end-to-end: with `embedded` enabled, both Fuse and Stake price real PoW (reqDiff≈78.75M
+> on a 0-plasma account) and publish successfully. Not a wallet bug.
 
 ## Security recap
 - Reuses the one audited prepare/confirm/publish path; confirm-what-you-sign re-asserts the built block's to/zts/amount AND ABI `Data`; mainnet gated by AllowMainnetSend; no key material in NomService.

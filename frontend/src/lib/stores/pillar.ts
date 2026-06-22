@@ -1,18 +1,15 @@
 import { writable } from 'svelte/store'
 import * as Nom from '../../../wailsjs/go/app/NomService'
+import type { app } from '../../../wailsjs/go/models'
 
-export type PillarSummary = { name: string; rank: number; weight: string; delegateRewardPercent: number; producerAddress: string }
-export type DelegationInfo = { name: string; status: number; weight: string }
-export type RewardInfo = { znn: string; qsr: string }
-
-export const pillars = writable<PillarSummary[]>([])
-export const delegation = writable<DelegationInfo | null>(null)
-export const pillarReward = writable<RewardInfo | null>(null)
+export const pillars = writable<app.PillarSummary[]>([])
+export const delegation = writable<app.DelegationInfo | null>(null)
+export const pillarReward = writable<app.RewardInfo | null>(null)
 
 export async function refreshPillars(): Promise<void> {
   try {
-    pillars.set((await Nom.GetPillarList()) as PillarSummary[])
-    delegation.set((await Nom.GetDelegation()) as DelegationInfo)
-    pillarReward.set((await Nom.GetPillarReward()) as RewardInfo)
+    pillars.set(await Nom.GetPillarList())
+    delegation.set(await Nom.GetDelegation())
+    pillarReward.set(await Nom.GetPillarReward())
   } catch { /* not connected / locked — leave as-is */ }
 }

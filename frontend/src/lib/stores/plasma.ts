@@ -1,18 +1,16 @@
 import { writable } from 'svelte/store'
 import * as Nom from '../../../wailsjs/go/app/NomService'
+import type { app } from '../../../wailsjs/go/models'
 
-export type PlasmaInfo = { qsrFused: string; currentPlasma: number; maxPlasma: number }
-export type FusionEntry = { id: string; beneficiary: string; qsrAmount: string; expirationHeight: number; isRevocable: boolean }
-
-export const plasmaInfo = writable<PlasmaInfo | null>(null)
-export const fusionEntries = writable<FusionEntry[]>([])
+export const plasmaInfo = writable<app.PlasmaInfo | null>(null)
+export const fusionEntries = writable<app.FusionEntry[]>([])
 
 export async function refreshPlasma(): Promise<void> {
   try {
-    plasmaInfo.set((await Nom.GetPlasmaInfo()) as PlasmaInfo)
-    fusionEntries.set((await Nom.GetFusionEntries()) as FusionEntry[])
+    plasmaInfo.set(await Nom.GetPlasmaInfo())
+    fusionEntries.set(await Nom.GetFusionEntries())
   } catch { /* not connected / locked — leave as-is */ }
 }
 export async function estimatePlasma(qsr: string): Promise<number> {
-  try { return (await Nom.EstimatePlasma(qsr)) as number } catch { return 0 }
+  try { return await Nom.EstimatePlasma(qsr) } catch { return 0 }
 }

@@ -132,6 +132,20 @@ export namespace app {
 	        this.maxPlasma = source["maxPlasma"];
 	    }
 	}
+	export class RewardInfo {
+	    znn: string;
+	    qsr: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RewardInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.znn = source["znn"];
+	        this.qsr = source["qsr"];
+	    }
+	}
 	export class SendPreview {
 	    toAddress: string;
 	    symbol: string;
@@ -203,6 +217,60 @@ export namespace app {
 	        this.autoReceive = source["autoReceive"];
 	        this.accountLabels = source["accountLabels"];
 	    }
+	}
+	export class StakeEntry {
+	    id: string;
+	    amount: string;
+	    startTimestamp: number;
+	    expirationTimestamp: number;
+	    durationMonths: number;
+	    isMatured: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new StakeEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.amount = source["amount"];
+	        this.startTimestamp = source["startTimestamp"];
+	        this.expirationTimestamp = source["expirationTimestamp"];
+	        this.durationMonths = source["durationMonths"];
+	        this.isMatured = source["isMatured"];
+	    }
+	}
+	export class StakeInfo {
+	    totalAmount: string;
+	    entries: StakeEntry[];
+	
+	    static createFrom(source: any = {}) {
+	        return new StakeInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalAmount = source["totalAmount"];
+	        this.entries = this.convertValues(source["entries"], StakeEntry);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class TokenBalance {
 	    zts: string;

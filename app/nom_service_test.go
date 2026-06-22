@@ -122,6 +122,36 @@ func TestStakeTemplateTokenStandards(t *testing.T) {
 	}
 }
 
+func TestPillarSummaryDTO(t *testing.T) {
+	owner, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
+	p := &embedded.PillarInfo{
+		Name:                         "Pillar-A",
+		Rank:                         3,
+		GiveDelegateRewardPercentage: 90,
+		ProducerAddress:              owner,
+		Weight:                       big.NewInt(1_500_000_000_000),
+	}
+	d := pillarSummaryDTO(p)
+	if d.Name != "Pillar-A" || d.Rank != 3 || d.DelegateRewardPercent != 90 {
+		t.Fatalf("bad mapping: %+v", d)
+	}
+	if d.Weight != "1500000000000" || d.ProducerAddress != owner.String() {
+		t.Fatalf("bad weight/producer: %+v", d)
+	}
+	// nil Weight → "0"
+	if pillarSummaryDTO(&embedded.PillarInfo{Name: "B"}).Weight != "0" {
+		t.Fatal("nil weight should map to 0")
+	}
+}
+
+func TestSortPillarsByRank(t *testing.T) {
+	in := []PillarSummary{{Name: "c", Rank: 5}, {Name: "a", Rank: 1}, {Name: "b", Rank: 3}}
+	sortPillarsByRank(in)
+	if in[0].Name != "a" || in[1].Name != "b" || in[2].Name != "c" {
+		t.Fatalf("not sorted by rank: %+v", in)
+	}
+}
+
 // TestPlasmaTemplateTokenStandards locks in the SDK template token-standard
 // expectations our callExpects rely on. The callExpect zts passed to
 // prepareCall MUST equal the SDK template's TokenStandard, or
@@ -158,5 +188,35 @@ func TestPlasmaTemplateTokenStandards(t *testing.T) {
 	// assertions would be vacuous.
 	if types.QsrTokenStandard == types.ZnnTokenStandard {
 		t.Fatal("QSR and ZNN token standards must be distinct")
+	}
+}
+
+func TestPrepareDelegateValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	// empty / whitespace name rejected before any node use.
+	if _, err := s.PrepareDelegate(""); err == nil {
+		t.Fatal("expected empty name to be rejected")
+	}
+	if _, err := s.PrepareDelegate("   "); err == nil {
+		t.Fatal("expected whitespace name to be rejected")
+	}
+}
+
+func TestPillarTemplateTokenStandards(t *testing.T) {
+	api := embedded.NewPillarApi(nil) // builders construct blocks from args; no client deref
+	for name, b := range map[string]*nom.AccountBlock{
+		"delegate":   api.Delegate("Pillar-A"),
+		"undelegate": api.Undelegate(),
+		"collect":    api.CollectReward(),
+	} {
+		if b.ToAddress != types.PillarContract {
+			t.Fatalf("%s: ToAddress=%v want PillarContract", name, b.ToAddress)
+		}
+		if b.TokenStandard != types.ZnnTokenStandard {
+			t.Fatalf("%s: TokenStandard=%v want ZNN", name, b.TokenStandard)
+		}
+		if b.Amount == nil || b.Amount.Sign() != 0 {
+			t.Fatalf("%s: Amount=%v want 0", name, b.Amount)
+		}
 	}
 }

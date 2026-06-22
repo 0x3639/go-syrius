@@ -195,3 +195,20 @@ type UnreceivedBlock struct {
 	Token       string `json:"token"`
 	Amount      string `json:"amount"`
 }
+
+// PillarSummary is one pillar in the delegation picker list.
+type PillarSummary struct {
+	Name                  string `json:"name"`
+	Rank                  int    `json:"rank"`
+	Weight                string `json:"weight"`
+	DelegateRewardPercent int    `json:"delegateRewardPercent"`
+	ProducerAddress       string `json:"producerAddress"`
+}
+
+// DelegationInfo is the active address's current pillar delegation.
+// An empty Name means the address is not delegated.
+type DelegationInfo struct {
+	Name   string `json:"name"`
+	Status int    `json:"status"`
+	Weight string `json:"weight"`
+}

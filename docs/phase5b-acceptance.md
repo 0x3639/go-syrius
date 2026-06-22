@@ -1,11 +1,11 @@
 # Phase 5b — Staking Acceptance
 
 ## Automated verification (2026-06-21) — PASSED
-- `go test ./...` — green incl. `app` (stakeEntryDTO maturity/duration derivation, PrepareStake/PrepareCancelStake validation, Stake/Cancel/Collect template token-standard regression test).
-- `go build -tags integration ./...` + `go vet -tags integration ./app/` — the opt-in integration test compiles.
+- `GOWORK=off go test ./...` — green incl. `app` (stakeEntryDTO maturity/duration derivation, PrepareStake/PrepareCancelStake validation, Stake/Cancel/Collect template token-standard regression test). `GOWORK=off` is required: a parent `/Users/dfriestedt/Github/go.work` references a missing sibling module, so bare `go test ./...` fails to load the workspace. This is a local-env artifact, not a repo issue.
+- `GOWORK=off go build -tags integration ./...` + `GOWORK=off go vet -tags integration ./app/` — the opt-in integration test compiles.
 - Frontend `pnpm test` — 26/26 across 14 files (incl. Stake Cancel-gating on `isMatured`).
 - `pnpm run build` — clean.
-- `wails build` — compiles + packages with NomService bound (darwin/arm64); self-signed cleanly after `xattr -cr build/bin` (iCloud xattr environment artifact).
+- `GOWORK=off wails build` — compiles + packages with NomService bound (darwin/arm64); self-signed cleanly after `xattr -cr build/bin` (iCloud xattr environment artifact).
 
 Covered by tests (offline):
 - Stake reads: `stakeEntryDTO` maps amount/id/timestamps; `DurationMonths = (Expiration-Start)/StakeTimeUnitSec`; `IsMatured = frontierUnix >= ExpirationTimestamp`. Maturity boundary tested before/at/after expiration.

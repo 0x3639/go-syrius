@@ -10,6 +10,7 @@
   import Dashboard from './routes/Dashboard.svelte'
   import Send from './routes/Send.svelte'
   import Plasma from './routes/Plasma.svelte'
+  import Stake from './routes/Stake.svelte'
   import Settings from './routes/Settings.svelte'
   onMount(async () => {
     try {
@@ -27,6 +28,8 @@
   <Send />
 {:else if $view === 'plasma'}
   <Plasma />
+{:else if $view === 'stake'}
+  <Stake />
 {:else if $view === 'settings'}
   <Settings />
 {:else}

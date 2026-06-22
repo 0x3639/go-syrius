@@ -44,6 +44,22 @@ export namespace app {
 	        this.needsPoW = source["needsPoW"];
 	    }
 	}
+	export class DelegationInfo {
+	    name: string;
+	    status: number;
+	    weight: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DelegationInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.status = source["status"];
+	        this.weight = source["weight"];
+	    }
+	}
 	export class EmbeddedInfo {
 	    running: boolean;
 	    dataDir: string;
@@ -114,6 +130,26 @@ export namespace app {
 	        this.syncing = source["syncing"];
 	        this.height = source["height"];
 	        this.peers = source["peers"];
+	    }
+	}
+	export class PillarSummary {
+	    name: string;
+	    rank: number;
+	    weight: string;
+	    delegateRewardPercent: number;
+	    producerAddress: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PillarSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.rank = source["rank"];
+	        this.weight = source["weight"];
+	        this.delegateRewardPercent = source["delegateRewardPercent"];
+	        this.producerAddress = source["producerAddress"];
 	    }
 	}
 	export class PlasmaInfo {

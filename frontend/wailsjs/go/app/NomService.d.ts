@@ -4,7 +4,13 @@ import {app} from '../models';
 
 export function EstimatePlasma(arg1:string):Promise<number>;
 
+export function GetDelegation():Promise<app.DelegationInfo>;
+
 export function GetFusionEntries():Promise<Array<app.FusionEntry>>;
+
+export function GetPillarList():Promise<Array<app.PillarSummary>>;
+
+export function GetPillarReward():Promise<app.RewardInfo>;
 
 export function GetPlasmaInfo():Promise<app.PlasmaInfo>;
 
@@ -16,8 +22,14 @@ export function PrepareCancelFuse(arg1:string):Promise<app.CallPreview>;
 
 export function PrepareCancelStake(arg1:string):Promise<app.CallPreview>;
 
+export function PrepareCollectPillarReward():Promise<app.CallPreview>;
+
 export function PrepareCollectReward():Promise<app.CallPreview>;
+
+export function PrepareDelegate(arg1:string):Promise<app.CallPreview>;
 
 export function PrepareFuse(arg1:string,arg2:string):Promise<app.CallPreview>;
 
 export function PrepareStake(arg1:string,arg2:string):Promise<app.CallPreview>;
+
+export function PrepareUndelegate():Promise<app.CallPreview>;

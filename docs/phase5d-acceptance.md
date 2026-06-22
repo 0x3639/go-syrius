@@ -38,15 +38,14 @@ so they always errored — data-independent, not specific to the zero-deposit ca
 reads (`GetByOwner`/`GetUncollectedReward`) pass a `new(...)` pointer and worked. 5c never
 exercised `PillarApi.GetDepositedQsr`, so the defect surfaced only with this sentinel smoke.
 
-Fix: patched all three call sites to `Call(&ans, …)` in `znn-sdk-go`
-(branch `fix/getdepositedqsr-pointer`, commit `8a52da8`, based on v0.1.16). go-syrius re-pins to the
-patched SDK via a local `replace` directive in `go.mod` (interim — pushes are blocked on the
-GitHub token, as in prior phases).
+Fix: patched all three call sites to `Call(&ans, …)` in `znn-sdk-go`, fast-forwarded `master`, and
+tagged/pushed **`v0.1.17`** (commit `8a52da8`, = v0.1.16 + the pointer fix; no other changes).
+go-syrius now pins `github.com/0x3639/znn-sdk-go v0.1.17` in `go.mod` — the interim local `replace`
+directive has been removed. This also fixes the latent `PillarApi.GetDepositedQsr` /
+`GetQsrRegistrationCost` bugs for future phases. Re-pin **finalized** — no follow-up needed.
 
-> **Follow-up to finalize the re-pin:** push the SDK fix branch and tag it `v0.1.17`, then swap the
-> local `replace github.com/0x3639/znn-sdk-go => /Users/dfriestedt/Github/znn-sdk-go` in `go.mod`
-> for `go get github.com/0x3639/znn-sdk-go@v0.1.17` (drop the replace). This also fixes the latent
-> `PillarApi.GetDepositedQsr` / `GetQsrRegistrationCost` bugs for future phases.
+Verified against the tagged `v0.1.17`: `go build ./...`, `go test ./...`, and the live smoke
+(`GetDepositedQsr` returns `0` cleanly) all pass.
 
 ## Live read-only smoke (2026-06-22) — PASSED (against the patched SDK)
 Run against the testnet node `ws://172.245.236.40:35998` (opt-in integration test

@@ -100,3 +100,42 @@ func TestReadOnlyPillars(t *testing.T) {
 	}
 	t.Logf("uncollected delegation reward: znn=%v qsr=%v", r.ZnnAmount, r.QsrAmount)
 }
+
+// TestReadOnlySentinels exercises the Phase-5d sentinel read path against a live
+// node (proves the embedded namespace + the exact SentinelApi calls NomService
+// uses). Read-only: no PoW, no signing.
+//
+// Env:
+//   ZNN_NODE_URL  — ws:// or wss:// node URL (required)
+//   ZNN_TEST_ADDR — a z1… address (required)
+func TestReadOnlySentinels(t *testing.T) {
+	url := os.Getenv("ZNN_NODE_URL")
+	addrStr := os.Getenv("ZNN_TEST_ADDR")
+	if url == "" || addrStr == "" {
+		t.Skip("set ZNN_NODE_URL and ZNN_TEST_ADDR to run")
+	}
+	client, err := rpc_client.NewRpcClient(url)
+	if err != nil {
+		t.Fatalf("NewRpcClient: %v", err)
+	}
+	defer client.Stop()
+	addr := types.ParseAddressPanic(addrStr)
+
+	info, err := client.SentinelApi.GetByOwner(addr)
+	if err != nil {
+		t.Fatalf("GetByOwner (embedded namespace enabled?): %v", err)
+	}
+	t.Logf("sentinel: registrationTimestamp=%d active=%v isRevocable=%v cooldown=%d", info.RegistrationTimestamp, info.Active, info.IsRevocable, info.RevokeCooldown)
+
+	q, err := client.SentinelApi.GetDepositedQsr(addr)
+	if err != nil {
+		t.Fatalf("GetDepositedQsr: %v", err)
+	}
+	t.Logf("deposited QSR: %v", q)
+
+	r, err := client.SentinelApi.GetUncollectedReward(addr)
+	if err != nil {
+		t.Fatalf("GetUncollectedReward: %v", err)
+	}
+	t.Logf("uncollected sentinel reward: znn=%v qsr=%v", r.ZnnAmount, r.QsrAmount)
+}

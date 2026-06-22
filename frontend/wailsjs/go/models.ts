@@ -224,6 +224,26 @@ export namespace app {
 	        this.amount = source["amount"];
 	    }
 	}
+	export class SentinelInfo {
+	    owner: string;
+	    registrationTimestamp: number;
+	    isRevocable: boolean;
+	    revokeCooldown: number;
+	    active: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SentinelInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.owner = source["owner"];
+	        this.registrationTimestamp = source["registrationTimestamp"];
+	        this.isRevocable = source["isRevocable"];
+	        this.revokeCooldown = source["revokeCooldown"];
+	        this.active = source["active"];
+	    }
+	}
 	export class Settings {
 	    nodeUrl?: string;
 	    nodeMode: string;

@@ -49,6 +49,7 @@
       <button class="rounded border border-muted/40 px-2 py-1 text-xs text-muted" on:click={() => view.set('plasma')}>Plasma</button>
       <button class="rounded border border-muted/40 px-2 py-1 text-xs text-muted" on:click={() => view.set('stake')}>Staking</button>
       <button class="rounded border border-muted/40 px-2 py-1 text-xs text-muted" on:click={() => view.set('pillars')}>Pillars</button>
+      <button class="rounded border border-muted/40 px-2 py-1 text-xs text-muted" on:click={() => view.set('sentinels')}>Sentinels</button>
       <button class="rounded border border-muted/40 px-2 py-1 text-xs text-muted" on:click={() => view.set('settings')}>Settings</button>
       <button class="rounded border border-muted/40 px-2 py-1 text-xs text-muted" on:click={lock}>Lock</button>
     </div>

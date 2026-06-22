@@ -13,7 +13,25 @@ Covered by tests (offline):
 - Actions: `PrepareDelegate(name)` validates input before any node use (`TestPrepareDelegateValidatesInput`); `PrepareUndelegate()` / `PrepareCollectPillarReward()` follow the same shared prepare path.
 - Token standard: Delegate/Undelegate/CollectReward SDK templates use `PillarContract` + `ZnnTokenStandard` with `amount: 0` — regression-locked against the real `embedded.NewPillarApi(nil)` builders (`TestPillarTemplateTokenStandards`).
 
-## Manual acceptance (Phase 5c gate) — PENDING user GUI run
+## Live read-only smoke (2026-06-22) — PASSED (embedded namespace confirmed)
+Run against the testnet node `ws://172.245.236.40:35998` (opt-in integration test
+`internal/spike.TestReadOnlyPillars`, `-tags integration`):
+- `PillarApi.GetAll(0,50)` — **PASSED**: `count=7`, returned 7 pillars (ATSocy.com, Testnet-P1..P4, …),
+  each with rank/weight/giveReward%. This proves the node exposes the `embedded` RPC namespace
+  (a `ledger`-only node would return `embedded.* does not exist`) and that NomService's exact read
+  path works end-to-end against a live node. Read-only — no PoW, no signing.
+- `PillarApi.GetDelegatedPillar` / `GetUncollectedReward` (per-address): PENDING a `ZNN_TEST_ADDR`
+  z1 address (re-run `ZNN_NODE_URL=ws://172.245.236.40:35998 ZNN_TEST_ADDR=z1… go test -tags integration ./internal/spike -run TestReadOnlyPillars -v`).
+
+## Post-merge carry-forward cleanup (2026-06-22) — DONE (commit 5dbfce7)
+From the whole-branch review's tracked follow-ups:
+- Shared `tx` store now resets on navigation (`resetTx` + `view` subscription in `tx.ts`) — a
+  finished/errored/awaiting modal from one route no longer leaks onto another (Send/Plasma/Stake/Pillars).
+  Covered by `tx.test.ts` (resetTx + reset-on-nav). Frontend suite 30/30; `svelte-check` 0 errors.
+- `pillar.ts`/`plasma.ts`/`stake.ts` now import generated `models.ts` types instead of hand-redeclaring
+  them — removes the silent-drift risk if a Go JSON tag changes.
+
+## Manual acceptance (Phase 5c gate) — user-confirmed
 On a testnet node **with the `embedded` RPC namespace enabled** (Pillars route):
 1. Open the Pillars route → see the rank-sorted pillar list + your current delegation (or "Not delegated") + uncollected reward.
 2. Search filters the list by name.
@@ -23,13 +41,14 @@ On a testnet node **with the `embedded` RPC namespace enabled** (Pillars route):
 6. Mainnet guard: with `AllowMainnetSend` false on a mainnet node, `PrepareDelegate` is blocked.
 
 ### Result (manual run — testnet)
-- view pillar list + current delegation + uncollected reward: PENDING
-- search filters list by name: PENDING
-- delegate to pillar (TxModal "Delegate to <name>" from built block) + shows as current: PENDING
-- collect rewards (reward arrives): PENDING
-- undelegate (delegation clears): PENDING
-- mainnet-gated (AllowMainnetSend=false blocks PrepareDelegate): PENDING
-- testnet tx hashes observed: ____ (record on next run)
+User confirmed acceptance of all local testing on 2026-06-22 (node `ws://172.245.236.40:35998`):
+- view pillar list + current delegation + uncollected reward: ACCEPTED (user-confirmed)
+- search filters list by name: ACCEPTED (user-confirmed)
+- delegate to pillar (TxModal "Delegate to <name>" from built block) + shows as current: ACCEPTED (user-confirmed)
+- collect rewards (reward arrives): ACCEPTED (user-confirmed)
+- undelegate (delegation clears): ACCEPTED (user-confirmed)
+- mainnet-gated (AllowMainnetSend=false blocks PrepareDelegate): ACCEPTED (user-confirmed)
+- testnet tx hashes observed: not recorded (user-confirmed acceptance without per-tx hash capture)
 
 > Node prerequisite (carried from 5b): the connected node must expose the `embedded` RPC
 > namespace (whitelisted via go-zenon `RPC.Endpoints`). A node serving only `ledger` returns

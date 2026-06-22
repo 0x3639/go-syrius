@@ -14,10 +14,30 @@ export function GetPlasmaInfo() {
   return window['go']['app']['NomService']['GetPlasmaInfo']();
 }
 
+export function GetStakeList() {
+  return window['go']['app']['NomService']['GetStakeList']();
+}
+
+export function GetUncollectedReward() {
+  return window['go']['app']['NomService']['GetUncollectedReward']();
+}
+
 export function PrepareCancelFuse(arg1) {
   return window['go']['app']['NomService']['PrepareCancelFuse'](arg1);
 }
 
+export function PrepareCancelStake(arg1) {
+  return window['go']['app']['NomService']['PrepareCancelStake'](arg1);
+}
+
+export function PrepareCollectReward() {
+  return window['go']['app']['NomService']['PrepareCollectReward']();
+}
+
 export function PrepareFuse(arg1, arg2) {
   return window['go']['app']['NomService']['PrepareFuse'](arg1, arg2);
+}
+
+export function PrepareStake(arg1, arg2) {
+  return window['go']['app']['NomService']['PrepareStake'](arg1, arg2);
 }

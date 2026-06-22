@@ -166,6 +166,28 @@ type FusionEntry struct {
 	IsRevocable      bool   `json:"isRevocable"`
 }
 
+// StakeInfo is the active address's stake snapshot.
+type StakeInfo struct {
+	TotalAmount string       `json:"totalAmount"`
+	Entries     []StakeEntry `json:"entries"`
+}
+
+// StakeEntry is one ZNN stake; IsMatured is derived (frontier time >= expiration).
+type StakeEntry struct {
+	Id                  string `json:"id"`
+	Amount              string `json:"amount"`
+	StartTimestamp      int64  `json:"startTimestamp"`
+	ExpirationTimestamp int64  `json:"expirationTimestamp"`
+	DurationMonths      int    `json:"durationMonths"`
+	IsMatured           bool   `json:"isMatured"`
+}
+
+// RewardInfo is uncollected reward (base-unit decimal strings).
+type RewardInfo struct {
+	Znn string `json:"znn"`
+	Qsr string `json:"qsr"`
+}
+
 // UnreceivedBlock is one inbound, not-yet-received transaction.
 type UnreceivedBlock struct {
 	FromHash    string `json:"fromHash"`

@@ -8,6 +8,16 @@ export function GetFusionEntries():Promise<Array<app.FusionEntry>>;
 
 export function GetPlasmaInfo():Promise<app.PlasmaInfo>;
 
+export function GetStakeList():Promise<app.StakeInfo>;
+
+export function GetUncollectedReward():Promise<app.RewardInfo>;
+
 export function PrepareCancelFuse(arg1:string):Promise<app.CallPreview>;
 
+export function PrepareCancelStake(arg1:string):Promise<app.CallPreview>;
+
+export function PrepareCollectReward():Promise<app.CallPreview>;
+
 export function PrepareFuse(arg1:string,arg2:string):Promise<app.CallPreview>;
+
+export function PrepareStake(arg1:string,arg2:string):Promise<app.CallPreview>;

@@ -64,3 +64,5 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 )
+
+replace github.com/0x3639/znn-sdk-go => /Users/dfriestedt/Github/znn-sdk-go

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
+	nom "github.com/zenon-network/go-zenon/chain/nom"
 	"github.com/zenon-network/go-zenon/common/types"
 )
 
@@ -81,6 +82,43 @@ func TestPrepareCancelFuseValidatesInput(t *testing.T) {
 	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
 	if _, err := s.PrepareCancelFuse("not-a-hash"); err == nil {
 		t.Fatal("expected invalid id to be rejected")
+	}
+}
+
+func TestPrepareStakeValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	// amount below 1 ZNN min, non-numeric amount, and bad duration are rejected before any node use.
+	if _, err := s.PrepareStake("50000000", "3"); err == nil { // 0.5 ZNN < 1 ZNN min
+		t.Fatal("expected below-min amount to be rejected")
+	}
+	if _, err := s.PrepareStake("abc", "3"); err == nil {
+		t.Fatal("expected non-numeric amount to be rejected")
+	}
+	if _, err := s.PrepareStake("100000000", "0"); err == nil {
+		t.Fatal("expected duration 0 to be rejected")
+	}
+	if _, err := s.PrepareStake("100000000", "13"); err == nil {
+		t.Fatal("expected duration 13 to be rejected")
+	}
+	if _, err := s.PrepareCancelStake("not-a-hash"); err == nil {
+		t.Fatal("expected bad id to be rejected")
+	}
+}
+
+func TestStakeTemplateTokenStandards(t *testing.T) {
+	api := embedded.NewStakeApi(nil) // builders construct blocks from args; no client deref
+	id := types.HexToHashPanic("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
+	for name, b := range map[string]*nom.AccountBlock{
+		"stake":   api.Stake(stakeTimeUnitSec, big.NewInt(100_000_000)),
+		"cancel":  api.Cancel(id),
+		"collect": api.CollectReward(),
+	} {
+		if b.ToAddress != types.StakeContract {
+			t.Fatalf("%s: ToAddress=%v want StakeContract", name, b.ToAddress)
+		}
+		if b.TokenStandard != types.ZnnTokenStandard {
+			t.Fatalf("%s: TokenStandard=%v want ZNN", name, b.TokenStandard)
+		}
 	}
 }
 

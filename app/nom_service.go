@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
@@ -234,6 +235,55 @@ func (s *NomService) GetUncollectedReward() (RewardInfo, error) {
 		qsr = r.QsrAmount.String()
 	}
 	return RewardInfo{Znn: znn, Qsr: qsr}, nil
+}
+
+// PrepareStake builds a Stake template (ZNN for durationMonths*30 days) and hands
+// it to TxService. Inputs validated before any node use.
+func (s *NomService) PrepareStake(amountZnn, durationMonths string) (CallPreview, error) {
+	amt, ok := new(big.Int).SetString(amountZnn, 10)
+	if !ok || amt.Cmp(big.NewInt(100_000_000)) < 0 { // StakeMinAmount = 1 ZNN
+		return CallPreview{}, errors.New("stake amount must be at least 1 ZNN")
+	}
+	months, err := strconv.Atoi(durationMonths)
+	if err != nil || months < 1 || months > 12 {
+		return CallPreview{}, errors.New("stake duration must be 1 to 12 months")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.StakeApi.Stake(int64(months)*stakeTimeUnitSec, amt)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.StakeContract, zts: types.ZnnTokenStandard, amount: amt, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Stake %s ZNN for %d months", formatBaseAmount(amountZnn, 8), months))
+}
+
+// PrepareCancelStake builds a Cancel template for a matured stake id.
+func (s *NomService) PrepareCancelStake(id string) (CallPreview, error) {
+	hash, err := types.HexToHash(id)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid stake id: %w", err)
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.StakeApi.Cancel(hash)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.StakeContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Cancel stake %s", id))
+}
+
+// PrepareCollectReward builds a CollectReward template (claims accrued ZNN/QSR).
+func (s *NomService) PrepareCollectReward() (CallPreview, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.StakeApi.CollectReward()
+	return s.tx.prepareCall(template,
+		callExpect{to: types.StakeContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		"Collect staking rewards")
 }
 
 // fusionEntryDTO maps an SDK FusionEntry, deriving revocability from the frontier height.

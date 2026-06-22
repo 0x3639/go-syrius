@@ -493,6 +493,75 @@ func (s *NomService) GetDepositedQsr() (string, error) {
 	return q.String(), nil
 }
 
+// PrepareDepositQsr builds a DepositQsr template (escrows QSR toward sentinel
+// registration). qsr is a base-unit decimal string, validated before any node use.
+func (s *NomService) PrepareDepositQsr(qsr string) (CallPreview, error) {
+	amt, ok := new(big.Int).SetString(strings.TrimSpace(qsr), 10)
+	if !ok || amt.Sign() <= 0 {
+		return CallPreview{}, errors.New("deposit amount must be a positive QSR value")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.SentinelApi.DepositQsr(amt)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.SentinelContract, zts: types.QsrTokenStandard, amount: amt, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Deposit %s QSR for sentinel", formatBaseAmount(amt.String(), 8)))
+}
+
+// PrepareRegisterSentinel builds a Register template (sends the 5,000 ZNN
+// collateral; requires 50,000 QSR already deposited). Amount is read from the
+// SDK template, never hardcoded.
+func (s *NomService) PrepareRegisterSentinel() (CallPreview, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.SentinelApi.Register()
+	return s.tx.prepareCall(template,
+		callExpect{to: types.SentinelContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
+		"Register sentinel (5,000 ZNN)")
+}
+
+// PrepareCollectSentinelReward builds a CollectReward template.
+func (s *NomService) PrepareCollectSentinelReward() (CallPreview, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.SentinelApi.CollectReward()
+	return s.tx.prepareCall(template,
+		callExpect{to: types.SentinelContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		"Collect sentinel rewards")
+}
+
+// PrepareRevokeSentinel builds a Revoke template (returns the collateral after
+// the cooldown).
+func (s *NomService) PrepareRevokeSentinel() (CallPreview, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.SentinelApi.Revoke()
+	return s.tx.prepareCall(template,
+		callExpect{to: types.SentinelContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		"Revoke sentinel")
+}
+
+// PrepareWithdrawQsr builds a WithdrawQsr template (recovers escrowed QSR not
+// consumed by registration).
+func (s *NomService) PrepareWithdrawQsr() (CallPreview, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.SentinelApi.WithdrawQsr()
+	return s.tx.prepareCall(template,
+		callExpect{to: types.SentinelContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		"Withdraw deposited QSR")
+}
+
 // GetSentinelReward returns the active address's uncollected sentinel reward.
 func (s *NomService) GetSentinelReward() (RewardInfo, error) {
 	client := s.node.currentClient()

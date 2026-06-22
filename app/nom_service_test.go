@@ -221,6 +221,49 @@ func TestPillarTemplateTokenStandards(t *testing.T) {
 	}
 }
 
+func TestPrepareDepositQsrValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	// zero / negative / unparseable rejected before any node use.
+	for _, bad := range []string{"0", "-1", "", "abc"} {
+		if _, err := s.PrepareDepositQsr(bad); err == nil {
+			t.Fatalf("expected %q to be rejected", bad)
+		}
+	}
+}
+
+func TestSentinelTemplateTokenStandards(t *testing.T) {
+	api := embedded.NewSentinelApi(nil) // builders construct blocks from args/constants; no client deref
+	znn := types.ZnnTokenStandard.String()
+	qsr := types.QsrTokenStandard.String()
+	cases := []struct {
+		name     string
+		b        *nom.AccountBlock
+		wantZts  string
+		wantZero bool // Amount must be exactly 0
+	}{
+		{"deposit", api.DepositQsr(big.NewInt(123)), qsr, false},
+		{"register", api.Register(), znn, false},
+		{"revoke", api.Revoke(), znn, true},
+		{"withdraw", api.WithdrawQsr(), znn, true},
+		{"collect", api.CollectReward(), znn, true},
+	}
+	for _, c := range cases {
+		if c.b.ToAddress != types.SentinelContract {
+			t.Fatalf("%s: ToAddress=%v want SentinelContract", c.name, c.b.ToAddress)
+		}
+		if c.b.TokenStandard.String() != c.wantZts {
+			t.Fatalf("%s: TokenStandard=%v want %v", c.name, c.b.TokenStandard.String(), c.wantZts)
+		}
+		if c.wantZero && (c.b.Amount == nil || c.b.Amount.Sign() != 0) {
+			t.Fatalf("%s: Amount=%v want 0", c.name, c.b.Amount)
+		}
+	}
+	// Register must carry the 5,000 ZNN collateral (5000 * 1e8).
+	if api.Register().Amount.String() != "500000000000" {
+		t.Fatalf("register amount=%v want 500000000000", api.Register().Amount)
+	}
+}
+
 func TestSentinelDTO(t *testing.T) {
 	owner, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
 	s := &embedded.SentinelInfo{

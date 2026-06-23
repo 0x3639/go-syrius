@@ -108,3 +108,80 @@ func validateProjectFields(name, description, url, znnNeeded, qsrNeeded string) 
 func parseHash(id string) (types.Hash, error) {
 	return types.HexToHash(strings.TrimSpace(id))
 }
+
+// GetProjects returns one page of Accelerator-Z projects (as the node orders
+// them). pageSize is clamped to [1,50].
+func (s *NomService) GetProjects(pageIndex, pageSize uint32) (ProjectListDTO, error) {
+	if pageSize == 0 || pageSize > 50 {
+		pageSize = 50
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return ProjectListDTO{}, errors.New("not connected")
+	}
+	list, err := client.AcceleratorApi.GetAll(pageIndex, pageSize)
+	if err != nil {
+		return ProjectListDTO{}, err
+	}
+	out := ProjectListDTO{Count: list.Count, List: make([]ProjectDTO, 0, len(list.List))}
+	for _, p := range list.List {
+		out.List = append(out.List, projectDTO(p))
+	}
+	return out, nil
+}
+
+// GetProject returns a single project (with embedded phases + vote tally).
+func (s *NomService) GetProject(id string) (ProjectDTO, error) {
+	h, err := parseHash(id)
+	if err != nil {
+		return ProjectDTO{}, fmt.Errorf("invalid project id: %w", err)
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return ProjectDTO{}, errors.New("not connected")
+	}
+	p, err := client.AcceleratorApi.GetProjectById(h)
+	if err != nil {
+		return ProjectDTO{}, err
+	}
+	return projectDTO(p), nil
+}
+
+// GetPhase returns a single phase (with its vote tally).
+func (s *NomService) GetPhase(id string) (PhaseDTO, error) {
+	h, err := parseHash(id)
+	if err != nil {
+		return PhaseDTO{}, fmt.Errorf("invalid phase id: %w", err)
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return PhaseDTO{}, errors.New("not connected")
+	}
+	ph, err := client.AcceleratorApi.GetPhaseById(h)
+	if err != nil {
+		return PhaseDTO{}, err
+	}
+	return phaseDTO(ph), nil
+}
+
+// GetVotablePillars returns the names of Pillars the active address owns, used
+// to gate and drive the voting UI. Empty slice ⇒ the address cannot vote.
+func (s *NomService) GetVotablePillars() ([]string, error) {
+	addr, ok := s.wallet.activeAddress()
+	if !ok {
+		return nil, errLocked
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return nil, errors.New("not connected")
+	}
+	pillars, err := client.PillarApi.GetByOwner(addr)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(pillars))
+	for _, p := range pillars {
+		names = append(names, p.Name)
+	}
+	return names, nil
+}

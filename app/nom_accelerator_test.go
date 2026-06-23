@@ -46,3 +46,28 @@ func TestProjectDTOMapsFieldsAndPhases(t *testing.T) {
 		t.Fatalf("phase fields not mapped: %+v", dto.Phases)
 	}
 }
+
+func TestAcceleratorReadsGuardInputs(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+
+	// Invalid hash is rejected before any node use.
+	if _, err := s.GetProject("not-a-hash"); err == nil {
+		t.Fatal("GetProject: invalid hash must error")
+	}
+	if _, err := s.GetPhase("not-a-hash"); err == nil {
+		t.Fatal("GetPhase: invalid hash must error")
+	}
+	// Valid hash with a disconnected node surfaces "not connected".
+	valid := "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+	if _, err := s.GetProject(valid); err == nil || err.Error() != "not connected" {
+		t.Fatalf("GetProject: want not-connected, got %v", err)
+	}
+	// Browse list also needs a node.
+	if _, err := s.GetProjects(0, 20); err == nil || err.Error() != "not connected" {
+		t.Fatalf("GetProjects: want not-connected, got %v", err)
+	}
+	// Voting eligibility needs an unlocked wallet (locked in this test).
+	if _, err := s.GetVotablePillars(); err == nil {
+		t.Fatal("GetVotablePillars: locked wallet must error")
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
 	"github.com/zenon-network/go-zenon/common/types"
 	api "github.com/zenon-network/go-zenon/rpc/api"
+	constants "github.com/zenon-network/go-zenon/vm/constants"
 )
 
 // formatBaseAmount renders a base-unit integer string as a human decimal string
@@ -658,4 +660,53 @@ func (s *NomService) GetTokenByZts(zts string) (TokenInfo, error) {
 		return TokenInfo{}, nil
 	}
 	return tokenInfoDTO(tok), nil
+}
+
+var (
+	tokenNameRe   = regexp.MustCompile(`^([a-zA-Z0-9]+[-._]?)*[a-zA-Z0-9]$`)
+	tokenSymbolRe = regexp.MustCompile(`^[A-Z0-9]+$`)
+	tokenDomainRe = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9-]{0,61}[A-Za-z0-9]\.)+[A-Za-z]{2,}$`)
+)
+
+// PrepareIssueToken validates every field against the on-chain rules (before any
+// node use), then builds an IssueToken template. The 1 ZNN fee is read from the
+// template, never hardcoded.
+func (s *NomService) PrepareIssueToken(name, symbol, domain, totalSupply, maxSupply string, decimals int, isMintable, isBurnable, isUtility bool) (CallPreview, error) {
+	if l := len(name); l == 0 || l > 40 || !tokenNameRe.MatchString(name) {
+		return CallPreview{}, errors.New("invalid token name (1-40 chars, letters/digits with single -._ separators)")
+	}
+	if l := len(symbol); l == 0 || l > 10 || !tokenSymbolRe.MatchString(symbol) {
+		return CallPreview{}, errors.New("invalid token symbol (1-10 chars, A-Z and 0-9 only)")
+	}
+	if len(domain) != 0 && (len(domain) > 128 || !tokenDomainRe.MatchString(domain)) {
+		return CallPreview{}, errors.New("invalid token domain")
+	}
+	if decimals < 0 || decimals > 18 {
+		return CallPreview{}, errors.New("decimals must be 0 to 18")
+	}
+	total, ok := new(big.Int).SetString(totalSupply, 10)
+	if !ok || total.Sign() < 0 {
+		return CallPreview{}, errors.New("invalid total supply")
+	}
+	max, ok := new(big.Int).SetString(maxSupply, 10)
+	if !ok || max.Sign() <= 0 {
+		return CallPreview{}, errors.New("max supply must be greater than 0")
+	}
+	if max.Cmp(constants.TokenMaxSupplyBig) > 0 {
+		return CallPreview{}, errors.New("max supply exceeds the maximum")
+	}
+	if max.Cmp(total) < 0 {
+		return CallPreview{}, errors.New("max supply must be >= total supply")
+	}
+	if !isMintable && max.Cmp(total) != 0 {
+		return CallPreview{}, errors.New("non-mintable token requires max supply == total supply")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.TokenApi.IssueToken(name, symbol, domain, total, max, uint8(decimals), isMintable, isBurnable, isUtility)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.TokenContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Issue token %s", symbol))
 }

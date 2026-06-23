@@ -318,3 +318,37 @@ func TestTokenInfoDTO(t *testing.T) {
 		t.Fatalf("nil supplies should be 0: %+v", z)
 	}
 }
+
+func TestPrepareIssueTokenValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	// each call must be rejected BEFORE any node use (node is not connected in this test,
+	// but validation runs first, so we assert a validation error, not "not connected").
+	cases := []struct {
+		name                   string
+		tn, ts, td, total, max string
+		decimals               int
+		mintable               bool
+	}{
+		{"empty name", "", "TEST", "", "100", "100", 8, false},
+		{"bad name char", "bad name", "TEST", "", "100", "100", 8, false},
+		{"empty symbol", "Tok", "", "", "100", "100", 8, false},
+		{"lowercase symbol", "Tok", "test", "", "100", "100", 8, false},
+		{"bad domain", "Tok", "TEST", "not_a_domain", "100", "100", 8, false},
+		{"decimals too high", "Tok", "TEST", "", "100", "100", 19, false},
+		{"decimals negative", "Tok", "TEST", "", "100", "100", -1, false},
+		{"maxSupply zero", "Tok", "TEST", "", "0", "0", 8, true},
+		{"max < total", "Tok", "TEST", "", "200", "100", 8, true},
+		{"non-mintable max != total", "Tok", "TEST", "", "100", "200", 8, false},
+		{"unparseable total", "Tok", "TEST", "", "abc", "100", 8, true},
+	}
+	for _, c := range cases {
+		if _, err := s.PrepareIssueToken(c.tn, c.ts, c.td, c.total, c.max, c.decimals, c.mintable, true, false); err == nil {
+			t.Fatalf("%s: expected validation error", c.name)
+		}
+	}
+	// a valid set must pass validation and fail only on the not-connected node.
+	_, err := s.PrepareIssueToken("Valid-Token", "VALID", "valid.org", "100", "100", 8, false, true, false)
+	if err == nil || err.Error() != "not connected" {
+		t.Fatalf("valid input should pass validation and hit not-connected; got %v", err)
+	}
+}

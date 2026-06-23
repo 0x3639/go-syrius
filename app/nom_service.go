@@ -678,6 +678,9 @@ func (s *NomService) PrepareIssueToken(name, symbol, domain, totalSupply, maxSup
 	if l := len(symbol); l == 0 || l > 10 || !tokenSymbolRe.MatchString(symbol) {
 		return CallPreview{}, errors.New("invalid token symbol (1-10 chars, A-Z and 0-9 only)")
 	}
+	if symbol == "ZNN" || symbol == "QSR" {
+		return CallPreview{}, errors.New("token symbol ZNN/QSR is reserved")
+	}
 	if len(domain) != 0 && (len(domain) > 128 || !tokenDomainRe.MatchString(domain)) {
 		return CallPreview{}, errors.New("invalid token domain")
 	}

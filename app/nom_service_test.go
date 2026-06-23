@@ -334,6 +334,8 @@ func TestPrepareIssueTokenValidatesInput(t *testing.T) {
 		{"bad name char", "bad name", "TEST", "", "100", "100", 8, false},
 		{"empty symbol", "Tok", "", "", "100", "100", 8, false},
 		{"lowercase symbol", "Tok", "test", "", "100", "100", 8, false},
+		{"reserved symbol ZNN", "Tok", "ZNN", "", "100", "100", 8, false},
+		{"reserved symbol QSR", "Tok", "QSR", "", "100", "100", 8, false},
 		{"bad domain", "Tok", "TEST", "not_a_domain", "100", "100", 8, false},
 		{"decimals too high", "Tok", "TEST", "", "100", "100", 19, false},
 		{"decimals negative", "Tok", "TEST", "", "100", "100", -1, false},

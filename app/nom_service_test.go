@@ -7,6 +7,7 @@ import (
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
 	nom "github.com/zenon-network/go-zenon/chain/nom"
 	"github.com/zenon-network/go-zenon/common/types"
+	constants "github.com/zenon-network/go-zenon/vm/constants"
 )
 
 func TestFusionEntryDTORevocable(t *testing.T) {
@@ -350,5 +351,72 @@ func TestPrepareIssueTokenValidatesInput(t *testing.T) {
 	_, err := s.PrepareIssueToken("Valid-Token", "VALID", "valid.org", "100", "100", 8, false, true, false)
 	if err == nil || err.Error() != "not connected" {
 		t.Fatalf("valid input should pass validation and hit not-connected; got %v", err)
+	}
+}
+
+func TestPrepareMintBurnUpdateValidateInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	good := types.ZnnTokenStandard.String()
+	addr := "z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"
+	// Mint: bad zts, non-positive amount, bad receiver
+	if _, err := s.PrepareMint("bad", "1", addr); err == nil {
+		t.Fatal("mint: bad zts must error")
+	}
+	if _, err := s.PrepareMint(good, "0", addr); err == nil {
+		t.Fatal("mint: zero amount must error")
+	}
+	if _, err := s.PrepareMint(good, "1", "notanaddr"); err == nil {
+		t.Fatal("mint: bad receiver must error")
+	}
+	// Burn: bad zts, non-positive amount
+	if _, err := s.PrepareBurn("bad", "1"); err == nil {
+		t.Fatal("burn: bad zts must error")
+	}
+	if _, err := s.PrepareBurn(good, "-1"); err == nil {
+		t.Fatal("burn: negative amount must error")
+	}
+	// Update: bad zts, bad owner
+	if _, err := s.PrepareUpdateToken("bad", addr, true, true); err == nil {
+		t.Fatal("update: bad zts must error")
+	}
+	if _, err := s.PrepareUpdateToken(good, "notanaddr", true, true); err == nil {
+		t.Fatal("update: bad owner must error")
+	}
+}
+
+func TestTokenTemplateTokenStandards(t *testing.T) {
+	api := embedded.NewTokenApi(nil) // builders construct blocks from args/constants; no client deref
+	zts := types.ZnnTokenStandard
+	recv, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
+	amt := big.NewInt(123)
+
+	issue := api.IssueToken("Tok", "TEST", "", big.NewInt(100), big.NewInt(100), 8, true, true, false)
+	if issue.ToAddress != types.TokenContract || issue.TokenStandard != types.ZnnTokenStandard {
+		t.Fatalf("issue: wrong to/zts: %+v", issue)
+	}
+	if issue.Amount.String() != constants.TokenIssueAmount.String() {
+		t.Fatalf("issue amount=%v want %v", issue.Amount, constants.TokenIssueAmount)
+	}
+
+	mint := api.Mint(zts, amt, recv)
+	if mint.ToAddress != types.TokenContract || mint.TokenStandard != types.ZnnTokenStandard || mint.Amount.Sign() != 0 {
+		t.Fatalf("mint: wrong to/zts/amount: %+v", mint)
+	}
+
+	update := api.UpdateToken(zts, recv, true, true)
+	if update.ToAddress != types.TokenContract || update.TokenStandard != types.ZnnTokenStandard || update.Amount.Sign() != 0 {
+		t.Fatalf("update: wrong to/zts/amount: %+v", update)
+	}
+
+	// BURN is the dynamic one: zts = the token being burned, amount = the burn amount.
+	burn := api.Burn(zts, amt)
+	if burn.ToAddress != types.TokenContract {
+		t.Fatalf("burn: wrong to: %+v", burn)
+	}
+	if burn.TokenStandard != zts {
+		t.Fatalf("burn: TokenStandard=%v want the burned token %v", burn.TokenStandard, zts)
+	}
+	if burn.Amount.Cmp(amt) != 0 {
+		t.Fatalf("burn: Amount=%v want %v", burn.Amount, amt)
 	}
 }

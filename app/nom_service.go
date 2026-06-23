@@ -710,3 +710,69 @@ func (s *NomService) PrepareIssueToken(name, symbol, domain, totalSupply, maxSup
 		callExpect{to: types.TokenContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
 		fmt.Sprintf("Issue token %s", symbol))
 }
+
+// PrepareMint builds a Mint template (owner-only on-chain). Inputs validated first.
+func (s *NomService) PrepareMint(zts, amount, receiver string) (CallPreview, error) {
+	parsedZts, err := types.ParseZTS(strings.TrimSpace(zts))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid ZTS: %w", err)
+	}
+	amt, ok := new(big.Int).SetString(strings.TrimSpace(amount), 10)
+	if !ok || amt.Sign() <= 0 {
+		return CallPreview{}, errors.New("mint amount must be greater than 0")
+	}
+	recv, err := types.ParseAddress(strings.TrimSpace(receiver))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid receiver: %w", err)
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.TokenApi.Mint(parsedZts, amt, recv)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.TokenContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Mint %s %s to %s", amt.String(), parsedZts.String(), recv.String()))
+}
+
+// PrepareBurn builds a Burn template. The burned token IS the block's token
+// standard and the amount is carried by the block.
+func (s *NomService) PrepareBurn(zts, amount string) (CallPreview, error) {
+	parsedZts, err := types.ParseZTS(strings.TrimSpace(zts))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid ZTS: %w", err)
+	}
+	amt, ok := new(big.Int).SetString(strings.TrimSpace(amount), 10)
+	if !ok || amt.Sign() <= 0 {
+		return CallPreview{}, errors.New("burn amount must be greater than 0")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.TokenApi.Burn(parsedZts, amt)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.TokenContract, zts: parsedZts, amount: amt, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Burn %s %s", amt.String(), parsedZts.String()))
+}
+
+// PrepareUpdateToken builds an UpdateToken template (transfer owner / one-way
+// disable mint/burn). Inputs validated first.
+func (s *NomService) PrepareUpdateToken(zts, newOwner string, isMintable, isBurnable bool) (CallPreview, error) {
+	parsedZts, err := types.ParseZTS(strings.TrimSpace(zts))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid ZTS: %w", err)
+	}
+	owner, err := types.ParseAddress(strings.TrimSpace(newOwner))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid owner: %w", err)
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.TokenApi.UpdateToken(parsedZts, owner, isMintable, isBurnable)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.TokenContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Update token %s", parsedZts.String()))
+}

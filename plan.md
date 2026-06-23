@@ -179,7 +179,7 @@ Each phase is independently shippable/testable and ordered by risk. Don't start 
 - [ ] **Pillars:** list pillars, delegate/undelegate, show delegation + rewards; (optional) pillar registration for operators.
 - [ ] **Sentinels:** register/revoke, collect.
 - [ ] **Tokens (ZTS):** issue, mint, burn, transfer ownership, view token info.
-- [ ] **Accelerator-Z:** browse projects/phases, donate, (optional) voting for pillar operators.
+- [x] **Accelerator-Z:** browse projects/phases, donate, voting for pillar operators, project/phase create+update (full parity). *(automated + live-read gates passed; manual GUI write-flow acceptance pending — see docs/phase5f-acceptance.md)*
 - [ ] (Optional/advanced) **Bridge / Liquidity / HTLC** screens.
 
 **Exit criteria:** staking, delegation, plasma, and token ops all work end-to-end against mainnet with small amounts.

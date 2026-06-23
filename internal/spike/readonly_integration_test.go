@@ -139,3 +139,43 @@ func TestReadOnlySentinels(t *testing.T) {
 	}
 	t.Logf("uncollected sentinel reward: znn=%v qsr=%v", r.ZnnAmount, r.QsrAmount)
 }
+
+// TestReadOnlyTokens exercises the Phase-5e token read path against a live node
+// (proves the embedded namespace + the exact TokenApi calls NomService uses).
+// Read-only: no PoW, no signing.
+//
+// Env:
+//   ZNN_NODE_URL  — ws:// or wss:// node URL (required)
+//   ZNN_TEST_ADDR — a z1… address (required; reads its owned tokens)
+func TestReadOnlyTokens(t *testing.T) {
+	url := os.Getenv("ZNN_NODE_URL")
+	addrStr := os.Getenv("ZNN_TEST_ADDR")
+	if url == "" || addrStr == "" {
+		t.Skip("set ZNN_NODE_URL and ZNN_TEST_ADDR to run")
+	}
+	client, err := rpc_client.NewRpcClient(url)
+	if err != nil {
+		t.Fatalf("NewRpcClient: %v", err)
+	}
+	defer client.Stop()
+	addr := types.ParseAddressPanic(addrStr)
+
+	owned, err := client.TokenApi.GetByOwner(addr, 0, 50)
+	if err != nil {
+		t.Fatalf("GetByOwner (embedded namespace enabled?): %v", err)
+	}
+	t.Logf("owned tokens: count=%d returned=%d", owned.Count, len(owned.List))
+	for i, tok := range owned.List {
+		if i >= 5 {
+			break
+		}
+		t.Logf("  %s (%s) zts=%s supply=%v/%v mintable=%v burnable=%v", tok.Symbol, tok.Name, tok.TokenStandard, tok.TotalSupply, tok.MaxSupply, tok.IsMintable, tok.IsBurnable)
+	}
+
+	// GetByZts on a well-known token (ZNN) proves the single-token read path.
+	znn, err := client.TokenApi.GetByZts(types.ZnnTokenStandard)
+	if err != nil {
+		t.Fatalf("GetByZts(ZNN): %v", err)
+	}
+	t.Logf("ZNN token: %s (%s) decimals=%d totalSupply=%v", znn.Symbol, znn.Name, znn.Decimals, znn.TotalSupply)
+}

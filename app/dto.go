@@ -222,3 +222,18 @@ type SentinelInfo struct {
 	RevokeCooldown        int64  `json:"revokeCooldown"`
 	Active                bool   `json:"active"`
 }
+
+// TokenInfo is one ZTS token's metadata. An empty TokenStandard means not found.
+type TokenInfo struct {
+	Name          string `json:"name"`
+	Symbol        string `json:"symbol"`
+	Domain        string `json:"domain"`
+	TokenStandard string `json:"tokenStandard"`
+	Owner         string `json:"owner"`
+	TotalSupply   string `json:"totalSupply"`
+	MaxSupply     string `json:"maxSupply"`
+	Decimals      int    `json:"decimals"`
+	IsMintable    bool   `json:"isMintable"`
+	IsBurnable    bool   `json:"isBurnable"`
+	IsUtility     bool   `json:"isUtility"`
+}

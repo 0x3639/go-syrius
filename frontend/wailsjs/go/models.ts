@@ -346,6 +346,38 @@ export namespace app {
 	        this.amount = source["amount"];
 	    }
 	}
+	export class TokenInfo {
+	    name: string;
+	    symbol: string;
+	    domain: string;
+	    tokenStandard: string;
+	    owner: string;
+	    totalSupply: string;
+	    maxSupply: string;
+	    decimals: number;
+	    isMintable: boolean;
+	    isBurnable: boolean;
+	    isUtility: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new TokenInfo(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.symbol = source["symbol"];
+	        this.domain = source["domain"];
+	        this.tokenStandard = source["tokenStandard"];
+	        this.owner = source["owner"];
+	        this.totalSupply = source["totalSupply"];
+	        this.maxSupply = source["maxSupply"];
+	        this.decimals = source["decimals"];
+	        this.isMintable = source["isMintable"];
+	        this.isBurnable = source["isBurnable"];
+	        this.isUtility = source["isUtility"];
+	    }
+	}
 	export class TxRecord {
 	    hash: string;
 	    direction: string;

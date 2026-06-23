@@ -7,6 +7,7 @@ import (
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
 	nom "github.com/zenon-network/go-zenon/chain/nom"
 	"github.com/zenon-network/go-zenon/common/types"
+	constants "github.com/zenon-network/go-zenon/vm/constants"
 )
 
 func TestFusionEntryDTORevocable(t *testing.T) {
@@ -287,5 +288,143 @@ func TestSentinelDTO(t *testing.T) {
 	// no sentinel: zero RegistrationTimestamp → empty Owner (treated as none)
 	if sentinelDTO(&embedded.SentinelInfo{Owner: owner}).Owner != "" {
 		t.Fatal("zero RegistrationTimestamp should map to empty Owner")
+	}
+}
+
+func TestTokenInfoDTO(t *testing.T) {
+	owner, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
+	zts, _ := types.ParseZTS("zts1znnxxxxxxxxxxxxx9z4ulx")
+	tok := &embedded.Token{
+		Name: "Test Token", Symbol: "TEST", Domain: "test.org",
+		TotalSupply: big.NewInt(1000), MaxSupply: big.NewInt(2000),
+		Decimals: 8, Owner: owner, TokenStandard: zts,
+		IsMintable: true, IsBurnable: false, IsUtility: true,
+	}
+	d := tokenInfoDTO(tok)
+	if d.Name != "Test Token" || d.Symbol != "TEST" || d.Domain != "test.org" {
+		t.Fatalf("bad strings: %+v", d)
+	}
+	if d.TotalSupply != "1000" || d.MaxSupply != "2000" || d.Decimals != 8 {
+		t.Fatalf("bad supply/decimals: %+v", d)
+	}
+	if d.Owner != owner.String() || d.TokenStandard != zts.String() {
+		t.Fatalf("bad owner/zts: %+v", d)
+	}
+	if !d.IsMintable || d.IsBurnable || !d.IsUtility {
+		t.Fatalf("bad flags: %+v", d)
+	}
+	// nil supplies (with a valid token standard) → "0"
+	z := tokenInfoDTO(&embedded.Token{Name: "X", TokenStandard: zts})
+	if z.TotalSupply != "0" || z.MaxSupply != "0" {
+		t.Fatalf("nil supplies should be 0: %+v", z)
+	}
+	// A zero token standard means "not found": GetByZts preallocates a *Token and the
+	// node leaves it zero-valued for a missing ZTS. It must map to an empty DTO (empty
+	// TokenStandard) so the frontend's `tokenStandard !== ''` check treats it as not found.
+	if nf := tokenInfoDTO(&embedded.Token{}); nf.TokenStandard != "" {
+		t.Fatalf("zero token standard should map to empty (not found): %+v", nf)
+	}
+}
+
+func TestPrepareIssueTokenValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	// each call must be rejected BEFORE any node use (node is not connected in this test,
+	// but validation runs first, so we assert a validation error, not "not connected").
+	cases := []struct {
+		name                   string
+		tn, ts, td, total, max string
+		decimals               int
+		mintable               bool
+	}{
+		{"empty name", "", "TEST", "", "100", "100", 8, false},
+		{"bad name char", "bad name", "TEST", "", "100", "100", 8, false},
+		{"empty symbol", "Tok", "", "", "100", "100", 8, false},
+		{"lowercase symbol", "Tok", "test", "", "100", "100", 8, false},
+		{"reserved symbol ZNN", "Tok", "ZNN", "", "100", "100", 8, false},
+		{"reserved symbol QSR", "Tok", "QSR", "", "100", "100", 8, false},
+		{"bad domain", "Tok", "TEST", "not_a_domain", "100", "100", 8, false},
+		{"decimals too high", "Tok", "TEST", "", "100", "100", 19, false},
+		{"decimals negative", "Tok", "TEST", "", "100", "100", -1, false},
+		{"maxSupply zero", "Tok", "TEST", "", "0", "0", 8, true},
+		{"max < total", "Tok", "TEST", "", "200", "100", 8, true},
+		{"non-mintable max != total", "Tok", "TEST", "", "100", "200", 8, false},
+		{"unparseable total", "Tok", "TEST", "", "abc", "100", 8, true},
+	}
+	for _, c := range cases {
+		if _, err := s.PrepareIssueToken(c.tn, c.ts, c.td, c.total, c.max, c.decimals, c.mintable, true, false); err == nil {
+			t.Fatalf("%s: expected validation error", c.name)
+		}
+	}
+	// a valid set must pass validation and fail only on the not-connected node.
+	_, err := s.PrepareIssueToken("Valid-Token", "VALID", "valid.org", "100", "100", 8, false, true, false)
+	if err == nil || err.Error() != "not connected" {
+		t.Fatalf("valid input should pass validation and hit not-connected; got %v", err)
+	}
+}
+
+func TestPrepareMintBurnUpdateValidateInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	good := types.ZnnTokenStandard.String()
+	addr := "z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"
+	// Mint: bad zts, non-positive amount, bad receiver
+	if _, err := s.PrepareMint("bad", "1", addr); err == nil {
+		t.Fatal("mint: bad zts must error")
+	}
+	if _, err := s.PrepareMint(good, "0", addr); err == nil {
+		t.Fatal("mint: zero amount must error")
+	}
+	if _, err := s.PrepareMint(good, "1", "notanaddr"); err == nil {
+		t.Fatal("mint: bad receiver must error")
+	}
+	// Burn: bad zts, non-positive amount
+	if _, err := s.PrepareBurn("bad", "1"); err == nil {
+		t.Fatal("burn: bad zts must error")
+	}
+	if _, err := s.PrepareBurn(good, "-1"); err == nil {
+		t.Fatal("burn: negative amount must error")
+	}
+	// Update: bad zts, bad owner
+	if _, err := s.PrepareUpdateToken("bad", addr, true, true); err == nil {
+		t.Fatal("update: bad zts must error")
+	}
+	if _, err := s.PrepareUpdateToken(good, "notanaddr", true, true); err == nil {
+		t.Fatal("update: bad owner must error")
+	}
+}
+
+func TestTokenTemplateTokenStandards(t *testing.T) {
+	api := embedded.NewTokenApi(nil) // builders construct blocks from args/constants; no client deref
+	zts := types.ZnnTokenStandard
+	recv, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
+	amt := big.NewInt(123)
+
+	issue := api.IssueToken("Tok", "TEST", "", big.NewInt(100), big.NewInt(100), 8, true, true, false)
+	if issue.ToAddress != types.TokenContract || issue.TokenStandard != types.ZnnTokenStandard {
+		t.Fatalf("issue: wrong to/zts: %+v", issue)
+	}
+	if issue.Amount.String() != constants.TokenIssueAmount.String() {
+		t.Fatalf("issue amount=%v want %v", issue.Amount, constants.TokenIssueAmount)
+	}
+
+	mint := api.Mint(zts, amt, recv)
+	if mint.ToAddress != types.TokenContract || mint.TokenStandard != types.ZnnTokenStandard || mint.Amount.Sign() != 0 {
+		t.Fatalf("mint: wrong to/zts/amount: %+v", mint)
+	}
+
+	update := api.UpdateToken(zts, recv, true, true)
+	if update.ToAddress != types.TokenContract || update.TokenStandard != types.ZnnTokenStandard || update.Amount.Sign() != 0 {
+		t.Fatalf("update: wrong to/zts/amount: %+v", update)
+	}
+
+	// BURN is the dynamic one: zts = the token being burned, amount = the burn amount.
+	burn := api.Burn(zts, amt)
+	if burn.ToAddress != types.TokenContract {
+		t.Fatalf("burn: wrong to: %+v", burn)
+	}
+	if burn.TokenStandard != zts {
+		t.Fatalf("burn: TokenStandard=%v want the burned token %v", burn.TokenStandard, zts)
+	}
+	if burn.Amount.Cmp(amt) != 0 {
+		t.Fatalf("burn: Amount=%v want %v", burn.Amount, amt)
 	}
 }

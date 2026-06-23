@@ -13,6 +13,7 @@
   import Stake from './routes/Stake.svelte'
   import Pillars from './routes/Pillars.svelte'
   import Sentinels from './routes/Sentinels.svelte'
+  import Tokens from './routes/Tokens.svelte'
   import Settings from './routes/Settings.svelte'
   onMount(async () => {
     try {
@@ -36,6 +37,8 @@
   <Pillars />
 {:else if $view === 'sentinels'}
   <Sentinels />
+{:else if $view === 'tokens'}
+  <Tokens />
 {:else if $view === 'settings'}
   <Settings />
 {:else}

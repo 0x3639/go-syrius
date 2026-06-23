@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
 	"github.com/zenon-network/go-zenon/common/types"
 	api "github.com/zenon-network/go-zenon/rpc/api"
+	constants "github.com/zenon-network/go-zenon/vm/constants"
 )
 
 // formatBaseAmount renders a base-unit integer string as a human decimal string
@@ -584,4 +586,203 @@ func (s *NomService) GetSentinelReward() (RewardInfo, error) {
 		qsr = r.QsrAmount.String()
 	}
 	return RewardInfo{Znn: znn, Qsr: qsr}, nil
+}
+
+// tokenInfoDTO maps an SDK Token to the DTO. nil supplies map to "0".
+func tokenInfoDTO(t *embedded.Token) TokenInfo {
+	// "Not found": SDK GetByZts preallocates a *Token, so the node leaves it
+	// zero-valued (zero TokenStandard) for a missing ZTS. The zero standard would
+	// otherwise bech32-encode to a non-empty string and read as a real token, so
+	// map it to an empty DTO (empty TokenStandard signals not-found to the frontend).
+	if t == nil || t.TokenStandard == types.ZeroTokenStandard {
+		return TokenInfo{}
+	}
+	total, max := "0", "0"
+	if t.TotalSupply != nil {
+		total = t.TotalSupply.String()
+	}
+	if t.MaxSupply != nil {
+		max = t.MaxSupply.String()
+	}
+	return TokenInfo{
+		Name:          t.Name,
+		Symbol:        t.Symbol,
+		Domain:        t.Domain,
+		TokenStandard: t.TokenStandard.String(),
+		Owner:         t.Owner.String(),
+		TotalSupply:   total,
+		MaxSupply:     max,
+		Decimals:      int(t.Decimals),
+		IsMintable:    t.IsMintable,
+		IsBurnable:    t.IsBurnable,
+		IsUtility:     t.IsUtility,
+	}
+}
+
+// GetMyTokens returns the tokens owned by the active address.
+func (s *NomService) GetMyTokens() ([]TokenInfo, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return nil, errors.New("not connected")
+	}
+	addr, ok := s.wallet.activeAddress()
+	if !ok {
+		return nil, errLocked
+	}
+	out := []TokenInfo{}
+	var pageIndex uint32 = 0
+	const pageSize uint32 = 50
+	for {
+		list, err := client.TokenApi.GetByOwner(addr, pageIndex, pageSize)
+		if err != nil {
+			return nil, err
+		}
+		for _, t := range list.List {
+			out = append(out, tokenInfoDTO(t))
+		}
+		if len(out) >= list.Count || len(list.List) == 0 {
+			break
+		}
+		pageIndex++
+	}
+	return out, nil
+}
+
+// GetTokenByZts returns one token's metadata. zts is validated before any node
+// use; an empty TokenStandard in the result means not found.
+func (s *NomService) GetTokenByZts(zts string) (TokenInfo, error) {
+	parsed, err := types.ParseZTS(strings.TrimSpace(zts))
+	if err != nil {
+		return TokenInfo{}, fmt.Errorf("invalid ZTS: %w", err)
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return TokenInfo{}, errors.New("not connected")
+	}
+	tok, err := client.TokenApi.GetByZts(parsed)
+	if err != nil {
+		return TokenInfo{}, err
+	}
+	if tok == nil {
+		return TokenInfo{}, nil
+	}
+	return tokenInfoDTO(tok), nil
+}
+
+var (
+	tokenNameRe   = regexp.MustCompile(`^([a-zA-Z0-9]+[-._]?)*[a-zA-Z0-9]$`)
+	tokenSymbolRe = regexp.MustCompile(`^[A-Z0-9]+$`)
+	tokenDomainRe = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9-]{0,61}[A-Za-z0-9]\.)+[A-Za-z]{2,}$`)
+)
+
+// PrepareIssueToken validates every field against the on-chain rules (before any
+// node use), then builds an IssueToken template. The 1 ZNN fee is read from the
+// template, never hardcoded.
+func (s *NomService) PrepareIssueToken(name, symbol, domain, totalSupply, maxSupply string, decimals int, isMintable, isBurnable, isUtility bool) (CallPreview, error) {
+	if l := len(name); l == 0 || l > 40 || !tokenNameRe.MatchString(name) {
+		return CallPreview{}, errors.New("invalid token name (1-40 chars, letters/digits with single -._ separators)")
+	}
+	if l := len(symbol); l == 0 || l > 10 || !tokenSymbolRe.MatchString(symbol) {
+		return CallPreview{}, errors.New("invalid token symbol (1-10 chars, A-Z and 0-9 only)")
+	}
+	if symbol == "ZNN" || symbol == "QSR" {
+		return CallPreview{}, errors.New("token symbol ZNN/QSR is reserved")
+	}
+	if len(domain) != 0 && (len(domain) > 128 || !tokenDomainRe.MatchString(domain)) {
+		return CallPreview{}, errors.New("invalid token domain")
+	}
+	if decimals < 0 || decimals > 18 {
+		return CallPreview{}, errors.New("decimals must be 0 to 18")
+	}
+	total, ok := new(big.Int).SetString(totalSupply, 10)
+	if !ok || total.Sign() < 0 {
+		return CallPreview{}, errors.New("invalid total supply")
+	}
+	max, ok := new(big.Int).SetString(maxSupply, 10)
+	if !ok || max.Sign() <= 0 {
+		return CallPreview{}, errors.New("max supply must be greater than 0")
+	}
+	if max.Cmp(constants.TokenMaxSupplyBig) > 0 {
+		return CallPreview{}, errors.New("max supply exceeds the maximum")
+	}
+	if max.Cmp(total) < 0 {
+		return CallPreview{}, errors.New("max supply must be >= total supply")
+	}
+	if !isMintable && max.Cmp(total) != 0 {
+		return CallPreview{}, errors.New("non-mintable token requires max supply == total supply")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.TokenApi.IssueToken(name, symbol, domain, total, max, uint8(decimals), isMintable, isBurnable, isUtility)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.TokenContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Issue token %s", symbol))
+}
+
+// PrepareMint builds a Mint template (owner-only on-chain). Inputs validated first.
+func (s *NomService) PrepareMint(zts, amount, receiver string) (CallPreview, error) {
+	parsedZts, err := types.ParseZTS(strings.TrimSpace(zts))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid ZTS: %w", err)
+	}
+	amt, ok := new(big.Int).SetString(strings.TrimSpace(amount), 10)
+	if !ok || amt.Sign() <= 0 {
+		return CallPreview{}, errors.New("mint amount must be greater than 0")
+	}
+	recv, err := types.ParseAddress(strings.TrimSpace(receiver))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid receiver: %w", err)
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.TokenApi.Mint(parsedZts, amt, recv)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.TokenContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Mint %s %s to %s", amt.String(), parsedZts.String(), recv.String()))
+}
+
+// PrepareBurn builds a Burn template. The burned token IS the block's token
+// standard and the amount is carried by the block.
+func (s *NomService) PrepareBurn(zts, amount string) (CallPreview, error) {
+	parsedZts, err := types.ParseZTS(strings.TrimSpace(zts))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid ZTS: %w", err)
+	}
+	amt, ok := new(big.Int).SetString(strings.TrimSpace(amount), 10)
+	if !ok || amt.Sign() <= 0 {
+		return CallPreview{}, errors.New("burn amount must be greater than 0")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.TokenApi.Burn(parsedZts, amt)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.TokenContract, zts: parsedZts, amount: amt, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Burn %s %s", amt.String(), parsedZts.String()))
+}
+
+// PrepareUpdateToken builds an UpdateToken template (transfer owner / one-way
+// disable mint/burn). Inputs validated first.
+func (s *NomService) PrepareUpdateToken(zts, newOwner string, isMintable, isBurnable bool) (CallPreview, error) {
+	parsedZts, err := types.ParseZTS(strings.TrimSpace(zts))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid ZTS: %w", err)
+	}
+	owner, err := types.ParseAddress(strings.TrimSpace(newOwner))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid owner: %w", err)
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.TokenApi.UpdateToken(parsedZts, owner, isMintable, isBurnable)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.TokenContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Update token %s", parsedZts.String()))
 }

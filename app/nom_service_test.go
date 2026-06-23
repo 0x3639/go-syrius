@@ -313,10 +313,16 @@ func TestTokenInfoDTO(t *testing.T) {
 	if !d.IsMintable || d.IsBurnable || !d.IsUtility {
 		t.Fatalf("bad flags: %+v", d)
 	}
-	// nil supplies → "0"
-	z := tokenInfoDTO(&embedded.Token{Name: "X"})
+	// nil supplies (with a valid token standard) → "0"
+	z := tokenInfoDTO(&embedded.Token{Name: "X", TokenStandard: zts})
 	if z.TotalSupply != "0" || z.MaxSupply != "0" {
 		t.Fatalf("nil supplies should be 0: %+v", z)
+	}
+	// A zero token standard means "not found": GetByZts preallocates a *Token and the
+	// node leaves it zero-valued for a missing ZTS. It must map to an empty DTO (empty
+	// TokenStandard) so the frontend's `tokenStandard !== ''` check treats it as not found.
+	if nf := tokenInfoDTO(&embedded.Token{}); nf.TokenStandard != "" {
+		t.Fatalf("zero token standard should map to empty (not found): %+v", nf)
 	}
 }
 

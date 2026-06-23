@@ -590,6 +590,13 @@ func (s *NomService) GetSentinelReward() (RewardInfo, error) {
 
 // tokenInfoDTO maps an SDK Token to the DTO. nil supplies map to "0".
 func tokenInfoDTO(t *embedded.Token) TokenInfo {
+	// "Not found": SDK GetByZts preallocates a *Token, so the node leaves it
+	// zero-valued (zero TokenStandard) for a missing ZTS. The zero standard would
+	// otherwise bech32-encode to a non-empty string and read as a real token, so
+	// map it to an empty DTO (empty TokenStandard signals not-found to the frontend).
+	if t == nil || t.TokenStandard == types.ZeroTokenStandard {
+		return TokenInfo{}
+	}
 	total, max := "0", "0"
 	if t.TotalSupply != nil {
 		total = t.TotalSupply.String()

@@ -10,8 +10,13 @@
 Full-parity Accelerator-Z: browse projects/phases, donate (ZNN/QSR), Pillar voting
 (VoteByName), and project/phase create + update. Backend in `app/nom_accelerator.go` (9 NomService
 methods + 4 DTOs in `app/dto.go`); frontend store `accelerator.ts` + route `Accelerator.svelte`.
-Built on `znn-sdk-go v0.1.18`, which fixed a backwards Accelerator vote-mapping and exported
-`embedded.VoteYes`(0)/`VoteNo`(1)/`VoteAbstain`(2).
+Built on `znn-sdk-go v0.1.19`: v0.1.18 fixed a backwards Accelerator vote-mapping and exported
+`embedded.VoteYes`(0)/`VoteNo`(1)/`VoteAbstain`(2); v0.1.19 fixed `AcceleratorApi.UpdatePhase`,
+which packed the wrong ABI method (`Update`, 0 inputs) with 6 args and panicked before returning.
+
+Note on UpdatePhase id semantics: on-chain `UpdatePhase` is keyed by the **project id** (the
+contract looks up the project and updates its current voting phase), mirroring `AddPhase` — not a
+phase id. The route field is labelled "project id" accordingly.
 
 ## Automated verification (2026-06-23) — PASSED
 - `GOWORK=off go test ./...` — green across all packages: `app`, `internal/compat`,

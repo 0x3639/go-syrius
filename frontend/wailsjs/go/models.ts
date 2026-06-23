@@ -132,6 +132,72 @@ export namespace app {
 	        this.peers = source["peers"];
 	    }
 	}
+	export class VoteBreakdownDTO {
+	    total: number;
+	    yes: number;
+	    no: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new VoteBreakdownDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.yes = source["yes"];
+	        this.no = source["no"];
+	    }
+	}
+	export class PhaseDTO {
+	    id: string;
+	    projectId: string;
+	    name: string;
+	    description: string;
+	    url: string;
+	    znnFundsNeeded: string;
+	    qsrFundsNeeded: string;
+	    creationTimestamp: number;
+	    acceptedTimestamp: number;
+	    status: number;
+	    votes: VoteBreakdownDTO;
+	
+	    static createFrom(source: any = {}) {
+	        return new PhaseDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.projectId = source["projectId"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.url = source["url"];
+	        this.znnFundsNeeded = source["znnFundsNeeded"];
+	        this.qsrFundsNeeded = source["qsrFundsNeeded"];
+	        this.creationTimestamp = source["creationTimestamp"];
+	        this.acceptedTimestamp = source["acceptedTimestamp"];
+	        this.status = source["status"];
+	        this.votes = this.convertValues(source["votes"], VoteBreakdownDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class PillarSummary {
 	    name: string;
 	    rank: number;
@@ -167,6 +233,90 @@ export namespace app {
 	        this.currentPlasma = source["currentPlasma"];
 	        this.maxPlasma = source["maxPlasma"];
 	    }
+	}
+	export class ProjectDTO {
+	    id: string;
+	    owner: string;
+	    name: string;
+	    description: string;
+	    url: string;
+	    znnFundsNeeded: string;
+	    qsrFundsNeeded: string;
+	    creationTimestamp: number;
+	    lastUpdateTimestamp: number;
+	    status: number;
+	    votes: VoteBreakdownDTO;
+	    phases: PhaseDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ProjectDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.owner = source["owner"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.url = source["url"];
+	        this.znnFundsNeeded = source["znnFundsNeeded"];
+	        this.qsrFundsNeeded = source["qsrFundsNeeded"];
+	        this.creationTimestamp = source["creationTimestamp"];
+	        this.lastUpdateTimestamp = source["lastUpdateTimestamp"];
+	        this.status = source["status"];
+	        this.votes = this.convertValues(source["votes"], VoteBreakdownDTO);
+	        this.phases = this.convertValues(source["phases"], PhaseDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ProjectListDTO {
+	    count: number;
+	    list: ProjectDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ProjectListDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.count = source["count"];
+	        this.list = this.convertValues(source["list"], ProjectDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class RewardInfo {
 	    znn: string;
@@ -358,11 +508,11 @@ export namespace app {
 	    isMintable: boolean;
 	    isBurnable: boolean;
 	    isUtility: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new TokenInfo(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -422,6 +572,7 @@ export namespace app {
 	        this.amount = source["amount"];
 	    }
 	}
+	
 	export class WalletMeta {
 	    name: string;
 	    baseAddress: string;

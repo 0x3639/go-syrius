@@ -22,6 +22,10 @@ export function GetMyTokens() {
   return window['go']['app']['NomService']['GetMyTokens']();
 }
 
+export function GetPhase(arg1) {
+  return window['go']['app']['NomService']['GetPhase'](arg1);
+}
+
 export function GetPillarList() {
   return window['go']['app']['NomService']['GetPillarList']();
 }
@@ -32,6 +36,14 @@ export function GetPillarReward() {
 
 export function GetPlasmaInfo() {
   return window['go']['app']['NomService']['GetPlasmaInfo']();
+}
+
+export function GetProject(arg1) {
+  return window['go']['app']['NomService']['GetProject'](arg1);
+}
+
+export function GetProjects(arg1, arg2) {
+  return window['go']['app']['NomService']['GetProjects'](arg1, arg2);
 }
 
 export function GetSentinel() {
@@ -52,6 +64,14 @@ export function GetTokenByZts(arg1) {
 
 export function GetUncollectedReward() {
   return window['go']['app']['NomService']['GetUncollectedReward']();
+}
+
+export function GetVotablePillars() {
+  return window['go']['app']['NomService']['GetVotablePillars']();
+}
+
+export function PrepareAddPhase(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['app']['NomService']['PrepareAddPhase'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function PrepareBurn(arg1, arg2) {
@@ -78,12 +98,20 @@ export function PrepareCollectSentinelReward() {
   return window['go']['app']['NomService']['PrepareCollectSentinelReward']();
 }
 
+export function PrepareCreateProject(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['app']['NomService']['PrepareCreateProject'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function PrepareDelegate(arg1) {
   return window['go']['app']['NomService']['PrepareDelegate'](arg1);
 }
 
 export function PrepareDepositQsr(arg1) {
   return window['go']['app']['NomService']['PrepareDepositQsr'](arg1);
+}
+
+export function PrepareDonate(arg1, arg2) {
+  return window['go']['app']['NomService']['PrepareDonate'](arg1, arg2);
 }
 
 export function PrepareFuse(arg1, arg2) {
@@ -114,8 +142,16 @@ export function PrepareUndelegate() {
   return window['go']['app']['NomService']['PrepareUndelegate']();
 }
 
+export function PrepareUpdatePhase(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['app']['NomService']['PrepareUpdatePhase'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
 export function PrepareUpdateToken(arg1, arg2, arg3, arg4) {
   return window['go']['app']['NomService']['PrepareUpdateToken'](arg1, arg2, arg3, arg4);
+}
+
+export function PrepareVote(arg1, arg2, arg3) {
+  return window['go']['app']['NomService']['PrepareVote'](arg1, arg2, arg3);
 }
 
 export function PrepareWithdrawQsr() {

@@ -14,6 +14,7 @@
   import Pillars from './routes/Pillars.svelte'
   import Sentinels from './routes/Sentinels.svelte'
   import Tokens from './routes/Tokens.svelte'
+  import Accelerator from './routes/Accelerator.svelte'
   import Settings from './routes/Settings.svelte'
   onMount(async () => {
     try {
@@ -39,6 +40,8 @@
   <Sentinels />
 {:else if $view === 'tokens'}
   <Tokens />
+{:else if $view === 'accelerator'}
+  <Accelerator />
 {:else if $view === 'settings'}
   <Settings />
 {:else}

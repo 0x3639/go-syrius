@@ -197,4 +197,10 @@ func TestProjectWriteTemplateTokenStandards(t *testing.T) {
 	if add.ToAddress != types.AcceleratorContract || add.Amount.Sign() != 0 {
 		t.Fatalf("addphase template wrong: %+v", add)
 	}
+	// UpdatePhase must build without panicking — the SDK <v0.1.19 packed the
+	// wrong ABI method ("Update", 0 inputs) with 6 args and panicked here.
+	update := api.UpdatePhase(h, "Phase", "desc", "https://zenon.org", big.NewInt(1), big.NewInt(1))
+	if update.ToAddress != types.AcceleratorContract || update.TokenStandard != types.ZnnTokenStandard || update.Amount.Sign() != 0 {
+		t.Fatalf("updatephase template wrong: %+v", update)
+	}
 }

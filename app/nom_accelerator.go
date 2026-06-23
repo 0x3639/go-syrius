@@ -277,11 +277,14 @@ func (s *NomService) PrepareAddPhase(projectId, name, description, url, znnNeede
 		fmt.Sprintf("Add phase %q to project %s", name, projectId))
 }
 
-// PrepareUpdatePhase builds an UpdatePhase template for an existing phase.
-func (s *NomService) PrepareUpdatePhase(phaseId, name, description, url, znnNeeded, qsrNeeded string) (CallPreview, error) {
-	h, err := parseHash(phaseId)
+// PrepareUpdatePhase builds an UpdatePhase template. On-chain UpdatePhase is
+// keyed by the PROJECT id (not a phase id): the contract looks up the project
+// and updates its current (last) phase, which must still be in voting. The id
+// argument is therefore a project id, mirroring AddPhase.
+func (s *NomService) PrepareUpdatePhase(projectId, name, description, url, znnNeeded, qsrNeeded string) (CallPreview, error) {
+	h, err := parseHash(projectId)
 	if err != nil {
-		return CallPreview{}, fmt.Errorf("invalid phase id: %w", err)
+		return CallPreview{}, fmt.Errorf("invalid project id: %w", err)
 	}
 	znn, qsr, err := validateProjectFields(name, description, url, znnNeeded, qsrNeeded)
 	if err != nil {
@@ -294,5 +297,5 @@ func (s *NomService) PrepareUpdatePhase(phaseId, name, description, url, znnNeed
 	template := client.AcceleratorApi.UpdatePhase(h, name, description, url, znn, qsr)
 	return s.tx.prepareCall(template,
 		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Update phase %s", phaseId))
+		fmt.Sprintf("Update current phase of project %s", projectId))
 }

@@ -15,10 +15,11 @@
   let voteId = '', votePillar = '', voteChoice = 0 // 0=yes,1=no,2=abstain (embedded.Vote*)
   // create project
   let cName = '', cDesc = '', cUrl = '', cZnn = '', cQsr = ''
-  // add/update phase
-  let phProjectOrPhaseId = '', phName = '', phDesc = '', phUrl = '', phZnn = '', phQsr = ''
+  // add/update phase — both are keyed by the PROJECT id on-chain (UpdatePhase
+  // updates the project's current phase)
+  let phProjectId = '', phName = '', phDesc = '', phUrl = '', phZnn = '', phQsr = ''
 
-  const STATUS = ['Voting', 'Active', 'Paid', 'Closed']
+  const STATUS = ['Voting', 'Active', 'Paid', 'Closed', 'Completed']
   function statusLabel(n: number) { return STATUS[n] ?? `#${n}` }
 
   onMount(() => { loadProjects(); loadVotablePillars() })
@@ -41,11 +42,11 @@
   }
   async function addPhase() {
     error = ''
-    try { awaitConfirm((await Nom.PrepareAddPhase(phProjectOrPhaseId, phName, phDesc, phUrl, phZnn, phQsr)) as any) } catch (e) { fail(e) }
+    try { awaitConfirm((await Nom.PrepareAddPhase(phProjectId, phName, phDesc, phUrl, phZnn, phQsr)) as any) } catch (e) { fail(e) }
   }
   async function updatePhase() {
     error = ''
-    try { awaitConfirm((await Nom.PrepareUpdatePhase(phProjectOrPhaseId, phName, phDesc, phUrl, phZnn, phQsr)) as any) } catch (e) { fail(e) }
+    try { awaitConfirm((await Nom.PrepareUpdatePhase(phProjectId, phName, phDesc, phUrl, phZnn, phQsr)) as any) } catch (e) { fail(e) }
   }
 </script>
 
@@ -122,7 +123,8 @@
       </div>
       <div class="space-y-2">
         <h3 class="text-xs text-muted">Add / update phase</h3>
-        <input class="w-full rounded bg-bg px-2 py-1 text-sm" placeholder="project id (add) or phase id (update)" bind:value={phProjectOrPhaseId} aria-label="phase target id" />
+        <p class="text-xs text-muted">Both use the project id; Update phase edits the project's current (voting) phase.</p>
+        <input class="w-full rounded bg-bg px-2 py-1 text-sm" placeholder="project id" bind:value={phProjectId} aria-label="project id" />
         <div class="grid grid-cols-2 gap-2">
           <input class="rounded bg-bg px-2 py-1 text-sm" placeholder="name" bind:value={phName} aria-label="phase name" />
           <input class="rounded bg-bg px-2 py-1 text-sm" placeholder="url" bind:value={phUrl} aria-label="phase url" />

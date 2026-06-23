@@ -17,7 +17,7 @@ func newConfigService() *ConfigService { return &ConfigService{} }
 // dataDir is the app data directory; GO_SYRIUS_DATA_DIR overrides it (tests).
 func (c *ConfigService) dataDir() (string, error) {
 	if d := os.Getenv("GO_SYRIUS_DATA_DIR"); d != "" {
-		if err := os.MkdirAll(d, 0o700); err != nil {
+		if err := os.MkdirAll(d, 0o700); err != nil { // #nosec G703 -- data dir from app-owned env override (GO_SYRIUS_DATA_DIR), not untrusted input
 			return "", err
 		}
 		return d, nil
@@ -83,7 +83,7 @@ func (c *ConfigService) GetSettings() (Settings, error) {
 	if err != nil {
 		return Settings{}, err
 	}
-	raw, err := os.ReadFile(filepath.Join(d, "settings.json"))
+	raw, err := os.ReadFile(filepath.Join(d, "settings.json")) // #nosec G304 -- constant filename within the app data dir
 	if os.IsNotExist(err) {
 		return defaultSettings(), nil
 	}

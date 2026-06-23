@@ -350,7 +350,7 @@ func (w *WalletService) activeAddressLocked() (types.Address, bool) {
 	if w.keystore == nil {
 		return types.Address{}, false
 	}
-	_, kp, err := w.keystore.DeriveForIndexPath(uint32(w.active))
+	_, kp, err := w.keystore.DeriveForIndexPath(uint32(w.active)) // #nosec G115 -- account index is bounded small
 	if err != nil {
 		return types.Address{}, false
 	}
@@ -420,27 +420,27 @@ func (w *WalletService) RevealMnemonic(password string) (string, error) {
 }
 
 func copyFile(src, dst string) error {
-	in, err := os.Open(src)
+	in, err := os.Open(src) // #nosec G304 -- src is an app-internal keystore path, not user/network input
 	if err != nil {
 		return err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- dst is an app-internal keystore path
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		os.Remove(dst)
+		_ = out.Close()
+		_ = os.Remove(dst)
 		return err
 	}
 	if err := out.Sync(); err != nil {
-		out.Close()
-		os.Remove(dst)
+		_ = out.Close()
+		_ = os.Remove(dst)
 		return err
 	}
 	if err := out.Close(); err != nil {
-		os.Remove(dst)
+		_ = os.Remove(dst)
 		return err
 	}
 	return nil

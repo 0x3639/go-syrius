@@ -585,3 +585,77 @@ func (s *NomService) GetSentinelReward() (RewardInfo, error) {
 	}
 	return RewardInfo{Znn: znn, Qsr: qsr}, nil
 }
+
+// tokenInfoDTO maps an SDK Token to the DTO. nil supplies map to "0".
+func tokenInfoDTO(t *embedded.Token) TokenInfo {
+	total, max := "0", "0"
+	if t.TotalSupply != nil {
+		total = t.TotalSupply.String()
+	}
+	if t.MaxSupply != nil {
+		max = t.MaxSupply.String()
+	}
+	return TokenInfo{
+		Name:          t.Name,
+		Symbol:        t.Symbol,
+		Domain:        t.Domain,
+		TokenStandard: t.TokenStandard.String(),
+		Owner:         t.Owner.String(),
+		TotalSupply:   total,
+		MaxSupply:     max,
+		Decimals:      int(t.Decimals),
+		IsMintable:    t.IsMintable,
+		IsBurnable:    t.IsBurnable,
+		IsUtility:     t.IsUtility,
+	}
+}
+
+// GetMyTokens returns the tokens owned by the active address.
+func (s *NomService) GetMyTokens() ([]TokenInfo, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return nil, errors.New("not connected")
+	}
+	addr, ok := s.wallet.activeAddress()
+	if !ok {
+		return nil, errLocked
+	}
+	out := []TokenInfo{}
+	var pageIndex uint32 = 0
+	const pageSize uint32 = 50
+	for {
+		list, err := client.TokenApi.GetByOwner(addr, pageIndex, pageSize)
+		if err != nil {
+			return nil, err
+		}
+		for _, t := range list.List {
+			out = append(out, tokenInfoDTO(t))
+		}
+		if len(out) >= list.Count || len(list.List) == 0 {
+			break
+		}
+		pageIndex++
+	}
+	return out, nil
+}
+
+// GetTokenByZts returns one token's metadata. zts is validated before any node
+// use; an empty TokenStandard in the result means not found.
+func (s *NomService) GetTokenByZts(zts string) (TokenInfo, error) {
+	parsed, err := types.ParseZTS(strings.TrimSpace(zts))
+	if err != nil {
+		return TokenInfo{}, fmt.Errorf("invalid ZTS: %w", err)
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return TokenInfo{}, errors.New("not connected")
+	}
+	tok, err := client.TokenApi.GetByZts(parsed)
+	if err != nil {
+		return TokenInfo{}, err
+	}
+	if tok == nil {
+		return TokenInfo{}, nil
+	}
+	return tokenInfoDTO(tok), nil
+}

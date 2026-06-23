@@ -289,3 +289,32 @@ func TestSentinelDTO(t *testing.T) {
 		t.Fatal("zero RegistrationTimestamp should map to empty Owner")
 	}
 }
+
+func TestTokenInfoDTO(t *testing.T) {
+	owner, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
+	zts, _ := types.ParseZTS("zts1znnxxxxxxxxxxxxx9z4ulx")
+	tok := &embedded.Token{
+		Name: "Test Token", Symbol: "TEST", Domain: "test.org",
+		TotalSupply: big.NewInt(1000), MaxSupply: big.NewInt(2000),
+		Decimals: 8, Owner: owner, TokenStandard: zts,
+		IsMintable: true, IsBurnable: false, IsUtility: true,
+	}
+	d := tokenInfoDTO(tok)
+	if d.Name != "Test Token" || d.Symbol != "TEST" || d.Domain != "test.org" {
+		t.Fatalf("bad strings: %+v", d)
+	}
+	if d.TotalSupply != "1000" || d.MaxSupply != "2000" || d.Decimals != 8 {
+		t.Fatalf("bad supply/decimals: %+v", d)
+	}
+	if d.Owner != owner.String() || d.TokenStandard != zts.String() {
+		t.Fatalf("bad owner/zts: %+v", d)
+	}
+	if !d.IsMintable || d.IsBurnable || !d.IsUtility {
+		t.Fatalf("bad flags: %+v", d)
+	}
+	// nil supplies → "0"
+	z := tokenInfoDTO(&embedded.Token{Name: "X"})
+	if z.TotalSupply != "0" || z.MaxSupply != "0" {
+		t.Fatalf("nil supplies should be 0: %+v", z)
+	}
+}

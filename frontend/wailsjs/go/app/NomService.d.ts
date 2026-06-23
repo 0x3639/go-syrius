@@ -10,6 +10,8 @@ export function GetDepositedQsr():Promise<string>;
 
 export function GetFusionEntries():Promise<Array<app.FusionEntry>>;
 
+export function GetMyTokens():Promise<Array<app.TokenInfo>>;
+
 export function GetPillarList():Promise<Array<app.PillarSummary>>;
 
 export function GetPillarReward():Promise<app.RewardInfo>;
@@ -22,7 +24,11 @@ export function GetSentinelReward():Promise<app.RewardInfo>;
 
 export function GetStakeList():Promise<app.StakeInfo>;
 
+export function GetTokenByZts(arg1:string):Promise<app.TokenInfo>;
+
 export function GetUncollectedReward():Promise<app.RewardInfo>;
+
+export function PrepareBurn(arg1:string,arg2:string):Promise<app.CallPreview>;
 
 export function PrepareCancelFuse(arg1:string):Promise<app.CallPreview>;
 
@@ -40,6 +46,10 @@ export function PrepareDepositQsr(arg1:string):Promise<app.CallPreview>;
 
 export function PrepareFuse(arg1:string,arg2:string):Promise<app.CallPreview>;
 
+export function PrepareIssueToken(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:number,arg7:boolean,arg8:boolean,arg9:boolean):Promise<app.CallPreview>;
+
+export function PrepareMint(arg1:string,arg2:string,arg3:string):Promise<app.CallPreview>;
+
 export function PrepareRegisterSentinel():Promise<app.CallPreview>;
 
 export function PrepareRevokeSentinel():Promise<app.CallPreview>;
@@ -47,5 +57,7 @@ export function PrepareRevokeSentinel():Promise<app.CallPreview>;
 export function PrepareStake(arg1:string,arg2:string):Promise<app.CallPreview>;
 
 export function PrepareUndelegate():Promise<app.CallPreview>;
+
+export function PrepareUpdateToken(arg1:string,arg2:string,arg3:boolean,arg4:boolean):Promise<app.CallPreview>;
 
 export function PrepareWithdrawQsr():Promise<app.CallPreview>;

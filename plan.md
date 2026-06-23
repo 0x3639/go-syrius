@@ -186,7 +186,9 @@ Each phase is independently shippable/testable and ordered by risk. Don't start 
 
 ---
 
-### Phase 6 — Ledger hardware wallet ⏱ ~2–4 weeks (highest unknown)
+### Phase 6 — Ledger hardware wallet ⏱ ~2–4 weeks (highest unknown) — **DEFERRED (out of scope for now, 2026-06-23)**
+
+> Decision (2026-06-23): Ledger support is deferred and intentionally left out of the current plan. It is cleanly separable (alternate `signer/` implementation behind `TxService`) and can be picked up later without blocking Phase 7. `LedgerService` remains an unbuilt stub in the layout.
 
 **Goal:** hardware-signing parity. This is the messiest area because the original uses a Rust FFI lib (`ledger_ffi_rs`) and there's no first-class Go Zenon-Ledger binding.
 

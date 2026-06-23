@@ -2,10 +2,12 @@ package app
 
 import (
 	"math/big"
+	"strings"
 	"testing"
 
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
 	"github.com/zenon-network/go-zenon/common/types"
+	constants "github.com/zenon-network/go-zenon/vm/constants"
 )
 
 func TestProjectDTONilSafe(t *testing.T) {
@@ -135,5 +137,64 @@ func TestVoteTemplate(t *testing.T) {
 	v := api.VoteByName(h, "MyPillar", embedded.VoteYes)
 	if v.ToAddress != types.AcceleratorContract || v.TokenStandard != types.ZnnTokenStandard || v.Amount.Sign() != 0 {
 		t.Fatalf("vote template wrong: %+v", v)
+	}
+}
+
+func TestPrepareProjectWritesValidateInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	longName := strings.Repeat("x", 31)
+	goodURL := "https://zenon.org"
+
+	// CreateProject field validation (no id involved).
+	bad := []struct{ name, desc, url, znn, qsr string }{
+		{"", "desc", goodURL, "1", "1"},         // empty name
+		{longName, "desc", goodURL, "1", "1"},   // name too long
+		{"Proj", "", goodURL, "1", "1"},         // empty description
+		{"Proj", "desc", "not a url", "1", "1"}, // bad url
+		{"Proj", "desc", goodURL, "x", "1"},     // bad znn
+		{"Proj", "desc", goodURL, "1", "x"},     // bad qsr
+	}
+	for i, c := range bad {
+		if _, err := s.PrepareCreateProject(c.name, c.desc, c.url, c.znn, c.qsr); err == nil {
+			t.Fatalf("create case %d: expected validation error", i)
+		}
+	}
+	// Valid create → not connected.
+	if _, err := s.PrepareCreateProject("Proj", "A real description", goodURL, "100", "1000"); err == nil || err.Error() != "not connected" {
+		t.Fatalf("valid create should hit not-connected; got %v", err)
+	}
+
+	// AddPhase / UpdatePhase additionally validate the id.
+	valid := "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+	if _, err := s.PrepareAddPhase("bad-id", "Proj", "desc", goodURL, "1", "1"); err == nil {
+		t.Fatal("addphase: bad id must error")
+	}
+	if _, err := s.PrepareAddPhase(valid, "", "desc", goodURL, "1", "1"); err == nil {
+		t.Fatal("addphase: empty name must error")
+	}
+	if _, err := s.PrepareAddPhase(valid, "Phase", "desc", goodURL, "1", "1"); err == nil || err.Error() != "not connected" {
+		t.Fatalf("valid addphase should hit not-connected; got %v", err)
+	}
+	if _, err := s.PrepareUpdatePhase("bad-id", "Phase", "desc", goodURL, "1", "1"); err == nil {
+		t.Fatal("updatephase: bad id must error")
+	}
+	if _, err := s.PrepareUpdatePhase(valid, "Phase", "desc", goodURL, "1", "1"); err == nil || err.Error() != "not connected" {
+		t.Fatalf("valid updatephase should hit not-connected; got %v", err)
+	}
+}
+
+func TestProjectWriteTemplateTokenStandards(t *testing.T) {
+	api := embedded.NewAcceleratorApi(nil)
+	h := types.HexToHashPanic("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
+	create := api.CreateProject("Proj", "desc", "https://zenon.org", big.NewInt(100), big.NewInt(1000))
+	if create.ToAddress != types.AcceleratorContract || create.TokenStandard != types.ZnnTokenStandard {
+		t.Fatalf("create template wrong: %+v", create)
+	}
+	if create.Amount.Cmp(constants.ProjectCreationAmount) != 0 {
+		t.Fatalf("create fee=%v want %v", create.Amount, constants.ProjectCreationAmount)
+	}
+	add := api.AddPhase(h, "Phase", "desc", "https://zenon.org", big.NewInt(1), big.NewInt(1))
+	if add.ToAddress != types.AcceleratorContract || add.Amount.Sign() != 0 {
+		t.Fatalf("addphase template wrong: %+v", add)
 	}
 }

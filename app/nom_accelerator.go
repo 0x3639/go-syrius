@@ -238,3 +238,61 @@ func (s *NomService) PrepareVote(id, pillarName string, vote uint8) (CallPreview
 		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
 		fmt.Sprintf("Vote %s on %s as %s", label, id, name))
 }
+
+// PrepareCreateProject builds a CreateProject template. The 1 ZNN fee is read
+// from the template, never hardcoded. Fields are validated before node use.
+func (s *NomService) PrepareCreateProject(name, description, url, znnNeeded, qsrNeeded string) (CallPreview, error) {
+	znn, qsr, err := validateProjectFields(name, description, url, znnNeeded, qsrNeeded)
+	if err != nil {
+		return CallPreview{}, err
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.AcceleratorApi.CreateProject(name, description, url, znn, qsr)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Create project %q (1 ZNN fee)", name))
+}
+
+// PrepareAddPhase builds an AddPhase template for an existing project. Project
+// ownership is enforced on-chain.
+func (s *NomService) PrepareAddPhase(projectId, name, description, url, znnNeeded, qsrNeeded string) (CallPreview, error) {
+	h, err := parseHash(projectId)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid project id: %w", err)
+	}
+	znn, qsr, err := validateProjectFields(name, description, url, znnNeeded, qsrNeeded)
+	if err != nil {
+		return CallPreview{}, err
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.AcceleratorApi.AddPhase(h, name, description, url, znn, qsr)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Add phase %q to project %s", name, projectId))
+}
+
+// PrepareUpdatePhase builds an UpdatePhase template for an existing phase.
+func (s *NomService) PrepareUpdatePhase(phaseId, name, description, url, znnNeeded, qsrNeeded string) (CallPreview, error) {
+	h, err := parseHash(phaseId)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid phase id: %w", err)
+	}
+	znn, qsr, err := validateProjectFields(name, description, url, znnNeeded, qsrNeeded)
+	if err != nil {
+		return CallPreview{}, err
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.AcceleratorApi.UpdatePhase(h, name, description, url, znn, qsr)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Update phase %s", phaseId))
+}

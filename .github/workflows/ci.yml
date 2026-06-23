@@ -14,10 +14,12 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-      - run: corepack enable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
@@ -31,6 +33,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # package main has //go:embed all:frontend/dist; provide a stub so the Go
+      # tooling can compile it. The security scanners analyze Go source, not the
+      # frontend bundle, so a placeholder is sufficient here.
+      - name: Stub frontend/dist for //go:embed
+        run: mkdir -p frontend/dist && touch frontend/dist/index.html
       - name: govulncheck (allowlist gate)
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -51,15 +58,24 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: corepack enable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Linux WebKit deps
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+      # Build the frontend bundle so package main's //go:embed all:frontend/dist
+      # resolves for go vet / go test (wails build rebuilds it afterwards).
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
       - run: go vet ./...
       - run: go test ./...
       - name: Install Wails

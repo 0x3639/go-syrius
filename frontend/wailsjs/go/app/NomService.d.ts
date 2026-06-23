@@ -12,11 +12,17 @@ export function GetFusionEntries():Promise<Array<app.FusionEntry>>;
 
 export function GetMyTokens():Promise<Array<app.TokenInfo>>;
 
+export function GetPhase(arg1:string):Promise<app.PhaseDTO>;
+
 export function GetPillarList():Promise<Array<app.PillarSummary>>;
 
 export function GetPillarReward():Promise<app.RewardInfo>;
 
 export function GetPlasmaInfo():Promise<app.PlasmaInfo>;
+
+export function GetProject(arg1:string):Promise<app.ProjectDTO>;
+
+export function GetProjects(arg1:number,arg2:number):Promise<app.ProjectListDTO>;
 
 export function GetSentinel():Promise<app.SentinelInfo>;
 
@@ -27,6 +33,10 @@ export function GetStakeList():Promise<app.StakeInfo>;
 export function GetTokenByZts(arg1:string):Promise<app.TokenInfo>;
 
 export function GetUncollectedReward():Promise<app.RewardInfo>;
+
+export function GetVotablePillars():Promise<Array<string>>;
+
+export function PrepareAddPhase(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<app.CallPreview>;
 
 export function PrepareBurn(arg1:string,arg2:string):Promise<app.CallPreview>;
 
@@ -40,9 +50,13 @@ export function PrepareCollectReward():Promise<app.CallPreview>;
 
 export function PrepareCollectSentinelReward():Promise<app.CallPreview>;
 
+export function PrepareCreateProject(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<app.CallPreview>;
+
 export function PrepareDelegate(arg1:string):Promise<app.CallPreview>;
 
 export function PrepareDepositQsr(arg1:string):Promise<app.CallPreview>;
+
+export function PrepareDonate(arg1:string,arg2:string):Promise<app.CallPreview>;
 
 export function PrepareFuse(arg1:string,arg2:string):Promise<app.CallPreview>;
 
@@ -58,6 +72,10 @@ export function PrepareStake(arg1:string,arg2:string):Promise<app.CallPreview>;
 
 export function PrepareUndelegate():Promise<app.CallPreview>;
 
+export function PrepareUpdatePhase(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<app.CallPreview>;
+
 export function PrepareUpdateToken(arg1:string,arg2:string,arg3:boolean,arg4:boolean):Promise<app.CallPreview>;
+
+export function PrepareVote(arg1:string,arg2:string,arg3:number):Promise<app.CallPreview>;
 
 export function PrepareWithdrawQsr():Promise<app.CallPreview>;

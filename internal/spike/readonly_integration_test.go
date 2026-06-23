@@ -3,6 +3,7 @@
 package spike
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -178,4 +179,67 @@ func TestReadOnlyTokens(t *testing.T) {
 		t.Fatalf("GetByZts(ZNN): %v", err)
 	}
 	t.Logf("ZNN token: %s (%s) decimals=%d totalSupply=%v", znn.Symbol, znn.Name, znn.Decimals, znn.TotalSupply)
+}
+
+// TestReadOnlyAccelerator exercises the Phase-5f Accelerator-Z read path against
+// a live node (proves the embedded namespace + the exact AcceleratorApi calls
+// NomService.GetProjects/GetProject/GetPhase rely on succeed end-to-end). It
+// drills GetAll → GetProjectById → GetPhaseById so the project/phase/vote-tally
+// mapping is exercised against real chain data. Read-only: no PoW, no signing.
+//
+// Env:
+//   ZNN_NODE_URL — ws:// or wss:// node URL (required)
+func TestReadOnlyAccelerator(t *testing.T) {
+	url := os.Getenv("ZNN_NODE_URL")
+	if url == "" {
+		t.Skip("set ZNN_NODE_URL to run")
+	}
+
+	client, err := rpc_client.NewRpcClient(url)
+	if err != nil {
+		t.Fatalf("NewRpcClient: %v", err)
+	}
+	defer client.Stop()
+
+	list, err := client.AcceleratorApi.GetAll(0, 10)
+	if err != nil {
+		t.Fatalf("AcceleratorApi.GetAll (embedded namespace enabled?): %v", err)
+	}
+	t.Logf("projects: count=%d returned=%d", list.Count, len(list.List))
+	if len(list.List) == 0 {
+		t.Log("no projects on this chain — read path proven, nothing to drill")
+		return
+	}
+	for i, p := range list.List {
+		if i >= 5 {
+			break
+		}
+		votes := "<nil>"
+		if p.Votes != nil {
+			votes = fmtVotes(p.Votes.Yes, p.Votes.No, p.Votes.Total)
+		}
+		t.Logf("  project %q status=%d znn=%v qsr=%v phases=%d votes=%s id=%s", p.Name, p.Status, p.ZnnFundsNeeded, p.QsrFundsNeeded, len(p.PhaseIds), votes, p.Id)
+	}
+
+	// Drill the first project + its first phase to exercise the single-entity
+	// read paths (GetProjectById / GetPhaseById) NomService.GetProject/GetPhase use.
+	first := list.List[0]
+	proj, err := client.AcceleratorApi.GetProjectById(first.Id)
+	if err != nil {
+		t.Fatalf("GetProjectById(%s): %v", first.Id, err)
+	}
+	t.Logf("project-by-id %q: phases=%d", proj.Name, len(proj.Phases))
+	if len(proj.PhaseIds) > 0 {
+		ph, err := client.AcceleratorApi.GetPhaseById(proj.PhaseIds[0])
+		if err != nil {
+			t.Fatalf("GetPhaseById(%s): %v", proj.PhaseIds[0], err)
+		}
+		if ph.Phase != nil {
+			t.Logf("  phase %q status=%d znn=%v qsr=%v", ph.Phase.Name, ph.Phase.Status, ph.Phase.ZnnFundsNeeded, ph.Phase.QsrFundsNeeded)
+		}
+	}
+}
+
+func fmtVotes(yes, no, total uint32) string {
+	return fmt.Sprintf("%d/%d/%d", yes, no, total)
 }

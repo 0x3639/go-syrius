@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/svelte'
+import { render, screen } from '@testing-library/svelte'
 
 const mocks = vi.hoisted(() => ({
   GetProjects: vi.fn(), GetProject: vi.fn(), GetPhase: vi.fn(), GetVotablePillars: vi.fn(),

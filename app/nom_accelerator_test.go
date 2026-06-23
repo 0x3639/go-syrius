@@ -100,3 +100,40 @@ func TestDonateTemplateTokenStandards(t *testing.T) {
 		t.Fatalf("donate template wrong: %+v", d)
 	}
 }
+
+func TestVoteConstantsMatchOnChainAuthority(t *testing.T) {
+	// Regression guard for the v0.1.18 SDK fix: a "yes" vote MUST serialize as 0.
+	if embedded.VoteYes != 0 || embedded.VoteNo != 1 || embedded.VoteAbstain != 2 {
+		t.Fatalf("vote constants drifted: yes=%d no=%d abstain=%d", embedded.VoteYes, embedded.VoteNo, embedded.VoteAbstain)
+	}
+}
+
+func TestPrepareVoteValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	valid := "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+	// bad hash
+	if _, err := s.PrepareVote("nope", "MyPillar", embedded.VoteYes); err == nil {
+		t.Fatal("vote: bad id must error")
+	}
+	// empty pillar name
+	if _, err := s.PrepareVote(valid, "  ", embedded.VoteYes); err == nil {
+		t.Fatal("vote: empty pillar must error")
+	}
+	// out-of-range vote value
+	if _, err := s.PrepareVote(valid, "MyPillar", 7); err == nil {
+		t.Fatal("vote: out-of-range vote must error")
+	}
+	// valid input → disconnected node
+	if _, err := s.PrepareVote(valid, "MyPillar", embedded.VoteNo); err == nil || err.Error() != "not connected" {
+		t.Fatalf("valid vote should hit not-connected; got %v", err)
+	}
+}
+
+func TestVoteTemplate(t *testing.T) {
+	api := embedded.NewAcceleratorApi(nil)
+	h := types.HexToHashPanic("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
+	v := api.VoteByName(h, "MyPillar", embedded.VoteYes)
+	if v.ToAddress != types.AcceleratorContract || v.TokenStandard != types.ZnnTokenStandard || v.Amount.Sign() != 0 {
+		t.Fatalf("vote template wrong: %+v", v)
+	}
+}

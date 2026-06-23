@@ -212,3 +212,29 @@ func (s *NomService) PrepareDonate(amount, token string) (CallPreview, error) {
 		callExpect{to: types.AcceleratorContract, zts: ts, amount: template.Amount, data: append([]byte(nil), template.Data...)},
 		fmt.Sprintf("Donate %s %s to Accelerator-Z", formatBaseAmount(amt.String(), 8), symbol))
 }
+
+// PrepareVote builds a VoteByName template for one of the active address's
+// Pillars. vote MUST be embedded.VoteYes/VoteNo/VoteAbstain. Field validation
+// runs before any node use; Pillar ownership is enforced on-chain.
+func (s *NomService) PrepareVote(id, pillarName string, vote uint8) (CallPreview, error) {
+	h, err := parseHash(id)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid proposal id: %w", err)
+	}
+	name := strings.TrimSpace(pillarName)
+	if name == "" {
+		return CallPreview{}, errors.New("pillar name is required")
+	}
+	if vote != embedded.VoteYes && vote != embedded.VoteNo && vote != embedded.VoteAbstain {
+		return CallPreview{}, errors.New("vote must be yes, no, or abstain")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.AcceleratorApi.VoteByName(h, name, vote)
+	label := map[uint8]string{embedded.VoteYes: "yes", embedded.VoteNo: "no", embedded.VoteAbstain: "abstain"}[vote]
+	return s.tx.prepareCall(template,
+		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Vote %s on %s as %s", label, id, name))
+}

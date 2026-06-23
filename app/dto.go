@@ -237,3 +237,47 @@ type TokenInfo struct {
 	IsBurnable    bool   `json:"isBurnable"`
 	IsUtility     bool   `json:"isUtility"`
 }
+
+// VoteBreakdownDTO is the Yes/No/Total Pillar-vote tally for a project or phase.
+type VoteBreakdownDTO struct {
+	Total uint32 `json:"total"`
+	Yes   uint32 `json:"yes"`
+	No    uint32 `json:"no"`
+}
+
+// PhaseDTO is one Accelerator-Z phase with its vote tally.
+type PhaseDTO struct {
+	Id                string           `json:"id"`
+	ProjectId         string           `json:"projectId"`
+	Name              string           `json:"name"`
+	Description       string           `json:"description"`
+	Url               string           `json:"url"`
+	ZnnFundsNeeded    string           `json:"znnFundsNeeded"`
+	QsrFundsNeeded    string           `json:"qsrFundsNeeded"`
+	CreationTimestamp int64            `json:"creationTimestamp"`
+	AcceptedTimestamp int64            `json:"acceptedTimestamp"`
+	Status            int              `json:"status"`
+	Votes             VoteBreakdownDTO `json:"votes"`
+}
+
+// ProjectDTO is one Accelerator-Z project with its phases and vote tally.
+type ProjectDTO struct {
+	Id                  string           `json:"id"`
+	Owner               string           `json:"owner"`
+	Name                string           `json:"name"`
+	Description         string           `json:"description"`
+	Url                 string           `json:"url"`
+	ZnnFundsNeeded      string           `json:"znnFundsNeeded"`
+	QsrFundsNeeded      string           `json:"qsrFundsNeeded"`
+	CreationTimestamp   int64            `json:"creationTimestamp"`
+	LastUpdateTimestamp int64            `json:"lastUpdateTimestamp"`
+	Status              int              `json:"status"`
+	Votes               VoteBreakdownDTO `json:"votes"`
+	Phases              []PhaseDTO       `json:"phases"`
+}
+
+// ProjectListDTO is one page of Accelerator-Z projects.
+type ProjectListDTO struct {
+	Count int          `json:"count"`
+	List  []ProjectDTO `json:"list"`
+}

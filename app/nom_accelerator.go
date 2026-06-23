@@ -185,3 +185,30 @@ func (s *NomService) GetVotablePillars() ([]string, error) {
 	}
 	return names, nil
 }
+
+// PrepareDonate builds a Donate template (ZNN or QSR) for the Accelerator and
+// routes it through confirm-what-you-sign. Inputs are validated first.
+func (s *NomService) PrepareDonate(amount, token string) (CallPreview, error) {
+	var ts types.ZenonTokenStandard
+	var symbol string
+	switch strings.ToUpper(strings.TrimSpace(token)) {
+	case "ZNN":
+		ts, symbol = types.ZnnTokenStandard, "ZNN"
+	case "QSR":
+		ts, symbol = types.QsrTokenStandard, "QSR"
+	default:
+		return CallPreview{}, errors.New("donation token must be ZNN or QSR")
+	}
+	amt, ok := new(big.Int).SetString(strings.TrimSpace(amount), 10)
+	if !ok || amt.Sign() <= 0 {
+		return CallPreview{}, errors.New("donation amount must be greater than 0")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.AcceleratorApi.Donate(amt, ts)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.AcceleratorContract, zts: ts, amount: template.Amount, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Donate %s %s to Accelerator-Z", formatBaseAmount(amt.String(), 8), symbol))
+}

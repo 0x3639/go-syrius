@@ -71,3 +71,32 @@ func TestAcceleratorReadsGuardInputs(t *testing.T) {
 		t.Fatal("GetVotablePillars: locked wallet must error")
 	}
 }
+
+func TestPrepareDonateValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	bad := []struct{ amount, token string }{
+		{"0", "ZNN"},    // non-positive
+		{"-5", "ZNN"},   // negative
+		{"abc", "ZNN"},  // unparseable
+		{"100", "DOGE"}, // unknown token
+		{"100", ""},     // empty token
+	}
+	for _, c := range bad {
+		if _, err := s.PrepareDonate(c.amount, c.token); err == nil {
+			t.Fatalf("donate(%q,%q): expected validation error", c.amount, c.token)
+		}
+	}
+	// Valid input passes validation and only then hits the disconnected node.
+	if _, err := s.PrepareDonate("100", "QSR"); err == nil || err.Error() != "not connected" {
+		t.Fatalf("valid donate should hit not-connected; got %v", err)
+	}
+}
+
+func TestDonateTemplateTokenStandards(t *testing.T) {
+	api := embedded.NewAcceleratorApi(nil) // builder needs no client
+	amt := big.NewInt(123)
+	d := api.Donate(amt, types.QsrTokenStandard)
+	if d.ToAddress != types.AcceleratorContract || d.TokenStandard != types.QsrTokenStandard || d.Amount.Cmp(amt) != 0 {
+		t.Fatalf("donate template wrong: %+v", d)
+	}
+}

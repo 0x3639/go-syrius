@@ -80,5 +80,11 @@ jobs:
       - run: go test ./...
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.1
+      # ubuntu-24.04 ships webkit2gtk-4.1 (not 4.0, which Wails defaults to), so
+      # the Linux build needs the webkit2_41 tag.
+      - name: Wails build (Linux)
+        if: runner.os == 'Linux'
+        run: wails build -tags webkit2_41
       - name: Wails build
+        if: runner.os != 'Linux'
         run: wails build

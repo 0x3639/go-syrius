@@ -8,17 +8,17 @@ const mocks = vi.hoisted(() => ({
   PrepareDepositQsr: vi.fn(), PrepareRegisterSentinel: vi.fn(),
   PrepareCollectSentinelReward: vi.fn(), PrepareRevokeSentinel: vi.fn(), PrepareWithdrawQsr: vi.fn(),
 }))
-vi.mock('../../wailsjs/go/app/NomService', () => mocks)
-vi.mock('../../wailsjs/runtime/runtime', () => ({ EventsOn: vi.fn() }))
+vi.mock('../../../../wailsjs/go/app/NomService', () => mocks)
+vi.mock('../../../../wailsjs/runtime/runtime', () => ({ EventsOn: vi.fn() }))
 
-import Sentinels from './Sentinels.svelte'
+import SentinelsPanel from './SentinelsPanel.svelte'
 
-describe('Sentinels', () => {
+describe('SentinelsPanel', () => {
   it('shows Deposit (not Register) when escrowed QSR is below 50,000', async () => {
     mocks.GetSentinel.mockResolvedValue({ owner: '', registrationTimestamp: 0, isRevocable: false, revokeCooldown: 0, active: false })
     mocks.GetDepositedQsr.mockResolvedValue('1000000000000') // 10,000 QSR < 50,000
     mocks.GetSentinelReward.mockResolvedValue({ znn: '0', qsr: '0' })
-    render(Sentinels)
+    render(SentinelsPanel)
     expect(await screen.findByRole('button', { name: /deposit qsr/i })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /register sentinel/i })).toBeNull()
   })
@@ -27,7 +27,7 @@ describe('Sentinels', () => {
     mocks.GetSentinel.mockResolvedValue({ owner: '', registrationTimestamp: 0, isRevocable: false, revokeCooldown: 0, active: false })
     mocks.GetDepositedQsr.mockResolvedValue('5000000000000') // exactly 50,000 QSR
     mocks.GetSentinelReward.mockResolvedValue({ znn: '0', qsr: '0' })
-    render(Sentinels)
+    render(SentinelsPanel)
     expect(await screen.findByRole('button', { name: /register sentinel/i })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /deposit qsr/i })).toBeNull()
   })
@@ -36,7 +36,7 @@ describe('Sentinels', () => {
     mocks.GetSentinel.mockResolvedValue({ owner: '', registrationTimestamp: 0, isRevocable: false, revokeCooldown: 0, active: false })
     mocks.GetDepositedQsr.mockResolvedValue('5000000000000') // exactly 50,000 QSR
     mocks.GetSentinelReward.mockResolvedValue({ znn: '0', qsr: '0' })
-    render(Sentinels)
+    render(SentinelsPanel)
     expect(await screen.findByRole('button', { name: /register sentinel/i })).toBeTruthy()
     // user may deposit the full collateral but choose not to register — they must
     // still be able to recover it.
@@ -47,7 +47,7 @@ describe('Sentinels', () => {
     mocks.GetSentinel.mockResolvedValue({ owner: '', registrationTimestamp: 0, isRevocable: false, revokeCooldown: 0, active: false })
     mocks.GetDepositedQsr.mockResolvedValue('0')
     mocks.GetSentinelReward.mockResolvedValue({ znn: '0', qsr: '0' })
-    render(Sentinels)
+    render(SentinelsPanel)
     expect(await screen.findByRole('button', { name: /deposit qsr/i })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /withdraw qsr/i })).toBeNull()
   })
@@ -56,7 +56,7 @@ describe('Sentinels', () => {
     mocks.GetSentinel.mockResolvedValue({ owner: 'z1qtest', registrationTimestamp: 1718000000, isRevocable: false, revokeCooldown: 100, active: true })
     mocks.GetDepositedQsr.mockResolvedValue('0')
     mocks.GetSentinelReward.mockResolvedValue({ znn: '0', qsr: '0' })
-    render(Sentinels)
+    render(SentinelsPanel)
     const revoke = await screen.findByRole('button', { name: /revoke sentinel/i }) as HTMLButtonElement
     expect(revoke.disabled).toBe(true)
     expect(screen.queryByRole('button', { name: /register sentinel/i })).toBeNull()

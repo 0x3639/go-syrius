@@ -6,10 +6,10 @@ const mocks = vi.hoisted(() => ({
   PrepareDonate: vi.fn(), PrepareVote: vi.fn(),
   PrepareCreateProject: vi.fn(), PrepareAddPhase: vi.fn(), PrepareUpdatePhase: vi.fn(),
 }))
-vi.mock('../../wailsjs/go/app/NomService', () => mocks)
-vi.mock('../../wailsjs/runtime/runtime', () => ({ EventsOn: vi.fn() }))
+vi.mock('../../../../wailsjs/go/app/NomService', () => mocks)
+vi.mock('../../../../wailsjs/runtime/runtime', () => ({ EventsOn: vi.fn() }))
 
-import Accelerator from './Accelerator.svelte'
+import AcceleratorPanel from './AcceleratorPanel.svelte'
 
 const PROJ = {
   id: '0xabc', owner: 'z1qme', name: 'My Project', description: 'd', url: 'https://x.org',
@@ -17,26 +17,26 @@ const PROJ = {
   status: 0, votes: { total: 3, yes: 2, no: 1 }, phases: [],
 }
 
-describe('Accelerator', () => {
+describe('AcceleratorPanel', () => {
   it('lists projects from GetProjects', async () => {
     mocks.GetProjects.mockResolvedValue({ count: 1, list: [PROJ] })
     mocks.GetVotablePillars.mockResolvedValue([])
-    render(Accelerator)
+    render(AcceleratorPanel)
     expect(await screen.findByText(/My Project/)).toBeTruthy()
   })
 
   it('hides the voting section when the address owns no pillars', async () => {
     mocks.GetProjects.mockResolvedValue({ count: 0, list: [] })
     mocks.GetVotablePillars.mockResolvedValue([])
-    render(Accelerator)
-    await screen.findByText(/Accelerator-Z/)
+    render(AcceleratorPanel)
+    await screen.findByLabelText('donate amount')
     expect(screen.queryByLabelText('vote target id')).toBeNull()
   })
 
   it('shows the voting section when the address owns a pillar', async () => {
     mocks.GetProjects.mockResolvedValue({ count: 0, list: [] })
     mocks.GetVotablePillars.mockResolvedValue(['MyPillar'])
-    render(Accelerator)
+    render(AcceleratorPanel)
     expect(await screen.findByLabelText('vote target id')).toBeTruthy()
   })
 })

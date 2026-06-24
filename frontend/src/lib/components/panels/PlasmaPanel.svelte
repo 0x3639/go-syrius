@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import * as Nom from '../../wailsjs/go/app/NomService'
-  import { plasmaInfo, fusionEntries, refreshPlasma, estimatePlasma } from '../lib/stores/plasma'
-  import { tx, awaitConfirm } from '../lib/stores/tx'
-  import { view } from '../lib/stores/nav'
-  import TxModal from '../lib/components/TxModal.svelte'
-  import TxResult from '../lib/components/TxResult.svelte'
-  import { formatAmount } from '../lib/format'
+  import * as Nom from '../../../../wailsjs/go/app/NomService'
+  import { plasmaInfo, fusionEntries, refreshPlasma, estimatePlasma } from '../../stores/plasma'
+  import { tx, awaitConfirm } from '../../stores/tx'
+  import { formatAmount } from '../../format'
+  import Field from '../ui/Field.svelte'
+  import Input from '../ui/Input.svelte'
+  import Button from '../ui/Button.svelte'
 
   let beneficiary = ''
   let amount = ''
@@ -41,39 +41,35 @@
   $: if ($tx.status === 'done') refreshPlasma()
 </script>
 
-<div class="mx-auto mt-8 w-[40rem] space-y-4">
-  <div class="flex items-center justify-between">
-    <h1 class="text-xl">Plasma</h1>
-    <button class="rounded border border-muted/40 px-2 py-1 text-xs text-muted" on:click={() => view.set('dashboard')}>Back</button>
-  </div>
-
+<div class="space-y-4 p-4">
   {#if $plasmaInfo}
     <p class="text-sm text-muted">Current plasma {$plasmaInfo.currentPlasma} / {$plasmaInfo.maxPlasma} · QSR fused {formatAmount($plasmaInfo.qsrFused, 8)} QSR</p>
   {/if}
 
-  <section class="rounded bg-surface p-4 space-y-2">
-    <h2 class="text-sm text-muted">Fuse QSR</h2>
-    <input class="w-full rounded bg-bg px-3 py-2 font-mono text-sm" placeholder="beneficiary z1…" bind:value={beneficiary} aria-label="beneficiary" />
-    <input class="w-full rounded bg-bg px-3 py-2" placeholder="QSR amount" bind:value={amount} aria-label="qsr amount" />
-    {#if estimate > 0}<p class="text-xs text-muted">≈ {estimate} plasma</p>{/if}
-    <button class="rounded bg-accent px-3 py-1 text-bg" on:click={fuse}>Fuse</button>
+  <section class="space-y-3 rounded-lg border border-border bg-surface p-4">
+    <h2 class="text-sm font-medium text-text">Fuse Plasma</h2>
+    <Field label="Beneficiary Address">
+      <Input bind:value={beneficiary} placeholder="z1…" ariaLabel="beneficiary" />
+    </Field>
+    <Field label="Amount (QSR)" hint={estimate > 0 ? `≈ ${estimate} plasma` : 'Available / Minimum'}>
+      <Input bind:value={amount} placeholder="QSR amount" ariaLabel="qsr amount" />
+    </Field>
+    <Button variant="primary" class="w-full" on:click={fuse}>Fuse Plasma</Button>
   </section>
 
-  <section class="rounded bg-surface p-4 space-y-2">
-    <h2 class="text-sm text-muted">Fusion entries</h2>
+  <section class="space-y-2 rounded-lg border border-border bg-surface p-4">
+    <h2 class="text-sm font-medium text-text">Fusion entries</h2>
     {#each $fusionEntries as e}
       <div class="flex items-center justify-between text-sm">
         <span class="font-mono">{formatAmount(e.qsrAmount, 8)} QSR → {e.beneficiary.slice(0, 10)}…</span>
-        <button class="rounded border border-muted/40 px-2 py-0.5 text-xs disabled:opacity-40" disabled={!e.isRevocable} on:click={() => cancel(e.id)} aria-label="cancel fusion">Cancel</button>
+        <Button variant="outline" disabled={!e.isRevocable} on:click={() => cancel(e.id)} aria-label="cancel fusion">Cancel</Button>
       </div>
     {/each}
     {#if $fusionEntries.length === 0}<p class="text-xs text-muted">No fusion entries.</p>{/if}
   </section>
 
-  {#if error}<p class="text-error text-sm" role="alert">{error}</p>{/if}
+  {#if error}<p class="text-sm text-error" role="alert">{error}</p>{/if}
 
   {#if $tx.status === 'preparing'}<p class="text-muted">Preparing… (PoW if required)</p>{/if}
   {#if $tx.status === 'error'}<p class="text-error" role="alert">{$tx.error}</p>{/if}
-  {#if $tx.status === 'awaiting' && $tx.preview}<TxModal />{/if}
-  {#if $tx.status === 'done'}<TxResult />{/if}
 </div>

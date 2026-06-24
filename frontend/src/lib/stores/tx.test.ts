@@ -29,7 +29,7 @@ describe('tx store', () => {
 
   it('resets a lingering tx result when the view changes (no stale modal on another route)', () => {
     tx.set({ status: 'done', preview: null, hash: '0xdeadbeef', error: '' })
-    view.set('plasma')
+    view.set('tokens')
     const s = get(tx)
     expect(s.status).toBe('idle')
     expect(s.hash).toBe('')

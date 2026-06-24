@@ -1,0 +1,3 @@
+This product's UI design tokens and aesthetic are adapted from nom-ui
+(https://github.com/digitalSloth/nom-ui), MIT License, Copyright (c) digitalSloth.
+The design was re-implemented from scratch in Svelte; no nom-ui source code is included.

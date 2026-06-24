@@ -530,6 +530,22 @@ func (n *NodeService) StartAutoReceive() error {
 	}
 	go func() {
 		defer sub.Unsubscribe()
+		// Sweep blocks already pending at start time. The subscription only
+		// delivers NEW unreceived blocks, so without this initial sweep an
+		// enable-while-a-block-is-already-waiting (e.g. right after collecting a
+		// reward) would never receive that block.
+		if n.receiveFn != nil {
+			if list, err := client.LedgerApi.GetUnreceivedBlocksByAddress(addr, 0, 50); err == nil {
+				for _, b := range list.List {
+					select {
+					case <-stop:
+						return
+					default:
+						_, _ = n.receiveFn(b.Hash.String())
+					}
+				}
+			}
+		}
 		for {
 			select {
 			case <-stop:

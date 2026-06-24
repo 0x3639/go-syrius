@@ -43,6 +43,8 @@
     }
   },
   "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource-variable/space-grotesk": "^5.2.10",
     "qrcode": "^1.5.4"
   }
 }

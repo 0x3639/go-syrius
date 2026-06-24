@@ -1,11 +1,11 @@
-import {defineConfig} from 'vite'
-import {svelte} from '@sveltejs/vite-plugin-svelte'
+// Import defineConfig from vitest/config (it extends Vite's) so the `test` field
+// is typed; importing from 'vite' would reject the `test` key.
+import { defineConfig } from 'vitest/config'
+import vue from '@vitejs/plugin-vue'
+import tailwindcss from '@tailwindcss/vite'
 
-// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [svelte()],
-  test: {
-    environment: 'jsdom',
-    globals: true,
-  },
+  plugins: [vue(), tailwindcss()],
+  build: { outDir: 'dist', emptyOutDir: true },
+  test: { environment: 'jsdom', globals: true },
 })

@@ -7,14 +7,7 @@
   import Unlock from './routes/Unlock.svelte'
   import Create from './routes/Create.svelte'
   import ImportMnemonic from './routes/ImportMnemonic.svelte'
-  import Dashboard from './routes/Dashboard.svelte'
-  import Send from './routes/Send.svelte'
-  import Plasma from './routes/Plasma.svelte'
-  import Stake from './routes/Stake.svelte'
-  import Pillars from './routes/Pillars.svelte'
-  import Sentinels from './routes/Sentinels.svelte'
-  import Tokens from './routes/Tokens.svelte'
-  import Accelerator from './routes/Accelerator.svelte'
+  import Home from './routes/Home.svelte'
   import Settings from './routes/Settings.svelte'
   onMount(async () => {
     try {
@@ -28,22 +21,8 @@
   <ImportMnemonic />
 {:else if $wallet.locked}
   <Unlock />
-{:else if $view === 'send'}
-  <Send />
-{:else if $view === 'plasma'}
-  <Plasma />
-{:else if $view === 'stake'}
-  <Stake />
-{:else if $view === 'pillars'}
-  <Pillars />
-{:else if $view === 'sentinels'}
-  <Sentinels />
-{:else if $view === 'tokens'}
-  <Tokens />
-{:else if $view === 'accelerator'}
-  <Accelerator />
 {:else if $view === 'settings'}
   <Settings />
 {:else}
-  <Dashboard />
+  <Home />
 {/if}

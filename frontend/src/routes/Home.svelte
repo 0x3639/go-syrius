@@ -45,21 +45,33 @@
   $: znn = $balances.find((b) => b.symbol === 'ZNN')
   $: qsr = $balances.find((b) => b.symbol === 'QSR')
   async function refresh() { await Promise.all([loadBalances(), refreshPlasma(), refreshPillars(), loadTxs(), loadUnreceived()]) }
+
+  // Auto-receive is bound to a single account on the backend (it subscribes +
+  // sweeps for whichever address is active when it starts). startAR() always
+  // stops first so it re-points at the CURRENT active account — StartAutoReceive
+  // alone would early-return as "already running" and keep watching the old one.
+  let arAccount = -1
+  async function startAR() { await N.StopAutoReceive(); await N.StartAutoReceive(); arAccount = $wallet.active }
+  async function stopAR() { await N.StopAutoReceive(); arAccount = -1 }
+
   onMount(async () => {
     initNodeEvents(refresh)
     refresh()
     try {
       autoReceive = (await Cfg.GetSettings()).autoReceive
-      // Resume auto-receive if it was enabled (the setting persists, the
-      // subscription does not survive a restart).
-      if (autoReceive) await N.StartAutoReceive()
+      if (autoReceive) await startAR() // resume (subscription doesn't survive a restart)
     } catch {}
   })
-  $: if ($wallet.active >= 0) refresh()
+  $: if ($wallet.active >= 0) onActiveChange($wallet.active)
+  async function onActiveChange(active: number) {
+    refresh()
+    // Follow account switches: re-sweep + re-subscribe for the new account.
+    if (autoReceive && active !== arAccount) await startAR()
+  }
   async function toggleAutoReceive() {
     try {
       const s = await Cfg.GetSettings(); s.autoReceive = autoReceive; await Cfg.SetSettings(s)
-      if (autoReceive) await N.StartAutoReceive(); else await N.StopAutoReceive()
+      if (autoReceive) await startAR(); else await stopAR()
     } catch {}
   }
 </script>

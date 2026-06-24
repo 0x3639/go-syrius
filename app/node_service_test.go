@@ -4,6 +4,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/zenon-network/go-zenon/chain/nom"
@@ -279,5 +280,19 @@ func TestGetNodeConfigDefaults(t *testing.T) {
 	}
 	if cfg.Mode != "remote" || cfg.RemoteURL != defaultNodeURL || cfg.LocalURL != defaultLocalNodeURL {
 		t.Fatalf("unexpected node config: %+v", cfg)
+	}
+}
+
+func TestGetTransactionsRejectsNegativePaging(t *testing.T) {
+	n := newTestNode(t) // existing helper: newNodeService(newTestConfig(t), nil)
+	if _, err := n.GetTransactions(-1, 10); err == nil {
+		t.Fatal("negative page must be rejected")
+	} else if !strings.Contains(err.Error(), "non-negative") {
+		t.Fatalf("negative page must be rejected with a non-negative message, got %v", err)
+	}
+	if _, err := n.GetTransactions(0, -5); err == nil {
+		t.Fatal("negative count must be rejected")
+	} else if !strings.Contains(err.Error(), "non-negative") {
+		t.Fatalf("negative count must be rejected with a non-negative message, got %v", err)
 	}
 }

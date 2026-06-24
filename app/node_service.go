@@ -443,6 +443,9 @@ func (n *NodeService) GetBalances() ([]TokenBalance, error) {
 
 // GetTransactions returns one page of the active address's account blocks.
 func (n *NodeService) GetTransactions(page, count int) ([]TxRecord, error) {
+	if page < 0 || count < 0 {
+		return nil, errors.New("page and count must be non-negative")
+	}
 	n.mu.RLock()
 	client := n.client
 	n.mu.RUnlock()
@@ -454,7 +457,7 @@ func (n *NodeService) GetTransactions(page, count int) ([]TxRecord, error) {
 	if !ok {
 		return nil, errLocked
 	}
-	list, err := client.LedgerApi.GetAccountBlocksByPage(addr, uint32(page), uint32(count))
+	list, err := client.LedgerApi.GetAccountBlocksByPage(addr, uint32(page), uint32(count)) // #nosec G115 -- page/count validated non-negative above; pagination values are small
 	if err != nil {
 		return nil, err
 	}

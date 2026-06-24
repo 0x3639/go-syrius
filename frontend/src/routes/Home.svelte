@@ -39,7 +39,11 @@
 
   $: if (active !== prevTab) { prevTab = active; resetTx() }
 
-  function bal(sym: string) { return $balances.find((b) => b.symbol === sym) }
+  // Reactive (not a template function call) so the cards re-render when
+  // $balances loads — otherwise the amounts stay blank until an account switch
+  // forces a re-render.
+  $: znn = $balances.find((b) => b.symbol === 'ZNN')
+  $: qsr = $balances.find((b) => b.symbol === 'QSR')
   async function refresh() { await Promise.all([loadBalances(), refreshPlasma(), refreshPillars(), loadTxs(), loadUnreceived()]) }
   onMount(async () => {
     initNodeEvents(refresh)
@@ -73,8 +77,8 @@
   </div>
 
   <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-    <BalanceCard symbol="ZNN" amount={bal('ZNN')?.amount ?? '0'} decimals={bal('ZNN')?.decimals ?? 8} tint="green" />
-    <BalanceCard symbol="QSR" amount={bal('QSR')?.amount ?? '0'} decimals={bal('QSR')?.decimals ?? 8} tint="blue" />
+    <BalanceCard symbol="ZNN" amount={znn?.amount ?? '0'} decimals={znn?.decimals ?? 8} tint="green" />
+    <BalanceCard symbol="QSR" amount={qsr?.amount ?? '0'} decimals={qsr?.decimals ?? 8} tint="blue" />
     <ActionCard label="Send" direction="send" on:click={() => (sendOpen = true)} />
     <ActionCard label="Receive" direction="receive" badge={$unreceived.length} on:click={() => (receiveOpen = true)} />
   </div>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tx, confirm, cancel } from '../stores/tx'
-  import { formatAmount, shortAddress } from '../format'
+  import { formatAmountExact, shortAddress } from '../format'
   $: p = $tx.preview
 </script>
 {#if p}
@@ -10,7 +10,7 @@
   <p class="text-sm text-accent">{p.summary}</p>
   {/if}
   <div class="flex justify-between"><span class="text-muted">To</span><span class="font-mono">{shortAddress(p.toAddress)}</span></div>
-  <div class="flex justify-between"><span class="text-muted">Amount</span><span class="font-mono">{formatAmount(p.amount, 8)} {p.symbol || p.zts}</span></div>
+  <div class="flex justify-between"><span class="text-muted">Amount</span><span class="font-mono">{formatAmountExact(p.amount, 8)} {p.symbol || p.zts}</span></div>
   <div class="flex justify-between"><span class="text-muted">Fee</span><span>{p.needsPoW ? `PoW (difficulty ${p.difficulty})` : 'Feeless (plasma)'}</span></div>
   <div class="flex justify-between"><span class="text-muted">Hash</span><span class="font-mono text-xs break-all">{p.hash}</span></div>
   <div class="flex gap-2 pt-2">

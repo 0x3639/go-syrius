@@ -16,6 +16,12 @@ export const useWalletStore = defineStore('wallet', {
       this.active = name
       this.locked = false
     },
-    lock() { this.locked = true },
+    lock() {
+      // Re-lock the keystore in the Go backend, not just the UI — otherwise the
+      // wallet shows locked while the backend keystore stays decrypted.
+      W.Lock().catch(() => {})
+      this.locked = true
+      this.active = ''
+    },
   },
 })

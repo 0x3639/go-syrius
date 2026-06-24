@@ -3,6 +3,8 @@
   import { wallet, lock } from '../lib/stores/wallet'
   import { balances, loadBalances } from '../lib/stores/balances'
   import { initNodeEvents } from '../lib/stores/node'
+  import { view } from '../lib/stores/nav'
+  import { tx, resetTx } from '../lib/stores/tx'
   import { refreshPlasma } from '../lib/stores/plasma'
   import { refreshPillars } from '../lib/stores/pillar'
   import * as Cfg from '../../wailsjs/go/app/ConfigService'
@@ -17,12 +19,17 @@
   import ReceiveModal from '../lib/components/ReceiveModal.svelte'
   import TokensPanel from '../lib/components/panels/TokensPanel.svelte'
   import PanelPlaceholder from '../lib/components/panels/PanelPlaceholder.svelte'
+  import TxModal from '../lib/components/TxModal.svelte'
+  import TxResult from '../lib/components/TxResult.svelte'
 
   const TABS = ['Tokens', 'Rewards', 'Plasma', 'Pillar', 'Staking', 'Sentinels', 'Accelerator']
   let active = 'Tokens'
   let sendOpen = false
   let receiveOpen = false
   let autoReceive = false
+  let prevTab = active
+
+  $: if (active !== prevTab) { prevTab = active; resetTx() }
 
   function bal(sym: string) { return $balances.find((b) => b.symbol === sym) }
   async function refresh() { await Promise.all([loadBalances(), refreshPlasma(), refreshPillars()]) }
@@ -47,6 +54,7 @@
       <label class="flex items-center gap-1 text-xs text-muted">
         <input type="checkbox" bind:checked={autoReceive} on:change={toggleAutoReceive} /> Auto-receive
       </label>
+      <Button variant="ghost" aria-label="Settings" on:click={() => view.set('settings')}>Settings</Button>
       <Button variant="ghost" on:click={lock}>Lock</Button>
     </div>
   </div>
@@ -68,3 +76,6 @@
 
 <SendModal bind:open={sendOpen} />
 <ReceiveModal bind:open={receiveOpen} />
+
+{#if $tx.status === 'awaiting' && $tx.preview}<TxModal />{/if}
+{#if $tx.status === 'done'}<TxResult />{/if}

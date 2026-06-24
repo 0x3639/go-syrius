@@ -20,6 +20,10 @@ describe('Home', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     expect(screen.getByLabelText('recipient')).toBeTruthy()           // SendModal opened
   })
+  it('exposes a Settings entry point', () => {
+    render(Home)
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy()
+  })
   it('switches to a placeholder tab', async () => {
     render(Home)
     await fireEvent.click(screen.getByRole('button', { name: 'tab Plasma' }))

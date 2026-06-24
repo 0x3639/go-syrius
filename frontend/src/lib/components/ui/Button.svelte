@@ -9,7 +9,7 @@
     danger: 'bg-error text-text hover:brightness-110',
   }
 </script>
-<button {type} {disabled} on:click
+<button {type} {disabled} {...$$restProps} on:click
   class="rounded px-4 py-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed {styles[variant]}">
   <slot />
 </button>

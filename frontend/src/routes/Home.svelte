@@ -88,5 +88,7 @@
 <SendModal bind:open={sendOpen} />
 <ReceiveModal bind:open={receiveOpen} />
 
-{#if $tx.status === 'awaiting' && $tx.preview}<TxModal />{/if}
-{#if $tx.status === 'done'}<TxResult />{/if}
+<!-- SendModal renders its own TxModal/TxResult inside its overlay; suppress the
+     global one while it's open so the Send confirm isn't double-rendered. -->
+{#if $tx.status === 'awaiting' && $tx.preview && !sendOpen}<TxModal />{/if}
+{#if $tx.status === 'done' && !sendOpen}<TxResult />{/if}

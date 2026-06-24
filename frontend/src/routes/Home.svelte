@@ -7,6 +7,7 @@
   import { tx, resetTx } from '../lib/stores/tx'
   import { refreshPlasma } from '../lib/stores/plasma'
   import { refreshPillars } from '../lib/stores/pillar'
+  import { loadTxs } from '../lib/stores/txs'
   import * as Cfg from '../../wailsjs/go/app/ConfigService'
   import * as N from '../../wailsjs/go/app/NodeService'
   import AccountSwitcher from '../lib/components/AccountSwitcher.svelte'
@@ -26,6 +27,7 @@
   import AcceleratorPanel from '../lib/components/panels/AcceleratorPanel.svelte'
   import TxModal from '../lib/components/TxModal.svelte'
   import TxResult from '../lib/components/TxResult.svelte'
+  import TxHistory from '../lib/components/TxHistory.svelte'
 
   const TABS = ['Tokens', 'Rewards', 'Plasma', 'Pillar', 'Staking', 'Sentinels', 'Accelerator']
   let active = 'Tokens'
@@ -37,7 +39,7 @@
   $: if (active !== prevTab) { prevTab = active; resetTx() }
 
   function bal(sym: string) { return $balances.find((b) => b.symbol === sym) }
-  async function refresh() { await Promise.all([loadBalances(), refreshPlasma(), refreshPillars()]) }
+  async function refresh() { await Promise.all([loadBalances(), refreshPlasma(), refreshPillars(), loadTxs()]) }
   onMount(async () => {
     initNodeEvents(refresh)
     refresh()
@@ -83,6 +85,8 @@
     {:else if active === 'Sentinels'}<SentinelsPanel />
     {:else if active === 'Accelerator'}<AcceleratorPanel />{/if}
   </div>
+
+  <TxHistory />
 </div>
 
 <SendModal bind:open={sendOpen} />

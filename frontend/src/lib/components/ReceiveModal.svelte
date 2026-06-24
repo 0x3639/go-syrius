@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte'
   import { wallet } from '../stores/wallet'
   import AddressDisplay from './AddressDisplay.svelte'
+  import UnreceivedPanel from './UnreceivedPanel.svelte'
   export let open = false
   const dispatch = createEventDispatcher()
   $: address = $wallet.accounts.find((a) => a.index === $wallet.active)?.address ?? ''
@@ -23,6 +24,7 @@
         <button class="text-muted transition-colors hover:text-text" aria-label="close" on:click={close}>✕</button>
       </div>
       <AddressDisplay {address} />
+      <UnreceivedPanel />
     </div>
   </div>
 {/if}

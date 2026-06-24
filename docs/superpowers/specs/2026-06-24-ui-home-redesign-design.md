@@ -12,6 +12,13 @@ nom-ui is a Vue 3 + Tailwind 4 + shadcn-vue component library, so it cannot be i
 
 **This is presentation-only.** All Go bindings, Svelte stores (`balances`, `plasma`, `stake`, `pillar`, `sentinel`, `token`, `accelerator`, `tx`, …), and the confirm-what-you-sign `TxModal`/`ConfirmPublish` path are unchanged. We re-wrap existing logic; the funds path is untouched.
 
+### Decomposition: Plan A then Plan B (one branch, merged together)
+
+This sub-project is split into two implementation plans executed back-to-back on the `ui-home-redesign` branch (the branch is not merged to `main` until both are done, so users never see an intermediate state):
+
+- **Plan A — design system + home shell.** Theme tokens/fonts/radius; base `ui/` components (`Card`, `Button`, `Input`, `Field`, `Tabs`); `Home.svelte` (top bar, 4-card row, status strip, 7-tab bar + tab-switching state); `BalanceCard`/`ActionCard`/`StatusStrip`; `SendModal`/`ReceiveModal` (fully working); `App.svelte` routing → `Home`; the **Tokens** tab as a native restyled panel. The other six tabs render a lightweight `PanelPlaceholder` stub. The old `routes/*.svelte` + `StatusBar` are left untouched for Plan B to harvest. **Deliverable:** the new-look home builds, renders, and works for balances + Tokens + Send + Receive; tests green.
+- **Plan B — tab panels.** Implement the six remaining panels (`RewardsPanel` is new; `Plasma`/`Pillar`/`Staking`/`Sentinels`/`Accelerator` adapted from the current route bodies), wire them into `Home` replacing the placeholders, delete the now-dead `routes/{Plasma,Stake,Pillars,Sentinels,Tokens,Accelerator,Send,Dashboard}.svelte` + `lib/components/StatusBar.svelte`, and migrate their tests into the panel tests. **Deliverable:** all 7 tabs are native restyled panels; no dead routes; tests green.
+
 ## Design system (the nom-ui port)
 
 We are **dark-only** (no light theme). Translate nom-ui's `.dark` tokens into our Tailwind 3 setup (CSS variables in `app.css` + a `tailwind.config` color map). Exact values from nom-ui `src/style.css`:

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
-import { Card, CardContent, Button, Amount } from 'nom-ui'
+import { Card, CardContent, Button } from 'nom-ui'
 import { useNodeStore } from '../stores/node'
 import { useWalletStore } from '../stores/wallet'
+import { formatAmount } from '../lib/format'
 
 const node = useNodeStore()
 const wallet = useWalletStore()
@@ -10,22 +11,12 @@ const wallet = useWalletStore()
 const znn = computed(() => node.balances.find((b) => b.symbol === 'ZNN'))
 const qsr = computed(() => node.balances.find((b) => b.symbol === 'QSR'))
 
-// nom-ui's <Amount> takes `value` as a *display* number, not base units — it
-// formats with `decimals` but does NOT divide. Our store carries base-unit
-// strings (e.g. "150000000" = 1.5 ZNN at 8 decimals), so scale here. Done with
-// strings to avoid Number precision loss on large balances.
-function toDisplay(amount: string | undefined, decimals: number): string {
-  const raw = amount ?? '0'
-  if (decimals <= 0) return raw
-  const neg = raw.startsWith('-')
-  const digits = (neg ? raw.slice(1) : raw).padStart(decimals + 1, '0')
-  const whole = digits.slice(0, digits.length - decimals)
-  const frac = digits.slice(digits.length - decimals)
-  return `${neg ? '-' : ''}${whole}.${frac}`
-}
-
-const znnValue = computed(() => toDisplay(znn.value?.amount, znn.value?.decimals ?? 8))
-const qsrValue = computed(() => toDisplay(qsr.value?.amount, qsr.value?.decimals ?? 8))
+// Format base-unit balances with our display rule (3+ integer digits drop the
+// decimals + add thousands commas; smaller values round to 2dp). We format here
+// rather than via nom-ui's <Amount>, which shows full precision and rounds
+// through Number() (precision loss on large balances).
+const znnValue = computed(() => formatAmount(znn.value?.amount ?? '0', znn.value?.decimals ?? 8))
+const qsrValue = computed(() => formatAmount(qsr.value?.amount ?? '0', qsr.value?.decimals ?? 8))
 
 onMounted(async () => {
   await node.connect()
@@ -43,13 +34,13 @@ onMounted(async () => {
       <Card>
         <CardContent class="p-4">
           <div class="text-xs text-muted-foreground">ZNN</div>
-          <Amount :value="znnValue" :decimals="znn?.decimals ?? 8" symbol="ZNN" />
+          <div class="font-mono text-2xl text-foreground">{{ znnValue }} <span class="text-base text-muted-foreground">ZNN</span></div>
         </CardContent>
       </Card>
       <Card>
         <CardContent class="p-4">
           <div class="text-xs text-muted-foreground">QSR</div>
-          <Amount :value="qsrValue" :decimals="qsr?.decimals ?? 8" symbol="QSR" />
+          <div class="font-mono text-2xl text-foreground">{{ qsrValue }} <span class="text-base text-muted-foreground">QSR</span></div>
         </CardContent>
       </Card>
     </div>

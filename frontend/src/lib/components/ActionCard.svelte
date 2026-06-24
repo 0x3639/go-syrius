@@ -1,13 +1,20 @@
 <script lang="ts">
   export let label = ''
   export let direction: 'send' | 'receive' = 'send'
+  export let badge = 0
 </script>
 
 <button
   on:click
   aria-label={label}
-  class="group flex flex-col items-center justify-center gap-2 rounded border border-border bg-surface p-4 text-text transition hover:border-accent hover:bg-elevated"
+  class="group relative flex flex-col items-center justify-center gap-2 rounded border bg-surface p-4 text-text transition hover:border-accent hover:bg-elevated {badge > 0 ? 'border-accent' : 'border-border'}"
 >
+  {#if badge > 0}
+    <span
+      class="absolute right-2 top-2 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-accent px-1 text-xs font-semibold text-accent-fg"
+      aria-label={`${badge} pending`}
+    >{badge}</span>
+  {/if}
   <span class="text-accent" aria-hidden="true">
     <svg
       width="28"

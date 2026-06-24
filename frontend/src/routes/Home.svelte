@@ -8,6 +8,7 @@
   import { refreshPlasma } from '../lib/stores/plasma'
   import { refreshPillars } from '../lib/stores/pillar'
   import { loadTxs } from '../lib/stores/txs'
+  import { unreceived, loadUnreceived } from '../lib/stores/unreceived'
   import * as Cfg from '../../wailsjs/go/app/ConfigService'
   import * as N from '../../wailsjs/go/app/NodeService'
   import AccountSwitcher from '../lib/components/AccountSwitcher.svelte'
@@ -39,11 +40,16 @@
   $: if (active !== prevTab) { prevTab = active; resetTx() }
 
   function bal(sym: string) { return $balances.find((b) => b.symbol === sym) }
-  async function refresh() { await Promise.all([loadBalances(), refreshPlasma(), refreshPillars(), loadTxs()]) }
+  async function refresh() { await Promise.all([loadBalances(), refreshPlasma(), refreshPillars(), loadTxs(), loadUnreceived()]) }
   onMount(async () => {
     initNodeEvents(refresh)
     refresh()
-    try { autoReceive = (await Cfg.GetSettings()).autoReceive } catch {}
+    try {
+      autoReceive = (await Cfg.GetSettings()).autoReceive
+      // Resume auto-receive if it was enabled (the setting persists, the
+      // subscription does not survive a restart).
+      if (autoReceive) await N.StartAutoReceive()
+    } catch {}
   })
   $: if ($wallet.active >= 0) refresh()
   async function toggleAutoReceive() {
@@ -70,7 +76,7 @@
     <BalanceCard symbol="ZNN" amount={bal('ZNN')?.amount ?? '0'} decimals={bal('ZNN')?.decimals ?? 8} tint="green" />
     <BalanceCard symbol="QSR" amount={bal('QSR')?.amount ?? '0'} decimals={bal('QSR')?.decimals ?? 8} tint="blue" />
     <ActionCard label="Send" direction="send" on:click={() => (sendOpen = true)} />
-    <ActionCard label="Receive" direction="receive" on:click={() => (receiveOpen = true)} />
+    <ActionCard label="Receive" direction="receive" badge={$unreceived.length} on:click={() => (receiveOpen = true)} />
   </div>
 
   <StatusStrip />

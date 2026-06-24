@@ -18,7 +18,12 @@
   import SendModal from '../lib/components/SendModal.svelte'
   import ReceiveModal from '../lib/components/ReceiveModal.svelte'
   import TokensPanel from '../lib/components/panels/TokensPanel.svelte'
-  import PanelPlaceholder from '../lib/components/panels/PanelPlaceholder.svelte'
+  import RewardsPanel from '../lib/components/panels/RewardsPanel.svelte'
+  import PlasmaPanel from '../lib/components/panels/PlasmaPanel.svelte'
+  import PillarPanel from '../lib/components/panels/PillarPanel.svelte'
+  import StakingPanel from '../lib/components/panels/StakingPanel.svelte'
+  import SentinelsPanel from '../lib/components/panels/SentinelsPanel.svelte'
+  import AcceleratorPanel from '../lib/components/panels/AcceleratorPanel.svelte'
   import TxModal from '../lib/components/TxModal.svelte'
   import TxResult from '../lib/components/TxResult.svelte'
 
@@ -70,7 +75,13 @@
 
   <div class="rounded border border-border bg-surface">
     <Tabs tabs={TABS} bind:active />
-    {#if active === 'Tokens'}<TokensPanel />{:else}<PanelPlaceholder name={active} />{/if}
+    {#if active === 'Tokens'}<TokensPanel />
+    {:else if active === 'Rewards'}<RewardsPanel />
+    {:else if active === 'Plasma'}<PlasmaPanel />
+    {:else if active === 'Pillar'}<PillarPanel />
+    {:else if active === 'Staking'}<StakingPanel />
+    {:else if active === 'Sentinels'}<SentinelsPanel />
+    {:else if active === 'Accelerator'}<AcceleratorPanel />{/if}
   </div>
 </div>
 

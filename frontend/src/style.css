@@ -1,0 +1,4 @@
+@import "tailwindcss";
+@import "nom-ui/style.css";
+/* Generate the utility classes nom-ui's component source uses: */
+@source "../node_modules/nom-ui/src";

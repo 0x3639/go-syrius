@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       nom-ui:
-        specifier: github:digitalSloth/nom-ui
+        specifier: github:digitalSloth/nom-ui#63f755a52cf6ee3665d3755755c506e3aa191bd4
         version: https://codeload.github.com/digitalSloth/nom-ui/tar.gz/63f755a52cf6ee3665d3755755c506e3aa191bd4(vue@3.5.38(typescript@5.9.3))
       pinia:
         specifier: ^2.2.0

@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-This is a **greenfield repository**. As of this writing the only artifact is `plan.md` — a complete development plan. No Go module, frontend, or build tooling exists yet. `plan.md` is the authoritative spec; read it before substantial work, and keep it in sync as decisions change.
+The wallet is **substantially built**: Phases 0–5 and Phase 7a are shipped and merged to `main`. Working today: read-only wallet, send/receive, wallet lifecycle (create/import/manage), all three node modes (remote/local/embedded), the full Network-of-Momentum feature set (plasma, staking, pillars, sentinels, tokens, accelerator), and CI. **Remaining:** Phase 7b–7f (release builds, signing/notarization, auto-update, a11y/telemetry, security pass + docs). **Phase 6 (Ledger) is deferred** (out of scope for now). See "Working order" below for per-phase status.
+
+`plan.md` is the authoritative spec; read it before substantial work, and keep it in sync as decisions change. Per-phase design specs and plans live under `docs/superpowers/{specs,plans}/`, and per-phase acceptance records under `docs/phase*-acceptance.md`.
 
 ## What this project is
 
@@ -12,8 +14,8 @@ A reimplementation of the Zenon `syrius` wallet (originally Flutter/Dart) as a *
 
 ## Stack (locked decisions — see plan.md §6)
 
-- **Wails v2** (not v3 — stability for a funds-handling app)
-- **Go 1.22+**, importing `znn-sdk-go` (vendored/pinned, author-controlled) and `go-zenon`
+- **Wails v2** (v2.10.1; not v3 — stability for a funds-handling app)
+- **Go 1.25.11** (go.mod toolchain floor), importing `znn-sdk-go` (pinned, author-controlled; currently v0.1.19) and `go-zenon`
 - **Svelte + TypeScript + Vite**, **Tailwind CSS**, Svelte stores for state
 - Build via Wails CLI + GitHub Actions cross-platform matrix
 
@@ -53,14 +55,14 @@ The acceptance test for compatibility: a wallet created here opens in syrius and
 ## Working order (phases — plan.md §3)
 
 Ordered by risk; do not start UI-heavy work before the foundation is proven.
-- **Phase 0** — de-risking spike: keystore round-trip against a *real* `.dat`, read-only RPC, one testnet tx end-to-end. Proves compatibility before any UI.
-- **Phase 1** — Wails skeleton + read-only wallet (remote node only)
-- **Phase 2** — send/receive (the correctness-critical milestone)
-- **Phase 3** — wallet lifecycle (create/import/manage)
-- **Phase 4** — embedded & local node modes
-- **Phase 5** — NoM features (plasma, staking, pillars, sentinels, tokens, accelerator)
-- **Phase 6** — Ledger (optional for v1; highest unknown — pure-Go HID vs cgo to `ledger_ffi_rs`)
-- **Phase 7** — hardening, packaging, signed releases
+- **Phase 0 ✅** — de-risking spike: keystore round-trip against a *real* `.dat`, read-only RPC, one testnet tx end-to-end. Proved compatibility before any UI.
+- **Phase 1 ✅** — Wails skeleton + read-only wallet (remote node only)
+- **Phase 2 ✅** — send/receive (the correctness-critical milestone)
+- **Phase 3 ✅** — wallet lifecycle (create/import/manage)
+- **Phase 4 ✅** — embedded & local node modes
+- **Phase 5 ✅** — NoM features (plasma, staking, pillars, sentinels, tokens, accelerator). *Manual GUI write-flow testnet acceptance for 5b–5f remains user-run; automated + live-read gates pass.*
+- **Phase 6 ⏸ DEFERRED** — Ledger (out of scope for now; cleanly separable behind the `signer/` seam)
+- **Phase 7** — hardening, packaging, signed releases. **7a ✅** (CI: GitHub Actions PR gate). **7b–7f remaining:** release build matrix, signing/notarization, auto-update, a11y/keyboard/telemetry, security pass + docs.
 
 ## Security rules (non-negotiable — plan.md §7)
 
@@ -72,4 +74,10 @@ Ordered by risk; do not start UI-heavy work before the foundation is proven.
 
 ## Commands
 
-No build/test/lint commands exist yet (no code). Once scaffolded with `wails init` (Svelte-TS template), the standard toolchain will be `wails dev` (run), `wails build` (package), `go test ./...` (backend tests), and the Vite/frontend scripts in `frontend/package.json`. Update this section with the real commands once they exist.
+**Local dev hazard:** a parent `go.work` on the author's machine references a missing sibling module, so local `go`/`wails` commands need `GOWORK=off` (and `GOTOOLCHAIN=auto`, since go.mod pins go 1.25.11). CI does **not** need these (standalone checkout). The build emits an unrelated gopsutil/IOKit cgo deprecation warning — not an error.
+
+- **Run / build the app:** `GOWORK=off wails dev` (run), `GOWORK=off wails build` (package). Linux build needs `-tags webkit2_41` (+ `libgtk-3-dev libwebkit2gtk-4.1-dev`).
+- **Backend tests:** `GOWORK=off GOTOOLCHAIN=auto go test ./...` (plus `go vet ./...`, `go build ./...`). Integration/live-node tests are behind `//go:build integration` and need `ZNN_NODE_URL` (e.g. `... go test -tags integration ./internal/spike -run TestReadOnly... -v`).
+- **Frontend** (in `frontend/`, pnpm 10.17.1): `pnpm install --frozen-lockfile`, `pnpm run check` (svelte-check), `pnpm test` (vitest), `pnpm run build`.
+- **Security gates:** `bash scripts/govulncheck-gate.sh` (allowlist gate over `govulncheck ./...`), `gosec -conf .gosec.json ./...`.
+- **CI:** `.github/workflows/ci.yml` runs on PR→main / push→main — jobs `frontend`, `security`, and a `build-test` matrix (ubuntu/macOS/windows: go vet/test + `wails build`).

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useWalletStore } from '../stores/wallet'
+import { useTxStore } from '../stores/tx'
 
 // Stub the lazy-loaded views so navigation in the guard test doesn't pull the
 // real nom-ui components into jsdom — we're testing the guard, not the screens.
@@ -35,5 +36,15 @@ describe('router lock guard', () => {
   })
   it('lists the public routes', () => {
     expect(PUBLIC_ROUTES).toEqual(['unlock', 'create', 'import'])
+  })
+})
+
+describe('router tx reset', () => {
+  it('resets the tx store on navigation (afterEach)', async () => {
+    // Unlocked so gated routes are reachable and the push actually navigates.
+    useWalletStore().locked = false
+    const reset = vi.spyOn(useTxStore(), 'reset')
+    await router.push('/home')
+    expect(reset).toHaveBeenCalled()
   })
 })

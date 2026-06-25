@@ -1,5 +1,6 @@
 import { createRouter, createMemoryHistory, type RouteRecordRaw } from 'vue-router'
 import { useWalletStore } from '../stores/wallet'
+import { useTxStore } from '../stores/tx'
 
 // Public routes are reachable while the wallet is locked. Everything else is
 // gated. Routes are lazy-loaded so each screen code-splits and a future plugin
@@ -26,6 +27,13 @@ router.beforeEach((to) => {
   if (wallet.locked && !isPublic) return { name: 'unlock' }
   if (!wallet.locked && isPublic) return { name: 'home' }
   return true
+})
+
+router.afterEach(() => {
+  // Discard any half-built/finished tx when navigating between screens so a
+  // stale block never surfaces on an unrelated route. Runs after the guard,
+  // with Pinia active.
+  useTxStore().reset()
 })
 
 export default router

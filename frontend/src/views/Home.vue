@@ -21,6 +21,7 @@ import PanelPlaceholder from '../components/PanelPlaceholder.vue'
 import TxHistory from '../components/TxHistory.vue'
 import SendModal from '../components/SendModal.vue'
 import ReceiveModal from '../components/ReceiveModal.vue'
+import NomConfirm from '../components/NomConfirm.vue'
 
 const router = useRouter()
 const wallet = useWalletStore()
@@ -150,4 +151,7 @@ onMounted(async () => {
 
   <SendModal v-model:open="sendOpen" />
   <ReceiveModal v-model:open="receiveOpen" />
+  <!-- Global confirm for panel-triggered tx. Gated so it never collides with the
+       Send/Receive dialogs, which render their own TxModal. -->
+  <NomConfirm v-if="!sendOpen && !receiveOpen" />
 </template>

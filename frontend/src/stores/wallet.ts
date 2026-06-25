@@ -23,5 +23,22 @@ export const useWalletStore = defineStore('wallet', {
       this.locked = true
       this.active = ''
     },
+    async generateMnemonic(): Promise<string> {
+      return await W.GenerateMnemonic()
+    },
+    // Persist a new keystore from a mnemonic. Does NOT unlock — the caller
+    // unlocks afterward (mirrors the Svelte create/import flow). Throws on error.
+    async importMnemonic(file: string, password: string, mnemonic: string): Promise<void> {
+      await W.ImportMnemonic(file, password, mnemonic)
+      await this.loadWallets()
+    },
+    // Import an existing keystore file; wallet stays locked (user then unlocks).
+    async importKeystore(srcPath: string): Promise<void> {
+      await W.ImportKeystore(srcPath)
+      await this.loadWallets()
+    },
+    async pickKeystoreFile(): Promise<string> {
+      return (await W.PickKeystoreFile()) || ''
+    },
   },
 })

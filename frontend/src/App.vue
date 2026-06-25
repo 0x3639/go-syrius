@@ -2,17 +2,14 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useTheme } from 'nom-ui'
-import { useWalletStore } from './stores/wallet'
-import Unlock from './views/Unlock.vue'
-import Home from './views/Home.vue'
-
-const wallet = useWalletStore()
+import * as N from '../wailsjs/go/app/NodeService'
 const { setTheme } = useTheme()
-
-onMounted(() => setTheme?.('dark'))
+onMounted(async () => {
+  setTheme?.('dark')
+  try { await N.Connect() } catch { /* best-effort; screens work offline */ }
+})
 </script>
 
 <template>
-  <Unlock v-if="wallet.locked" />
-  <Home v-else />
+  <RouterView />
 </template>

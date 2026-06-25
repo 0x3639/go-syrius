@@ -22,6 +22,7 @@ export const useNodeStore = defineStore('node', {
     height: 0,
     syncing: false,
     mode: 'remote',
+    chainId: 0,
     sync: null as SyncStatus | null,
     balances: [] as TokenBalance[],
     _eventsInit: false,
@@ -57,6 +58,7 @@ export const useNodeStore = defineStore('node', {
         this.connected = !!s?.connected
         this.height = s?.height ?? this.height
         this.mode = s?.mode ?? this.mode
+        this.chainId = s?.chainId ?? this.chainId
       })
       EventsOn('node:sync', (s: any) => {
         this.sync = s

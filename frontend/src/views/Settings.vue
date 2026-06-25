@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { Input, Button } from 'nom-ui'
+import Field from '../components/Field.vue'
 import { useNodeStore } from '../stores/node'
 import { useWalletStore } from '../stores/wallet'
+import * as Cfg from '../../wailsjs/go/app/ConfigService'
 
 const node = useNodeStore()
 const wallet = useWalletStore()
@@ -28,6 +31,22 @@ async function refreshEmbedded() {
   try { embeddedSize.value = (await node.getEmbeddedInfo()).sizeBytes } catch {}
 }
 
+const chainId = ref(1)
+const chainMsg = ref('')
+const chainErr = ref('')
+const chainMismatch = computed(
+  () => node.connected && node.chainId !== 0 && Number(chainId.value) !== node.chainId,
+)
+async function applyChainId() {
+  chainMsg.value = ''; chainErr.value = ''
+  try {
+    const s = await Cfg.GetSettings()
+    s.chainId = Number(chainId.value)
+    await Cfg.SetSettings(s)
+    chainMsg.value = 'Network configuration applied'
+  } catch (e: any) { chainErr.value = e?.message ?? String(e) }
+}
+
 onMounted(async () => {
   const c = await node.getConfig()
   loadedMode = c.mode
@@ -37,6 +56,7 @@ onMounted(async () => {
   if (!remoteDirty.value) remoteUrl.value = c.remoteUrl
   if (!localDirty.value) localUrl.value = c.localUrl
   await refreshEmbedded()
+  try { chainId.value = (await Cfg.GetSettings()).chainId || 1 } catch {}
 })
 
 async function applyNode() {
@@ -158,6 +178,23 @@ function hide() { revealed.value = '' }
       <p class="text-xs text-muted-foreground">{{ node.connected ? `Connected (${node.mode}) · height ${node.height}` : `Disconnected (${node.mode})` }}</p>
       <p v-if="nodeMsg" class="text-primary text-sm">{{ nodeMsg }}</p>
       <p v-if="nodeErr" class="text-destructive text-sm" role="alert">{{ nodeErr }}</p>
+    </section>
+
+    <section class="rounded bg-card p-4 space-y-2">
+      <h2 class="text-sm text-muted-foreground">Network Configuration</h2>
+      <p class="text-xs text-muted-foreground">The chain the wallet builds transactions for (1 = mainnet, 73404 = testnet).</p>
+      <Field label="Chain ID">
+        <Input type="number" v-model="chainId" aria-label="chain id" />
+      </Field>
+      <p class="text-xs text-muted-foreground">
+        Connected node chain: {{ node.connected && node.chainId !== 0 ? node.chainId : '—' }}
+      </p>
+      <p v-if="chainMismatch" class="text-destructive text-sm" role="alert">
+        Configured Chain ID {{ chainId }} differs from the connected node's chain {{ node.chainId }} — sends will be rejected until they match.
+      </p>
+      <Button @click="applyChainId">Apply network</Button>
+      <p v-if="chainMsg" class="text-primary text-sm">{{ chainMsg }}</p>
+      <p v-if="chainErr" class="text-destructive text-sm" role="alert">{{ chainErr }}</p>
     </section>
   </div>
 </template>

@@ -1,8 +1,10 @@
 import { defineStore } from 'pinia'
 import * as W from '../../wailsjs/go/app/WalletService'
 
+export type AccountInfo = { index: number; address: string; label: string }
+
 export const useWalletStore = defineStore('wallet', {
-  state: () => ({ locked: true, wallets: [] as string[], active: '' }),
+  state: () => ({ locked: true, wallets: [] as string[], active: '', accounts: [] as AccountInfo[], activeIndex: 0 }),
   actions: {
     async loadWallets() {
       try {
@@ -15,6 +17,8 @@ export const useWalletStore = defineStore('wallet', {
       await W.Unlock(name, password)
       this.active = name
       this.locked = false
+      await this.loadAccounts()
+      this.activeIndex = 0
     },
     lock() {
       // Re-lock the keystore in the Go backend, not just the UI — otherwise the
@@ -22,6 +26,22 @@ export const useWalletStore = defineStore('wallet', {
       W.Lock().catch(() => {})
       this.locked = true
       this.active = ''
+      this.accounts = []
+      this.activeIndex = 0
+    },
+    async loadAccounts() {
+      try { this.accounts = (await W.CurrentAccounts()) as unknown as AccountInfo[] } catch { this.accounts = [] }
+    },
+    async select(index: number) {
+      await W.SelectAccount(index)
+      this.activeIndex = index
+    },
+    async setLabel(index: number, label: string) {
+      await W.SetAccountLabel(index, label)
+      await this.loadAccounts()
+    },
+    activeAddress(): string {
+      return this.accounts.find((a) => a.index === this.activeIndex)?.address ?? ''
     },
     async generateMnemonic(): Promise<string> {
       return await W.GenerateMnemonic()

@@ -15,6 +15,9 @@ vi.mock('../../wailsjs/go/app/WalletService', () => ({
   ImportMnemonic,
   ImportKeystore,
   PickKeystoreFile,
+  CurrentAccounts: vi.fn().mockResolvedValue([{ index: 0, address: 'z1qxxx', label: '' }]),
+  SelectAccount: vi.fn().mockResolvedValue(undefined),
+  SetAccountLabel: vi.fn().mockResolvedValue(undefined),
 }))
 import { useWalletStore } from './wallet'
 beforeEach(() => setActivePinia(createPinia()))
@@ -40,5 +43,13 @@ describe('wallet store', () => {
     await s.importKeystore('/tmp/k.dat')
     expect(ImportKeystore).toHaveBeenCalledWith('/tmp/k.dat')
     expect(await s.pickKeystoreFile()).toBe('/tmp/k.dat')
+  })
+  it('loads accounts on unlock and selects by index', async () => {
+    const s = useWalletStore()
+    await s.unlock('Main', 'pw')
+    expect(s.accounts).toEqual([{ index: 0, address: 'z1qxxx', label: '' }])
+    expect(s.activeAddress()).toBe('z1qxxx')
+    await s.select(0)
+    expect(s.activeIndex).toBe(0)
   })
 })

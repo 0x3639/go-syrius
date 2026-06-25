@@ -1,0 +1,75 @@
+import { mount } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
+
+// Mock TxService so clicking Confirm exercises tx.confirm() -> ConfirmPublish
+// without touching Wails. CancelPending is needed because tx.cancel() calls it.
+const ConfirmPublish = vi.hoisted(() => vi.fn().mockResolvedValue('hash123'))
+const CancelPending = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+vi.mock('../../wailsjs/go/app/TxService', () => ({
+  ConfirmPublish,
+  CancelPending,
+  PrepareSend: vi.fn(),
+}))
+
+// Stub nom-ui Button to a plain button that forwards @click + disabled.
+vi.mock('nom-ui', () => ({
+  Button: {
+    props: ['disabled'],
+    emits: ['click'],
+    template:
+      '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
+  },
+}))
+
+import TxModal from './TxModal.vue'
+import { useTxStore } from '../stores/tx'
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+  ConfirmPublish.mockClear()
+})
+
+describe('TxModal (confirm-what-you-sign)', () => {
+  it('renders the EXACT amount from preview (formatAmountExact), not a rounded/comma form', async () => {
+    const tx = useTxStore()
+    tx.preview = {
+      toAddress: 'z1abc',
+      amount: '5045401869374',
+      zts: 'zts1znn',
+      symbol: 'ZNN',
+      needsPoW: false,
+      difficulty: 0,
+      hash: 'h',
+      usedPlasma: 0,
+    } as any
+    tx.status = 'awaiting'
+
+    const w = mount(TxModal)
+
+    // EXACT value being signed — 5045401869374 base units at 8 decimals.
+    expect(w.text()).toContain('50454.01869374')
+    // NOT the display-rounded / thousands-separated form.
+    expect(w.text()).not.toContain('50,454')
+  })
+
+  it('Confirm calls ConfirmPublish (publishes the held block)', async () => {
+    const tx = useTxStore()
+    tx.preview = {
+      toAddress: 'z1abc',
+      amount: '5045401869374',
+      zts: 'zts1znn',
+      symbol: 'ZNN',
+      needsPoW: false,
+      difficulty: 0,
+      hash: 'h',
+      usedPlasma: 0,
+    } as any
+    tx.status = 'awaiting'
+
+    const w = mount(TxModal)
+    await w.findAll('button')[0].trigger('click')
+
+    expect(ConfirmPublish).toHaveBeenCalled()
+  })
+})

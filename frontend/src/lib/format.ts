@@ -19,6 +19,12 @@ export function formatAmountExact(base: string, decimals: number): string {
   return neg && out !== '0' ? `-${out}` : out
 }
 
+// shortAddress renders z1xxxx…xxxxx for compact display.
+export function shortAddress(addr: string): string {
+  if (addr.length <= 12) return addr
+  return `${addr.slice(0, 6)}…${addr.slice(-5)}`
+}
+
 // formatAmount is the display formatter. Precision depends on the size of the
 // integer part: 3+ integer digits (>= 100) drops the decimals entirely; smaller
 // values round to 2 decimals (half-up, trailing zeros stripped). The integer

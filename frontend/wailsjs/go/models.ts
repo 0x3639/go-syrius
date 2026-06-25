@@ -118,6 +118,7 @@ export namespace app {
 	    syncing: boolean;
 	    height: number;
 	    peers: number;
+	    chainId: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new NodeStatus(source);
@@ -130,6 +131,7 @@ export namespace app {
 	        this.syncing = source["syncing"];
 	        this.height = source["height"];
 	        this.peers = source["peers"];
+	        this.chainId = source["chainId"];
 	    }
 	}
 	export class VoteBreakdownDTO {
@@ -403,6 +405,7 @@ export namespace app {
 	    lastWallet: string;
 	    activeAccount: number;
 	    allowMainnetSend: boolean;
+	    chainId: number;
 	    autoReceive: boolean;
 	    accountLabels: Record<string, string>;
 	
@@ -420,6 +423,7 @@ export namespace app {
 	        this.lastWallet = source["lastWallet"];
 	        this.activeAccount = source["activeAccount"];
 	        this.allowMainnetSend = source["allowMainnetSend"];
+	        this.chainId = source["chainId"];
 	        this.autoReceive = source["autoReceive"];
 	        this.accountLabels = source["accountLabels"];
 	    }

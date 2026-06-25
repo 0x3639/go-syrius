@@ -17,7 +17,12 @@ import BalanceCard from '../components/BalanceCard.vue'
 import ActionCard from '../components/ActionCard.vue'
 import StatusStrip from '../components/StatusStrip.vue'
 import TokensPanel from '../components/TokensPanel.vue'
-import PanelPlaceholder from '../components/PanelPlaceholder.vue'
+import RewardsPanel from '../components/panels/RewardsPanel.vue'
+import PlasmaPanel from '../components/panels/PlasmaPanel.vue'
+import PillarPanel from '../components/panels/PillarPanel.vue'
+import StakingPanel from '../components/panels/StakingPanel.vue'
+import SentinelsPanel from '../components/panels/SentinelsPanel.vue'
+import AcceleratorPanel from '../components/panels/AcceleratorPanel.vue'
 import TxHistory from '../components/TxHistory.vue'
 import SendModal from '../components/SendModal.vue'
 import ReceiveModal from '../components/ReceiveModal.vue'
@@ -137,12 +142,12 @@ onMounted(async () => {
           <TabsTrigger v-for="t in TABS" :key="t" :value="t">{{ t }}</TabsTrigger>
         </TabsList>
         <TabsContent value="Tokens"><TokensPanel /></TabsContent>
-        <TabsContent value="Rewards"><PanelPlaceholder name="Rewards" /></TabsContent>
-        <TabsContent value="Plasma"><PanelPlaceholder name="Plasma" /></TabsContent>
-        <TabsContent value="Pillar"><PanelPlaceholder name="Pillar" /></TabsContent>
-        <TabsContent value="Staking"><PanelPlaceholder name="Staking" /></TabsContent>
-        <TabsContent value="Sentinels"><PanelPlaceholder name="Sentinels" /></TabsContent>
-        <TabsContent value="Accelerator"><PanelPlaceholder name="Accelerator" /></TabsContent>
+        <TabsContent value="Rewards"><RewardsPanel /></TabsContent>
+        <TabsContent value="Plasma"><PlasmaPanel /></TabsContent>
+        <TabsContent value="Pillar"><PillarPanel /></TabsContent>
+        <TabsContent value="Staking"><StakingPanel /></TabsContent>
+        <TabsContent value="Sentinels"><SentinelsPanel /></TabsContent>
+        <TabsContent value="Accelerator"><AcceleratorPanel /></TabsContent>
       </Tabs>
     </div>
 

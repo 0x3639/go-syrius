@@ -35,23 +35,23 @@ function fail(e: any) { error.value = e?.message ?? String(e) }
 
 async function issue() {
   error.value = ''
-  try { tx.awaitConfirm((await Nom.PrepareIssueToken(iName.value, iSymbol.value, iDomain.value, iTotal.value, iMax.value, iDecimals.value, iMintable.value, iBurnable.value, iUtility.value)) as any) } catch (e) { fail(e) }
+  try { tx.awaitConfirm(await Nom.PrepareIssueToken(iName.value, iSymbol.value, iDomain.value, iTotal.value, iMax.value, iDecimals.value, iMintable.value, iBurnable.value, iUtility.value)) } catch (e) { fail(e) }
 }
 function startMint(zts: string) { mintZts.value = zts; mintAmount.value = ''; mintReceiver.value = activeAddress.value }
 async function mint() {
   error.value = ''
-  try { tx.awaitConfirm((await Nom.PrepareMint(mintZts.value, mintAmount.value, mintReceiver.value)) as any) } catch (e) { fail(e) }
+  try { tx.awaitConfirm(await Nom.PrepareMint(mintZts.value, mintAmount.value, mintReceiver.value)) } catch (e) { fail(e) }
 }
 async function doLookup() { error.value = ''; try { await token.lookup(lookupZts.value) } catch (e) { fail(e) } }
 async function burn(zts: string) {
   error.value = ''
-  try { tx.awaitConfirm((await Nom.PrepareBurn(zts, burnAmount.value)) as any) } catch (e) { fail(e) }
+  try { tx.awaitConfirm(await Nom.PrepareBurn(zts, burnAmount.value)) } catch (e) { fail(e) }
 }
 function startUpdate(zts: string, owner: string) { updZts.value = zts; updOwner.value = owner; updDisableMint.value = false; updDisableBurn.value = false }
 async function update(t: app.TokenInfo) {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareUpdateToken(updZts.value, updOwner.value, t.isMintable && !updDisableMint.value, t.isBurnable && !updDisableBurn.value)) as any)
+    tx.awaitConfirm(await Nom.PrepareUpdateToken(updZts.value, updOwner.value, t.isMintable && !updDisableMint.value, t.isBurnable && !updDisableBurn.value))
   } catch (e) { fail(e) }
 }
 </script>

@@ -80,7 +80,7 @@ watch(
 async function donate() {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareDonate(donateAmount.value, donateToken.value)) as never)
+    tx.awaitConfirm(await Nom.PrepareDonate(donateAmount.value, donateToken.value))
   } catch (e) {
     fail(e)
   }
@@ -88,7 +88,7 @@ async function donate() {
 async function vote() {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareVote(voteId.value, votePillar.value, voteChoice.value)) as never)
+    tx.awaitConfirm(await Nom.PrepareVote(voteId.value, votePillar.value, voteChoice.value))
   } catch (e) {
     fail(e)
   }
@@ -97,13 +97,7 @@ async function createProject() {
   error.value = ''
   try {
     tx.awaitConfirm(
-      (await Nom.PrepareCreateProject(
-        cName.value,
-        cDesc.value,
-        cUrl.value,
-        cZnn.value,
-        cQsr.value,
-      )) as never,
+      await Nom.PrepareCreateProject(cName.value, cDesc.value, cUrl.value, cZnn.value, cQsr.value),
     )
   } catch (e) {
     fail(e)
@@ -113,14 +107,14 @@ async function addPhase() {
   error.value = ''
   try {
     tx.awaitConfirm(
-      (await Nom.PrepareAddPhase(
+      await Nom.PrepareAddPhase(
         phProjectId.value,
         phName.value,
         phDesc.value,
         phUrl.value,
         phZnn.value,
         phQsr.value,
-      )) as never,
+      ),
     )
   } catch (e) {
     fail(e)
@@ -130,14 +124,14 @@ async function updatePhase() {
   error.value = ''
   try {
     tx.awaitConfirm(
-      (await Nom.PrepareUpdatePhase(
+      await Nom.PrepareUpdatePhase(
         phProjectId.value,
         phName.value,
         phDesc.value,
         phUrl.value,
         phZnn.value,
         phQsr.value,
-      )) as never,
+      ),
     )
   } catch (e) {
     fail(e)

@@ -93,15 +93,16 @@ describe('AcceleratorPanel', () => {
     const w = render()
     await w.vm.$nextTick()
 
-    // votePillar defaults to the first votable pillar; voteChoice defaults to 0.
+    // votePillar defaults to the first votable pillar; explicitly select the
+    // second so the assertion proves the select's v-model drives the pillar arg.
     await w.get('[aria-label="vote target id"]').setValue('0xphase')
-    await w.get('[aria-label="vote pillar"]').get('option[value="Pillar-Two"]')
+    await w.get('[aria-label="vote pillar"]').setValue('Pillar-Two')
     const buttons = w.findAll('button:not([aria-label])')
     // buttons[0] = Donate, buttons[1] = Vote (both have no aria-label).
     await buttons[1].trigger('click')
     await w.vm.$nextTick()
 
-    expect(Nom.PrepareVote).toHaveBeenCalledWith('0xphase', 'Pillar-One', 0)
+    expect(Nom.PrepareVote).toHaveBeenCalledWith('0xphase', 'Pillar-Two', 0)
     expect(awaitConfirm).toHaveBeenCalledWith(votePreview)
   })
 })

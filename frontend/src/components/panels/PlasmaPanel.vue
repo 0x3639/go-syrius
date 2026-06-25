@@ -36,7 +36,7 @@ async function fuse() {
   error.value = ''
   try {
     const preview = await Nom.PrepareFuse(beneficiary.value, toBase(amount.value, 8))
-    tx.awaitConfirm(preview as never)
+    tx.awaitConfirm(preview)
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -46,7 +46,7 @@ async function cancel(id: string) {
   error.value = ''
   try {
     const preview = await Nom.PrepareCancelFuse(id)
-    tx.awaitConfirm(preview as never)
+    tx.awaitConfirm(preview)
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }

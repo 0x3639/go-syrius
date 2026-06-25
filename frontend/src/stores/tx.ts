@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import * as Tx from '../../wailsjs/go/app/TxService'
+import type { app } from '../../wailsjs/go/models'
 
 export type SendPreview = { toAddress: string; symbol: string; zts: string; amount: string; usedPlasma: number; difficulty: number; hash: string; needsPoW: boolean; summary?: string }
 
@@ -14,7 +15,7 @@ export const useTxStore = defineStore('tx', {
         this.status = 'awaiting'
       } catch (e: any) { this.status = 'error'; this.error = e?.message ?? String(e) }
     },
-    awaitConfirm(preview: SendPreview) { this.preview = preview; this.status = 'awaiting'; this.hash = ''; this.error = '' },
+    awaitConfirm(preview: SendPreview | app.CallPreview) { this.preview = preview as SendPreview; this.status = 'awaiting'; this.hash = ''; this.error = '' },
     async confirm() {
       this.status = 'publishing'
       try { this.hash = (await Tx.ConfirmPublish()) as string; this.status = 'done'; this.preview = null }

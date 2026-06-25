@@ -7,6 +7,7 @@ import { useStakeStore } from '../../stores/stake'
 import { usePillarStore } from '../../stores/pillar'
 import { useSentinelStore } from '../../stores/sentinel'
 import { useTxStore } from '../../stores/tx'
+import type { app } from '../../../wailsjs/go/models'
 import { formatAmount } from '../../lib/format'
 
 type Reward = { znn: string; qsr: string }
@@ -26,7 +27,7 @@ const error = ref('')
 type Source = {
   label: string
   reward: Reward
-  collect: () => Promise<unknown>
+  collect: () => Promise<app.CallPreview>
 }
 
 // Mirrors the Svelte panel's source list (Delegation / Staking / Sentinel),
@@ -66,7 +67,7 @@ async function collect(s: Source) {
   error.value = ''
   try {
     const preview = await s.collect()
-    tx.awaitConfirm(preview as never)
+    tx.awaitConfirm(preview)
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }

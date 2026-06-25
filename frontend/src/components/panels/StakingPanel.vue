@@ -29,7 +29,7 @@ const entries = computed(() => stakeInfo.value?.entries ?? [])
 async function doStake() {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareStake(toBase(amount.value, 8), months.value)) as never)
+    tx.awaitConfirm(await Nom.PrepareStake(toBase(amount.value, 8), months.value))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -37,7 +37,7 @@ async function doStake() {
 async function cancel(id: string) {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareCancelStake(id)) as never)
+    tx.awaitConfirm(await Nom.PrepareCancelStake(id))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -45,7 +45,7 @@ async function cancel(id: string) {
 async function collect() {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareCollectReward()) as never)
+    tx.awaitConfirm(await Nom.PrepareCollectReward())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }

@@ -32,7 +32,7 @@ const rewardZero = computed(
 async function depositQsr() {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareDepositQsr(shortfall.value.toString())) as never)
+    tx.awaitConfirm(await Nom.PrepareDepositQsr(shortfall.value.toString()))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -40,7 +40,7 @@ async function depositQsr() {
 async function register() {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareRegisterSentinel()) as never)
+    tx.awaitConfirm(await Nom.PrepareRegisterSentinel())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -48,7 +48,7 @@ async function register() {
 async function collect() {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareCollectSentinelReward()) as never)
+    tx.awaitConfirm(await Nom.PrepareCollectSentinelReward())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -56,7 +56,7 @@ async function collect() {
 async function revoke() {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareRevokeSentinel()) as never)
+    tx.awaitConfirm(await Nom.PrepareRevokeSentinel())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -64,7 +64,7 @@ async function revoke() {
 async function withdrawQsr() {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareWithdrawQsr()) as never)
+    tx.awaitConfirm(await Nom.PrepareWithdrawQsr())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }

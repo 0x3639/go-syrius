@@ -30,7 +30,7 @@ const filtered = computed(() =>
 async function delegate(name: string) {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareDelegate(name)) as never)
+    tx.awaitConfirm(await Nom.PrepareDelegate(name))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -38,7 +38,7 @@ async function delegate(name: string) {
 async function undelegate() {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareUndelegate()) as never)
+    tx.awaitConfirm(await Nom.PrepareUndelegate())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -46,7 +46,7 @@ async function undelegate() {
 async function collect() {
   error.value = ''
   try {
-    tx.awaitConfirm((await Nom.PrepareCollectPillarReward()) as never)
+    tx.awaitConfirm(await Nom.PrepareCollectPillarReward())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }

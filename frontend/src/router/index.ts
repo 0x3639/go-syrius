@@ -14,8 +14,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/import', name: 'import', component: () => import('../views/ImportMnemonic.vue') },
   { path: '/home', name: 'home', component: () => import('../views/Home.vue') },
   { path: '/settings', name: 'settings', component: () => import('../views/Settings.vue') },
-  // Tokens reuses the placeholder for now; B4 splits it into its own view.
-  { path: '/tokens', name: 'tokens', component: () => import('../views/Settings.vue') },
+  { path: '/tokens', name: 'tokens', component: () => import('../views/Tokens.vue') },
 ]
 
 const router = createRouter({ history: createMemoryHistory(), routes })

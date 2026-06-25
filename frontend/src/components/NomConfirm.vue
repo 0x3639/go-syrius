@@ -11,7 +11,9 @@ import TxResult from './TxResult.vue'
 // Home gates this with !sendOpen && !receiveOpen to avoid a double modal.
 const tx = useTxStore()
 const open = computed({
-  get: () => tx.status === 'awaiting' || tx.status === 'done',
+  // Stay open through 'publishing' too, so the modal doesn't flicker closed
+  // between Confirm and the published result.
+  get: () => tx.status === 'awaiting' || tx.status === 'publishing' || tx.status === 'done',
   set: (v: boolean) => {
     if (!v) {
       // Closing while awaiting cancels the held block; after a publish (done)
@@ -26,7 +28,7 @@ const open = computed({
   <Dialog v-model:open="open">
     <DialogContent>
       <DialogHeader><DialogTitle>Confirm</DialogTitle></DialogHeader>
-      <TxModal v-if="tx.status === 'awaiting'" />
+      <TxModal v-if="tx.status === 'awaiting' || tx.status === 'publishing'" />
       <TxResult v-else-if="tx.status === 'done'" />
     </DialogContent>
   </Dialog>

@@ -186,6 +186,51 @@ func TestAssertMatches(t *testing.T) {
 	}
 }
 
+func TestConfiguredChainID(t *testing.T) {
+	tx := newTestTxService(t)
+	// Default settings (ChainID unset == 0) must normalize to mainnet.
+	if got := tx.configuredChainID(); got != mainnetChainID {
+		t.Fatalf("unset ChainID should normalize to mainnet (%d), got %d", mainnetChainID, got)
+	}
+	// A configured non-mainnet chain id must be returned verbatim.
+	s, err := tx.config.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	s.ChainID = 73404
+	if err := tx.config.SetSettings(s); err != nil {
+		t.Fatalf("SetSettings: %v", err)
+	}
+	if got := tx.configuredChainID(); got != 73404 {
+		t.Fatalf("configured ChainID 73404 should be returned, got %d", got)
+	}
+}
+
+// TestConfiguredChainIDStampsTemplate proves the configured chain id reaches a
+// built block's ChainIdentifier (the field committed in the signed block), as
+// done at each of the three block-building sites before PrepareBlock/Send.
+func TestConfiguredChainIDStampsTemplate(t *testing.T) {
+	tx := newTestTxService(t)
+	s, err := tx.config.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	s.ChainID = 73404
+	if err := tx.config.SetSettings(s); err != nil {
+		t.Fatalf("SetSettings: %v", err)
+	}
+	// Mirror the stamping step performed at every build site.
+	template := &nom.AccountBlock{
+		ToAddress:     types.ParseAddressPanic("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"),
+		Amount:        big.NewInt(1),
+		TokenStandard: types.ZnnTokenStandard,
+	}
+	template.ChainIdentifier = tx.configuredChainID()
+	if template.ChainIdentifier != 73404 {
+		t.Fatalf("stamp should set ChainIdentifier to configured 73404, got %d", template.ChainIdentifier)
+	}
+}
+
 func TestReceiveRejectsBadHash(t *testing.T) {
 	tx := newTestTxService(t)
 	if _, err := tx.Receive("not-a-hash"); err == nil {

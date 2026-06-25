@@ -80,6 +80,17 @@ func (t *TxService) parseRequest(req SendRequest) (types.Address, types.ZenonTok
 	return to, zts, amount, nil
 }
 
+// configuredChainID returns the chain identifier the wallet builds transactions
+// for, from settings; unset/0 normalizes to mainnet. The built block is still
+// validated against the connected node's chain before publish.
+func (t *TxService) configuredChainID() uint64 {
+	s, err := t.config.GetSettings()
+	if err != nil || s.ChainID == 0 {
+		return mainnetChainID
+	}
+	return s.ChainID
+}
+
 // guard rejects mainnet sends unless explicitly enabled.
 func (t *TxService) guard() error {
 	if t.node.currentChainID() == mainnetChainID {
@@ -135,6 +146,7 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 	}
 
 	template := client.LedgerApi.SendTemplate(to, zts, amount, nil)
+	template.ChainIdentifier = t.configuredChainID()
 	z := zenon.NewZenon(client)
 	if t.ctx != nil {
 		z.PowCallback = func(s pow.PowStatus) {
@@ -208,7 +220,7 @@ func (t *TxService) ConfirmPublish() (string, error) {
 		return "", errors.New("not connected")
 	}
 	if b.ChainIdentifier != t.node.currentChainID() {
-		return "", errors.New("connected node chain differs from the prepared transaction; reconnect to the original network and retry")
+		return "", fmt.Errorf("configured Chain ID (%d) does not match the connected node's chain (%d); set the correct Chain ID in Settings or connect to a matching node", b.ChainIdentifier, t.node.currentChainID())
 	}
 	if err := client.LedgerApi.PublishRawTransaction(b); err != nil {
 		return "", err
@@ -236,6 +248,7 @@ func (t *TxService) prepareCall(template *nom.AccountBlock, expect callExpect, s
 	if err != nil {
 		return CallPreview{}, err
 	}
+	template.ChainIdentifier = t.configuredChainID()
 	z := zenon.NewZenon(client)
 	if t.ctx != nil {
 		z.PowCallback = func(s pow.PowStatus) {
@@ -282,6 +295,7 @@ func (t *TxService) Receive(fromHash string) (string, error) {
 		return "", err
 	}
 	template := client.LedgerApi.ReceiveTemplate(hash)
+	template.ChainIdentifier = t.configuredChainID()
 	published, err := zenon.NewZenon(client).Send(template, kp)
 	if err != nil {
 		return "", err

@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { formatAmount, formatAmountExact } from './format'
+import { formatAmount, formatAmountExact, toBase } from './format'
+
+describe('toBase (decimal -> base units)', () => {
+  it('converts decimal strings to base-unit integers at the given precision', () => {
+    expect(toBase('1.5', 8)).toBe('150000000')
+    expect(toBase('200', 8)).toBe('20000000000')
+    expect(toBase('0.00000001', 8)).toBe('1')
+  })
+})
 
 describe('formatAmount (display)', () => {
   it('drops decimals + adds commas for 3+ integer digits', () => {

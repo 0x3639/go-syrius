@@ -1,3 +1,12 @@
+// toBase converts a decimal string to its base-unit integer string at `decimals`
+// precision (verbatim from the Svelte SendModal). Inverse of formatAmountExact;
+// used to build the amount for tx.prepare. The backend re-validates authoritatively.
+export function toBase(decimal: string, decimals: number): string {
+  const [i, f = ''] = decimal.split('.')
+  const frac = (f + '0'.repeat(decimals)).slice(0, decimals)
+  return (BigInt(i || '0') * 10n ** BigInt(decimals) + BigInt(frac || '0')).toString()
+}
+
 // formatAmountExact converts a base-unit integer string to its exact human
 // decimal string (full precision, trailing zeros stripped). Use where the
 // precise value matters — e.g. the confirm-what-you-sign modal (sub-project B).

@@ -60,5 +60,11 @@ export const useWalletStore = defineStore('wallet', {
     async pickKeystoreFile(): Promise<string> {
       return (await W.PickKeystoreFile()) || ''
     },
+    async changePassword(oldPw: string, newPw: string): Promise<void> {
+      await W.ChangePassword(this.active, oldPw, newPw)
+    },
+    async revealMnemonic(password: string): Promise<string> {
+      return await W.RevealMnemonic(password)
+    },
   },
 })

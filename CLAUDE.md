@@ -16,7 +16,7 @@ A reimplementation of the Zenon `syrius` wallet (originally Flutter/Dart) as a *
 
 - **Wails v2** (v2.10.1; not v3 — stability for a funds-handling app)
 - **Go 1.25.11** (go.mod toolchain floor), importing `znn-sdk-go` (pinned, author-controlled; currently v0.1.19) and `go-zenon`
-- **Svelte + TypeScript + Vite**, **Tailwind CSS**, Svelte stores for state
+- **Vue 3 + TypeScript + Vite**, **Tailwind CSS 4**, **Pinia** for state, **vue-router** (memory history). UI built on **nom-ui** (Vue component library, `github:digitalSloth/nom-ui` pinned) — Dialog/Tabs/Address/TxStatus/TxDirection/TokenIcon/toast + its blockchain primitives. *(Originally scaffolded in Svelte; migrated to Vue 3 + nom-ui — merged to main `a9c2880`, 2026-06-25. The Go backend + Wails bindings were untouched by the migration.)*
 - Build via Wails CLI + GitHub Actions cross-platform matrix
 
 ## Architecture
@@ -27,7 +27,7 @@ The frontend (WebView) must **never** receive a private key, mnemonic seed, or d
 
 ### Service layout (planned — see plan.md §4)
 
-Wails-bound services live under `app/`, each a clear seam: `WalletService` (unlock/lock/accounts), `NodeService` (node modes + status events), `TxService` (build→pow→sign→publish), `NomService` (plasma/stake/pillar/sentinel/token/accelerator), `LedgerService` (Phase 6), `ConfigService` (settings/data dir). Non-bound internals under `internal/`: `signer/` (software | ledger abstraction), `powmgr/` (cancellable PoW), `compat/` (keystore compatibility + tests). Frontend under `frontend/src/` (routes, lib/stores, lib/components, lib/bindings).
+Wails-bound services live under `app/`, each a clear seam: `WalletService` (unlock/lock/accounts), `NodeService` (node modes + status events), `TxService` (build→pow→sign→publish), `NomService` (plasma/stake/pillar/sentinel/token/accelerator), `LedgerService` (Phase 6), `ConfigService` (settings/data dir). Non-bound internals under `internal/`: `signer/` (software | ledger abstraction), `powmgr/` (cancellable PoW), `compat/` (keystore compatibility + tests). Frontend under `frontend/src/` (Vue): `views/` (route components: Unlock/Create/ImportMnemonic/Home/Settings/Tokens), `router/` (vue-router + lock guard), `stores/` (Pinia: wallet/node/balances/tx/txs/unreceived/token/plasma/pillar/stake/sentinel/accelerator), `components/` (+ `components/panels/` for the 7 NoM tabs), `lib/format.ts` (BigInt `formatAmount`/`formatAmountExact` — never use nom-ui `Amount` for balances, it loses precision), and the generated `frontend/wailsjs/` bindings.
 
 ### Three node modes
 
@@ -78,6 +78,6 @@ Ordered by risk; do not start UI-heavy work before the foundation is proven.
 
 - **Run / build the app:** `GOWORK=off wails dev` (run), `GOWORK=off wails build` (package). Linux build needs `-tags webkit2_41` (+ `libgtk-3-dev libwebkit2gtk-4.1-dev`).
 - **Backend tests:** `GOWORK=off GOTOOLCHAIN=auto go test ./...` (plus `go vet ./...`, `go build ./...`). Integration/live-node tests are behind `//go:build integration` and need `ZNN_NODE_URL` (e.g. `... go test -tags integration ./internal/spike -run TestReadOnly... -v`).
-- **Frontend** (in `frontend/`, pnpm 10.17.1): `pnpm install --frozen-lockfile`, `pnpm run check` (svelte-check), `pnpm test` (vitest), `pnpm run build`.
+- **Frontend** (in `frontend/`, pnpm 10.17.1): `pnpm install --frozen-lockfile`, `pnpm run typecheck` (vue-tsc), `pnpm test` (vitest + @vue/test-utils), `pnpm run build` (Vite). nom-ui ships uncompiled source, so the build carries `tailwindcss-animate` + a couple of tsconfig accommodations.
 - **Security gates:** `bash scripts/govulncheck-gate.sh` (allowlist gate over `govulncheck ./...`), `gosec -conf .gosec.json ./...`.
 - **CI:** `.github/workflows/ci.yml` runs on PR→main / push→main — jobs `frontend`, `security`, and a `build-test` matrix (ubuntu/macOS/windows: go vet/test + `wails build`).

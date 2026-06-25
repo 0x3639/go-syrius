@@ -1,7 +1,7 @@
 <!-- src/App.vue -->
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { useTheme } from 'nom-ui'
+import { useTheme, Toaster } from 'nom-ui'
 import * as N from '../wailsjs/go/app/NodeService'
 const { setTheme } = useTheme()
 onMounted(async () => {
@@ -12,4 +12,5 @@ onMounted(async () => {
 
 <template>
   <RouterView />
+  <Toaster />
 </template>

@@ -72,4 +72,25 @@ describe('TxModal (confirm-what-you-sign)', () => {
 
     expect(ConfirmPublish).toHaveBeenCalled()
   })
+
+  it('disables Cancel while publishing (cannot abort an in-flight broadcast)', () => {
+    const tx = useTxStore()
+    tx.preview = {
+      toAddress: 'z1abc',
+      amount: '150000000',
+      zts: 'zts1znn',
+      symbol: 'ZNN',
+      needsPoW: false,
+      difficulty: 0,
+      hash: 'h',
+      usedPlasma: 0,
+    } as any
+    tx.status = 'publishing'
+
+    const w = mount(TxModal)
+    const buttons = w.findAll('button')
+    // [0] = Confirm, [1] = Cancel — both disabled while ConfirmPublish is in flight.
+    expect(buttons[0].attributes('disabled')).toBeDefined()
+    expect(buttons[1].attributes('disabled')).toBeDefined()
+  })
 })

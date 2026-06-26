@@ -52,7 +52,12 @@ const { preview: p, status } = storeToRefs(tx)
       >
         Confirm
       </Button>
-      <Button class="flex-1" variant="outline" @click="tx.cancel()">
+      <Button
+        class="flex-1"
+        variant="outline"
+        :disabled="status === 'publishing'"
+        @click="tx.cancel()"
+      >
         Cancel
       </Button>
     </div>

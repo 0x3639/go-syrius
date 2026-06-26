@@ -21,6 +21,7 @@ export namespace app {
 	    zts: string;
 	    symbol: string;
 	    amount: string;
+	    decimals: number;
 	    hash: string;
 	    summary: string;
 	    usedPlasma: number;
@@ -37,6 +38,7 @@ export namespace app {
 	        this.zts = source["zts"];
 	        this.symbol = source["symbol"];
 	        this.amount = source["amount"];
+	        this.decimals = source["decimals"];
 	        this.hash = source["hash"];
 	        this.summary = source["summary"];
 	        this.usedPlasma = source["usedPlasma"];
@@ -339,6 +341,7 @@ export namespace app {
 	    symbol: string;
 	    zts: string;
 	    amount: string;
+	    decimals: number;
 	    usedPlasma: number;
 	    difficulty: number;
 	    hash: string;
@@ -354,6 +357,7 @@ export namespace app {
 	        this.symbol = source["symbol"];
 	        this.zts = source["zts"];
 	        this.amount = source["amount"];
+	        this.decimals = source["decimals"];
 	        this.usedPlasma = source["usedPlasma"];
 	        this.difficulty = source["difficulty"];
 	        this.hash = source["hash"];
@@ -538,6 +542,7 @@ export namespace app {
 	    counterparty: string;
 	    token: string;
 	    amount: string;
+	    decimals: number;
 	    momentumHeight: number;
 	    confirmed: boolean;
 	    timestamp: number;
@@ -553,6 +558,7 @@ export namespace app {
 	        this.counterparty = source["counterparty"];
 	        this.token = source["token"];
 	        this.amount = source["amount"];
+	        this.decimals = source["decimals"];
 	        this.momentumHeight = source["momentumHeight"];
 	        this.confirmed = source["confirmed"];
 	        this.timestamp = source["timestamp"];
@@ -563,6 +569,7 @@ export namespace app {
 	    fromAddress: string;
 	    token: string;
 	    amount: string;
+	    decimals: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new UnreceivedBlock(source);
@@ -574,6 +581,7 @@ export namespace app {
 	        this.fromAddress = source["fromAddress"];
 	        this.token = source["token"];
 	        this.amount = source["amount"];
+	        this.decimals = source["decimals"];
 	    }
 	}
 	

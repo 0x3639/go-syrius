@@ -36,7 +36,7 @@ const anyBusy = computed(
       class="flex items-center justify-between gap-2 border-b border-border/60 py-1.5 text-sm last:border-b-0"
     >
       <span class="font-mono text-muted-foreground">{{ shortAddress(u.fromAddress) }}</span>
-      <span class="font-mono text-foreground">{{ formatAmount(u.amount, 8) }} {{ u.token }}</span>
+      <span class="font-mono text-foreground">{{ formatAmount(u.amount, u.decimals ?? 8) }} {{ u.token }}</span>
       <Button
         variant="secondary"
         size="sm"

@@ -42,7 +42,7 @@ function status(confirmed: boolean): 'success' | 'pending' {
             <Address :address="t.counterparty" :copy="false" :tooltip="false" />
           </TableCell>
           <TableCell class="text-right font-mono text-foreground">
-            {{ formatAmount(t.amount, 8) }} {{ t.token }}
+            {{ formatAmount(t.amount, t.decimals ?? 8) }} {{ t.token }}
           </TableCell>
           <TableCell class="text-right">
             <TxStatus :status="status(t.confirmed)" />

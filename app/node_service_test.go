@@ -41,11 +41,11 @@ func TestToTxRecordDirection(t *testing.T) {
 		Amount:        big.NewInt(100000000),
 		TokenStandard: types.ZnnTokenStandard,
 	}
-	rec := toTxRecord(send)
+	rec := toTxRecord(send, 8)
 	if rec.Direction != "send" {
 		t.Fatalf("direction = %s, want send", rec.Direction)
 	}
-	if rec.Amount != "100000000" || rec.Confirmed {
+	if rec.Amount != "100000000" || rec.Confirmed || rec.Decimals != 8 {
 		t.Fatalf("rec = %+v", rec)
 	}
 }
@@ -58,8 +58,8 @@ func TestToUnreceivedBlock(t *testing.T) {
 		Amount:        big.NewInt(150000000),
 		TokenStandard: types.ZnnTokenStandard,
 	}
-	got := toUnreceivedBlock(b)
-	if got.FromAddress != b.Address.String() || got.Amount != "150000000" {
+	got := toUnreceivedBlock(b, 6)
+	if got.FromAddress != b.Address.String() || got.Amount != "150000000" || got.Decimals != 6 {
 		t.Fatalf("toUnreceivedBlock = %+v", got)
 	}
 	if got.FromHash != b.Hash.String() {

@@ -18,6 +18,7 @@ const item: Unreceived = {
   fromAddress: 'z1qabcdefghijklmnopqrstuvwxyz0123456789ab',
   token: 'ZNN',
   amount: '150000000',
+  decimals: 8,
 }
 
 beforeEach(() => {
@@ -38,6 +39,18 @@ describe('UnreceivedPanel', () => {
     const btns = w.findAll('button')
     const receive = btns.find((b) => b.text() === 'Receive')
     expect(receive).toBeTruthy()
+  })
+
+  it('renders a non-8-decimal token amount using the row decimals', async () => {
+    const w = mount(UnreceivedPanel)
+    const store = useUnreceivedStore()
+    vi.spyOn(store, 'load').mockResolvedValue()
+    // 1500000 base units at 6 decimals == 1.5, NOT 0.015 (the wrong 8-dec form).
+    store.items = [{ ...item, token: 'CUSTOM', amount: '1500000', decimals: 6 }]
+    await w.vm.$nextTick()
+
+    expect(w.text()).toContain('1.5 CUSTOM')
+    expect(w.text()).not.toContain('0.015')
   })
 
   it('calls store.receive(fromHash) when the Receive button is clicked', async () => {

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import * as Tx from '../../wailsjs/go/app/TxService'
 import type { app } from '../../wailsjs/go/models'
 
-export type SendPreview = { toAddress: string; symbol: string; zts: string; amount: string; usedPlasma: number; difficulty: number; hash: string; needsPoW: boolean; summary?: string }
+export type SendPreview = { toAddress: string; symbol: string; zts: string; amount: string; decimals: number; usedPlasma: number; difficulty: number; hash: string; needsPoW: boolean; summary?: string }
 
 export const useTxStore = defineStore('tx', {
   state: () => ({ status: 'idle' as 'idle'|'preparing'|'awaiting'|'publishing'|'done'|'error', preview: null as SendPreview | null, hash: '', error: '' }),

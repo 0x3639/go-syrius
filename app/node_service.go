@@ -466,7 +466,7 @@ func (n *NodeService) GetTransactions(page, count int) ([]TxRecord, error) {
 	dc := newDecimalsCache(clientTokenDecimals(client))
 	out := []TxRecord{}
 	for _, b := range list.List {
-		out = append(out, toTxRecord(b, dc.get(b.TokenStandard.String())))
+		out = append(out, toTxRecord(b, dc))
 	}
 	return out, nil
 }
@@ -621,25 +621,33 @@ func toTokenBalance(zts types.ZenonTokenStandard, bi *api.BalanceInfo) TokenBala
 	return tb
 }
 
-func toTxRecord(b *api.AccountBlock, decimals int) TxRecord {
-	rec := TxRecord{
-		Hash:      b.Hash.String(),
-		Token:     b.TokenStandard.String(),
-		Amount:    "0",
-		Decimals:  decimals,
-		Direction: "receive",
+func toTxRecord(b *api.AccountBlock, dc *decimalsCache) TxRecord {
+	// A receive block carries the zero ZTS and amount 0 — the real token, amount,
+	// and the actual sender live in the paired SEND block. Resolve through it for
+	// receives; fall back to the block's own values if the pair is absent.
+	vb := b
+	if !nom.IsSendBlock(b.BlockType) && b.PairedAccountBlock != nil {
+		vb = b.PairedAccountBlock
 	}
-	if b.Amount != nil {
-		rec.Amount = b.Amount.String()
+
+	rec := TxRecord{
+		Hash:     b.Hash.String(),
+		Token:    vb.TokenStandard.String(),
+		Amount:   "0",
+		Decimals: dc.get(vb.TokenStandard.String()),
+	}
+	if vb.Amount != nil {
+		rec.Amount = vb.Amount.String()
+	}
+	if vb.TokenInfo != nil {
+		rec.Token = vb.TokenInfo.TokenSymbol
 	}
 	if nom.IsSendBlock(b.BlockType) {
 		rec.Direction = "send"
 		rec.Counterparty = b.ToAddress.String()
 	} else {
-		rec.Counterparty = b.Address.String()
-	}
-	if b.TokenInfo != nil {
-		rec.Token = b.TokenInfo.TokenSymbol
+		rec.Direction = "receive"
+		rec.Counterparty = vb.Address.String() // the sender, from the paired send block
 	}
 	if b.ConfirmationDetail != nil {
 		rec.Confirmed = true

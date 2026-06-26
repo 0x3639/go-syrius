@@ -41,12 +41,46 @@ func TestToTxRecordDirection(t *testing.T) {
 		Amount:        big.NewInt(100000000),
 		TokenStandard: types.ZnnTokenStandard,
 	}
-	rec := toTxRecord(send, 8)
+	rec := toTxRecord(send, newDecimalsCache(nil))
 	if rec.Direction != "send" {
 		t.Fatalf("direction = %s, want send", rec.Direction)
 	}
 	if rec.Amount != "100000000" || rec.Confirmed || rec.Decimals != 8 {
 		t.Fatalf("rec = %+v", rec)
+	}
+}
+
+func TestToTxRecordReceiveResolvesPairedSend(t *testing.T) {
+	const sender = "z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"
+	const me = "z1qqjnwjjpnue8xmmpanz6csze6tcmtzzdtfsww7"
+	// A receive block carries amount 0 / the zero ZTS; the value lives in its pair.
+	recv := &api.AccountBlock{}
+	recv.AccountBlock = nom.AccountBlock{
+		Hash:      types.HexToHashPanic("0202030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+		BlockType: nom.BlockTypeUserReceive,
+		Address:   types.ParseAddressPanic(me),
+	}
+	paired := &api.AccountBlock{}
+	paired.AccountBlock = nom.AccountBlock{
+		Address:       types.ParseAddressPanic(sender),
+		ToAddress:     types.ParseAddressPanic(me),
+		Amount:        big.NewInt(500000000),
+		TokenStandard: types.ZnnTokenStandard,
+	}
+	recv.PairedAccountBlock = paired
+
+	rec := toTxRecord(recv, newDecimalsCache(nil))
+	if rec.Direction != "receive" {
+		t.Fatalf("direction = %s, want receive", rec.Direction)
+	}
+	if rec.Amount != "500000000" {
+		t.Fatalf("amount = %s, want paired 500000000", rec.Amount)
+	}
+	if rec.Token != types.ZnnTokenStandard.String() {
+		t.Fatalf("token = %s, want ZNN zts", rec.Token)
+	}
+	if rec.Counterparty != sender {
+		t.Fatalf("counterparty = %s, want sender %s", rec.Counterparty, sender)
 	}
 }
 

@@ -63,6 +63,16 @@ describe('TxHistory', () => {
     })
   })
 
+  it('hides zero-amount plumbing by default and shows it under All', async () => {
+    const w = mount(TxHistory)
+    useTxsStore().items = [tx, { ...tx, hash: 'z1', amount: '0' }]
+    await w.vm.$nextTick()
+    expect(w.findAll('tr').length).toBe(1) // only the real transfer
+    await w.find('button[aria-label="show all transactions"]').trigger('click')
+    await w.vm.$nextTick()
+    expect(w.findAll('tr').length).toBe(2) // both rows now
+  })
+
   it('shows the empty state when there are no txs', () => {
     const w = mount(TxHistory)
     expect(w.text()).toContain('No transactions.')

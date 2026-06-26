@@ -412,6 +412,7 @@ export namespace app {
 	    chainId: number;
 	    autoReceive: boolean;
 	    accountLabels: Record<string, string>;
+	    accountCounts: Record<string, number>;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -430,6 +431,7 @@ export namespace app {
 	        this.chainId = source["chainId"];
 	        this.autoReceive = source["autoReceive"];
 	        this.accountLabels = source["accountLabels"];
+	        this.accountCounts = source["accountCounts"];
 	    }
 	}
 	export class StakeEntry {

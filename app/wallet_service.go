@@ -20,6 +20,22 @@ import (
 
 const accountRange = 10
 
+// maxAccounts caps how many accounts a wallet can reveal (derivation indices).
+const maxAccounts = 100
+
+// accountCountFor returns how many accounts the given wallet reveals: the stored
+// count clamped to [accountRange, maxAccounts]. Unset falls back to accountRange.
+func accountCountFor(s Settings, wallet string) int {
+	c := s.AccountCounts[wallet]
+	if c < accountRange {
+		return accountRange
+	}
+	if c > maxAccounts {
+		return maxAccounts
+	}
+	return c
+}
+
 var errLocked = errors.New("wallet is locked")
 
 // WalletService imports, unlocks, and derives accounts from syrius keystores
@@ -363,30 +379,36 @@ func (w *WalletService) CurrentAccounts() ([]AccountInfo, error) {
 		return nil, errLocked
 	}
 	name := w.activeWallet
-	out := make([]AccountInfo, 0, accountRange)
-	for i := 0; i < accountRange; i++ {
-		_, kp, err := w.keystore.DeriveForIndexPath(uint32(i))
-		if err != nil {
-			w.mu.Unlock()
-			return nil, err
-		}
-		out = append(out, AccountInfo{Index: i, Address: kp.Address.String()})
-	}
 	w.mu.Unlock()
 
-	// Load labels once, off the lock, to avoid holding mu across disk I/O. A
-	// missing/empty AccountLabels map yields "" for every account.
+	// Read the per-wallet count + labels off the lock (disk I/O); fall back to
+	// the default range/empty labels if settings are unavailable.
+	count := accountRange
+	var labels map[string]string
 	if s, err := w.config.GetSettings(); err == nil {
-		for i := range out {
-			out[i].Label = s.AccountLabels[labelKey(name, i)]
+		count = accountCountFor(s, name)
+		labels = s.AccountLabels
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.keystore == nil {
+		return nil, errLocked
+	}
+	out := make([]AccountInfo, 0, count)
+	for i := 0; i < count; i++ {
+		_, kp, err := w.keystore.DeriveForIndexPath(uint32(i))
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, AccountInfo{Index: i, Address: kp.Address.String(), Label: labels[labelKey(name, i)]})
 	}
 	return out, nil
 }
 
 // SelectAccount sets the active account index and persists it.
 func (w *WalletService) SelectAccount(index int) error {
-	if index < 0 || index >= accountRange {
+	if index < 0 || index >= maxAccounts {
 		return fmt.Errorf("account index %d out of range", index)
 	}
 	w.mu.Lock()
@@ -407,7 +429,7 @@ func (w *WalletService) SelectAccount(index int) error {
 
 // SetAccountLabel persists a human label for the active wallet's account index.
 func (w *WalletService) SetAccountLabel(index int, label string) error {
-	if index < 0 || index >= accountRange {
+	if index < 0 || index >= maxAccounts {
 		return fmt.Errorf("account index %d out of range", index)
 	}
 	w.mu.Lock()
@@ -425,6 +447,35 @@ func (w *WalletService) SetAccountLabel(index int, label string) error {
 	}
 	s.AccountLabels[labelKey(name, index)] = label
 	return w.config.SetSettings(s)
+}
+
+// AddAccount reveals one more account (derivation index) for the active wallet
+// by bumping its stored count, then returns the refreshed account list. It only
+// derives addresses — no signing or keystore mutation.
+func (w *WalletService) AddAccount() ([]AccountInfo, error) {
+	w.mu.Lock()
+	name := w.activeWallet
+	locked := w.keystore == nil
+	w.mu.Unlock()
+	if locked || name == "" {
+		return nil, errLocked
+	}
+	s, err := w.config.GetSettings()
+	if err != nil {
+		return nil, err
+	}
+	cur := accountCountFor(s, name)
+	if cur >= maxAccounts {
+		return nil, fmt.Errorf("maximum of %d accounts reached", maxAccounts)
+	}
+	if s.AccountCounts == nil {
+		s.AccountCounts = map[string]int{}
+	}
+	s.AccountCounts[name] = cur + 1
+	if err := w.config.SetSettings(s); err != nil {
+		return nil, err
+	}
+	return w.CurrentAccounts()
 }
 
 // activeAddress returns the active account's address, false if locked.

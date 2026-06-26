@@ -42,6 +42,9 @@ type Settings struct {
 	AutoReceive      bool   `json:"autoReceive"`
 	// AccountLabels maps "<wallet>:<index>" to a human label for an account.
 	AccountLabels map[string]string `json:"accountLabels"`
+	// AccountCounts maps a wallet id to how many accounts (derivation indices)
+	// the user has revealed. Unset/below the default falls back to accountRange.
+	AccountCounts map[string]int `json:"accountCounts"`
 }
 
 // ActiveNodeURL returns the URL for the current NodeMode.

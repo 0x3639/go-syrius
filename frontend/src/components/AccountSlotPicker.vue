@@ -8,6 +8,7 @@ const wallet = useWalletStore()
 
 const open = ref(false)
 const copied = ref(false)
+const adding = ref(false)
 const root = ref<HTMLElement | null>(null)
 
 // Inline-rename state: index of the slot being renamed (or null) + draft label.
@@ -29,6 +30,18 @@ function toggle() {
 function pick(index: number) {
   wallet.select(index)
   open.value = false
+}
+
+async function addAccount() {
+  if (adding.value) return
+  adding.value = true
+  try {
+    await wallet.addAccount() // keeps the dropdown open; the new slot appears at the bottom
+  } catch {
+    /* at the cap or not connected */
+  } finally {
+    adding.value = false
+  }
 }
 
 async function copyAddr() {
@@ -105,8 +118,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
     <div
       v-if="open"
       class="absolute left-0 top-full z-20 mt-2 w-72 overflow-hidden rounded-lg border border-border bg-card shadow-lg"
-      role="listbox"
     >
+      <div class="max-h-80 overflow-y-auto" role="listbox">
       <template v-for="a in wallet.accounts" :key="a.index">
         <!-- Inline-rename row -->
         <div
@@ -144,6 +157,21 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
           <button type="button" title="Rename" :aria-label="`Rename account ${a.index}`" class="grid h-7 w-7 flex-none place-items-center rounded-[7px] border border-transparent text-[13px] text-muted-foreground group-hover:border-border group-hover:text-foreground" @click.stop="startRename(a)">✎</button>
         </div>
       </template>
+      </div>
+
+      <!-- Add another account (derivation index) -->
+      <button
+        type="button"
+        :disabled="adding"
+        aria-label="add account"
+        class="flex w-full items-center gap-3 border-t border-border px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-foreground/[0.06] disabled:opacity-50"
+        @click.stop="addAccount"
+      >
+        <span class="grid h-[30px] w-[30px] flex-none place-items-center rounded-lg border border-dashed border-primary/50 text-primary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </span>
+        {{ adding ? 'Adding…' : 'Add account' }}
+      </button>
     </div>
   </div>
 </template>

@@ -51,6 +51,15 @@ describe('AccountSlotPicker', () => {
     expect(ClipboardSetText).toHaveBeenCalledWith(ADDR0)
   })
 
+  it('reveals another account via the Add account footer', async () => {
+    const wallet = seed()
+    const addAccount = vi.spyOn(wallet, 'addAccount').mockResolvedValue(undefined as never)
+    const w = mount(AccountSlotPicker)
+    await w.find('button[aria-label="Select account"]').trigger('click')
+    await w.find('button[aria-label="add account"]').trigger('click')
+    expect(addAccount).toHaveBeenCalled()
+  })
+
   it('renames a slot via setLabel', async () => {
     const wallet = seed()
     const setLabel = vi.spyOn(wallet, 'setLabel').mockResolvedValue(undefined as never)

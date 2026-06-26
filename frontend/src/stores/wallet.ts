@@ -51,6 +51,10 @@ export const useWalletStore = defineStore('wallet', {
       await W.SetAccountLabel(index, label)
       await this.loadAccounts()
     },
+    // Reveal one more account (derivation index) and refresh the list.
+    async addAccount() {
+      this.accounts = (await W.AddAccount()) as unknown as AccountInfo[]
+    },
     activeAddress(): string {
       return this.accounts.find((a) => a.index === this.activeIndex)?.address ?? ''
     },

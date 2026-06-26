@@ -363,7 +363,40 @@ func TestAccountLabels(t *testing.T) {
 	if accts[0].Label != "Savings" {
 		t.Fatalf("label not applied: %+v", accts[0])
 	}
-	if err := w.SetAccountLabel(99, "x"); err == nil {
+	if err := w.SetAccountLabel(maxAccounts, "x"); err == nil {
 		t.Fatal("expected out-of-range index to fail")
+	}
+}
+
+func TestAddAccount(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+	meta, err := w.ImportMnemonic("add", "pw", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Unlock(meta.ID, "pw"); err != nil {
+		t.Fatal(err)
+	}
+	base, err := w.CurrentAccounts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(base) != accountRange {
+		t.Fatalf("default account count = %d, want %d", len(base), accountRange)
+	}
+	got, err := w.AddAccount()
+	if err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	if len(got) != accountRange+1 {
+		t.Fatalf("after AddAccount count = %d, want %d", len(got), accountRange+1)
+	}
+	// The newly revealed index has a non-empty address; earlier ones are unchanged.
+	if got[accountRange].Index != accountRange || got[accountRange].Address == "" {
+		t.Fatalf("new account malformed: %+v", got[accountRange])
+	}
+	if got[0].Address != base[0].Address {
+		t.Fatal("existing account address changed after AddAccount")
 	}
 }

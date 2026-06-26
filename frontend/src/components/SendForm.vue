@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Input, Button } from 'nom-ui'
 import { useBalancesStore } from '../stores/balances'
+import { formatAmount, formatAmountExact } from '../lib/format'
 import AmountInput from './AmountInput.vue'
 
 // SendForm collects the send INTENT only (recipient/token/amount) and emits it.
@@ -26,6 +27,15 @@ watch(
     if (!zts.value && list[0]) zts.value = list[0].zts
   },
   { immediate: true },
+)
+
+// Selected token + its available balance (commas for display, plain decimal for Max).
+const selectedTok = computed(() => items.value.find((b) => b.zts === zts.value))
+const balanceLabel = computed(() =>
+  selectedTok.value ? `${formatAmount(selectedTok.value.amount, selectedTok.value.decimals)} ${selectedTok.value.symbol || ''}`.trim() : '',
+)
+const maxDecimal = computed(() =>
+  selectedTok.value ? formatAmountExact(selectedTok.value.amount, selectedTok.value.decimals) : '',
 )
 
 // z1 bech32: starts z1, lowercase alnum, length ~40. Backend re-validates authoritatively.
@@ -71,8 +81,11 @@ function onSend() {
         </option>
       </select>
     </label>
+    <p v-if="balanceLabel" class="-mt-1 text-xs text-muted-foreground">
+      Balance: <span class="font-medium text-foreground">{{ balanceLabel }}</span>
+    </p>
 
-    <AmountInput v-model="amountDecimal" label="Amount" />
+    <AmountInput v-model="amountDecimal" label="Amount" :max="maxDecimal" />
 
     <Button
       class="w-full"

@@ -59,6 +59,14 @@ describe('SendForm', () => {
     })
   })
 
+  it('shows the selected token balance', async () => {
+    useBalancesStore().items = [znn]
+    const w = mount(SendForm)
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('Balance:')
+    expect(w.text()).toContain('1.5 ZNN')
+  })
+
   it('shows the invalid-address hint and keeps Send disabled for a bad address', async () => {
     useBalancesStore().items = [znn]
     const w = mount(SendForm)

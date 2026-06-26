@@ -26,10 +26,10 @@ const open = computed({
 
 <template>
   <Dialog v-model:open="open">
-    <DialogContent>
+    <DialogContent class="w-[40rem] max-w-[95vw]">
       <DialogHeader><DialogTitle>Confirm</DialogTitle></DialogHeader>
       <TxModal v-if="tx.status === 'awaiting' || tx.status === 'publishing'" />
-      <TxResult v-else-if="tx.status === 'done'" />
+      <TxResult v-else-if="tx.status === 'done'" @close="open = false" />
     </DialogContent>
   </Dialog>
 </template>

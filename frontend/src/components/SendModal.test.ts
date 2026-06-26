@@ -34,6 +34,7 @@ vi.mock('./TxResult.vue', () => ({ default: { template: '<div />' } }))
 
 import SendModal from './SendModal.vue'
 import { useBalancesStore, type TokenBalance } from '../stores/balances'
+import { useTxStore } from '../stores/tx'
 
 const znn: TokenBalance = { zts: 'zts1znn', symbol: 'ZNN', decimals: 8, amount: '0' }
 
@@ -53,5 +54,14 @@ describe('SendModal', () => {
     expect(PrepareSend).toHaveBeenCalledWith(
       expect.objectContaining({ toAddress: 'z1abc', zts: 'zts1znn', amount: '150000000' }),
     )
+  })
+
+  it('hides the form (and its Send button) once a tx is in flight', async () => {
+    useBalancesStore().items = [znn]
+    const w = mount(SendModal, { props: { open: true } })
+    expect(w.find('button').exists()).toBe(true) // form shown while idle
+    useTxStore().status = 'awaiting'
+    await w.vm.$nextTick()
+    expect(w.find('button').exists()).toBe(false) // form gone in flight (TxModal/Result stubbed)
   })
 })

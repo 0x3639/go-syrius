@@ -50,19 +50,21 @@ watch(status, (s) => {
 
 <template>
   <Dialog :open="props.open" @update:open="onOpenChange">
-    <DialogContent>
+    <DialogContent class="w-[40rem] max-w-[95vw]">
       <DialogHeader>
         <DialogTitle>Send</DialogTitle>
       </DialogHeader>
-      <SendForm @send="onSend" />
+      <!-- The form (and its green Send button) only shows before a tx is in
+           flight; once you hit Send it's replaced by the confirm/result panels. -->
+      <SendForm v-if="status === 'idle' || status === 'error'" @send="onSend" />
       <p v-if="status === 'preparing'" class="text-sm text-muted-foreground">
         Preparing… (PoW if required)
       </p>
       <p v-if="status === 'error'" class="text-sm text-destructive" role="alert">
         {{ error }}
       </p>
-      <TxModal v-if="status === 'awaiting'" />
-      <TxResult v-if="status === 'done'" />
+      <TxModal v-if="status === 'awaiting' || status === 'publishing'" />
+      <TxResult v-if="status === 'done'" @close="onOpenChange(false)" />
     </DialogContent>
   </Dialog>
 </template>

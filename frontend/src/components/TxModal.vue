@@ -40,9 +40,9 @@ const { preview: p, status } = storeToRefs(tx)
         p.needsPoW ? `PoW (difficulty ${p.difficulty})` : 'Feeless (plasma)'
       }}</span>
     </div>
-    <div class="flex justify-between">
+    <div class="space-y-1">
       <span class="text-muted-foreground">Hash</span>
-      <span class="break-all font-mono text-xs">{{ p.hash }}</span>
+      <div class="break-all font-mono text-xs text-foreground">{{ p.hash }}</div>
     </div>
     <div class="flex gap-2 pt-2">
       <Button

@@ -45,6 +45,14 @@ type Settings struct {
 	// AccountCounts maps a wallet id to how many accounts (derivation indices)
 	// the user has revealed. Unset/below the default falls back to accountRange.
 	AccountCounts map[string]int `json:"accountCounts"`
+	// Contacts is the address book (saved name → address entries).
+	Contacts []Contact `json:"contacts"`
+}
+
+// Contact is a saved address-book entry.
+type Contact struct {
+	Name    string `json:"name"`
+	Address string `json:"address"`
 }
 
 // ActiveNodeURL returns the URL for the current NodeMode.

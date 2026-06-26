@@ -46,6 +46,20 @@ export namespace app {
 	        this.needsPoW = source["needsPoW"];
 	    }
 	}
+	export class Contact {
+	    name: string;
+	    address: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Contact(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.address = source["address"];
+	    }
+	}
 	export class DelegationInfo {
 	    name: string;
 	    status: number;
@@ -413,6 +427,7 @@ export namespace app {
 	    autoReceive: boolean;
 	    accountLabels: Record<string, string>;
 	    accountCounts: Record<string, number>;
+	    contacts: Contact[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -432,7 +447,26 @@ export namespace app {
 	        this.autoReceive = source["autoReceive"];
 	        this.accountLabels = source["accountLabels"];
 	        this.accountCounts = source["accountCounts"];
+	        this.contacts = this.convertValues(source["contacts"], Contact);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class StakeEntry {
 	    id: string;

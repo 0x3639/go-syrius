@@ -5,6 +5,7 @@ import { Input, Button } from 'nom-ui'
 import { useBalancesStore } from '../stores/balances'
 import { formatAmount, formatAmountExact } from '../lib/format'
 import AmountInput from './AmountInput.vue'
+import ContactPicker from './ContactPicker.vue'
 
 // SendForm collects the send INTENT only (recipient/token/amount) and emits it.
 // It does NOT build/PoW/sign — the tx store (Task 8) owns that. The backend
@@ -57,15 +58,18 @@ function onSend() {
 
 <template>
   <div class="space-y-3">
-    <label class="block text-sm text-muted-foreground"
-      >Recipient
+    <div>
+      <div class="mb-1 flex items-center justify-between">
+        <span class="text-sm text-muted-foreground">Recipient</span>
+        <ContactPicker :current-address="recipient" @select="recipient = $event" />
+      </div>
       <Input
         v-model="recipient"
         aria-label="recipient"
         placeholder="z1…"
-        class="mt-1 w-full font-mono text-foreground"
+        class="w-full font-mono text-foreground"
       />
-    </label>
+    </div>
     <p v-if="recipient && !validAddr" class="text-xs text-destructive">
       Invalid z1 address
     </p>

@@ -469,7 +469,9 @@ func (n *NodeService) GetTransactions(page, count int) (TxPage, error) {
 	for _, b := range list.List {
 		out = append(out, blockToRecords(b, dc)...)
 	}
-	return TxPage{Records: out, HasMore: list.More}, nil
+	// Derive hasMore from the total account-block count: the node's `More` flag is
+	// unreliable (observed false even with thousands of pages remaining).
+	return TxPage{Records: out, HasMore: (page+1)*count < list.Count}, nil
 }
 
 // currentClient returns the connected client or nil, under the read lock.

@@ -4,11 +4,15 @@ import { createPinia, setActivePinia } from 'pinia'
 
 const unlock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('../../wailsjs/go/app/WalletService', () => ({
-  ListWallets: vi.fn().mockResolvedValue([{ name: 'Main' }]),
+  ListWallets: vi.fn().mockResolvedValue([{ id: 'Main.dat', name: 'Main', baseAddress: 'z1qmain' }]),
   Unlock: unlock,
   Lock: vi.fn(),
-  ImportKeystore: vi.fn().mockResolvedValue({ name: 'Main' }),
+  RenameWallet: vi.fn().mockResolvedValue(undefined),
+  ImportKeystore: vi.fn().mockResolvedValue({ id: 'Main.dat', name: 'Main', baseAddress: 'z1qmain' }),
   PickKeystoreFile: vi.fn().mockResolvedValue(''),
+  CurrentAccounts: vi.fn().mockResolvedValue([{ index: 0, address: 'z1qmain', label: '' }]),
+  SelectAccount: vi.fn().mockResolvedValue(undefined),
+  SetAccountLabel: vi.fn().mockResolvedValue(undefined),
 }))
 const push = vi.fn()
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
@@ -35,7 +39,7 @@ describe('Unlock.vue', () => {
     await w.find('input[aria-label="password"]').setValue('pw')
     await w.find('button[aria-label="Unlock"]').trigger('click')
     await new Promise((r) => setTimeout(r))
-    expect(unlock).toHaveBeenCalledWith('Main', 'pw')
+    expect(unlock).toHaveBeenCalledWith('Main.dat', 'pw')
     expect(push).toHaveBeenCalledWith('/home')
   })
 })

@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Card, CardContent, Input, Button } from 'nom-ui'
 import { useWalletStore } from '../stores/wallet'
+import WalletPicker from '../components/WalletPicker.vue'
 import logoUrl from '../assets/images/syrius-logo.png'
 
 const wallet = useWalletStore()
@@ -14,7 +15,7 @@ const busy = ref(false)
 
 onMounted(async () => {
   await wallet.loadWallets()
-  if (!selected.value && wallet.wallets[0]) selected.value = wallet.wallets[0]
+  if (!selected.value && wallet.wallets[0]) selected.value = wallet.wallets[0].id
 })
 
 async function doUnlock() {
@@ -36,8 +37,8 @@ async function doImport() {
   try {
     const path = await wallet.pickKeystoreFile()
     if (!path) return
-    await wallet.importKeystore(path)
-    if (!selected.value && wallet.wallets[0]) selected.value = wallet.wallets[0]
+    await wallet.importKeystore(path, '')
+    if (!selected.value && wallet.wallets[0]) selected.value = wallet.wallets[0].id
   } catch (e: any) {
     error.value = e?.message ?? String(e)
   }
@@ -55,12 +56,7 @@ async function doImport() {
           No wallets yet. Import a keystore to begin.
         </p>
         <template v-else>
-          <select
-            v-model="selected"
-            aria-label="wallet"
-            class="w-full rounded border border-border bg-background px-3 py-2 text-foreground">
-            <option v-for="w in wallet.wallets" :key="w" :value="w">{{ w }}</option>
-          </select>
+          <WalletPicker v-model="selected" :wallets="wallet.wallets" />
           <Input v-model="password" type="password" placeholder="Password" aria-label="password" @keyup.enter="doUnlock" />
           <Button class="w-full" :disabled="busy || !selected" aria-label="Unlock" @click="doUnlock">Unlock</Button>
         </template>

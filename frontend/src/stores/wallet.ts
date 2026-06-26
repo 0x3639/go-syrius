@@ -2,23 +2,34 @@ import { defineStore } from 'pinia'
 import * as W from '../../wailsjs/go/app/WalletService'
 
 export type AccountInfo = { index: number; address: string; label: string }
+// WalletMeta mirrors the Go app.WalletMeta returned by ListWallets. `id` is the
+// keystore filename (the stable identifier passed to Unlock/RenameWallet); `name`
+// is the user-facing display name; `baseAddress` is the wallet's account-0 address.
+export type WalletMeta = { id: string; name: string; baseAddress: string }
 
 export const useWalletStore = defineStore('wallet', {
-  state: () => ({ locked: true, wallets: [] as string[], active: '', accounts: [] as AccountInfo[], activeIndex: 0 }),
+  // `active` holds the active wallet's id (keystore filename), not its name.
+  state: () => ({ locked: true, wallets: [] as WalletMeta[], active: '', accounts: [] as AccountInfo[], activeIndex: 0 }),
   actions: {
     async loadWallets() {
       try {
-        const list = (await W.ListWallets()) as unknown as Array<{ name: string }>
-        this.wallets = list.map((w) => w.name)
-        if (!this.active && this.wallets.length) this.active = this.wallets[0]
+        const list = (await W.ListWallets()) as unknown as WalletMeta[]
+        this.wallets = list.map((w) => ({ id: w.id, name: w.name, baseAddress: w.baseAddress }))
+        if (!this.active && this.wallets.length) this.active = this.wallets[0].id
       } catch { this.wallets = [] }
     },
-    async unlock(name: string, password: string) {
-      await W.Unlock(name, password)
-      this.active = name
+    async unlock(id: string, password: string) {
+      await W.Unlock(id, password)
+      this.active = id
       this.locked = false
       await this.loadAccounts()
       this.activeIndex = 0
+    },
+    // Rename a wallet (no password required) and refresh the list so the new name
+    // shows everywhere. `id` is the keystore filename.
+    async rename(id: string, name: string): Promise<void> {
+      await W.RenameWallet(id, name)
+      await this.loadWallets()
     },
     lock() {
       // Re-lock the keystore in the Go backend, not just the UI — otherwise the
@@ -53,8 +64,9 @@ export const useWalletStore = defineStore('wallet', {
       await this.loadWallets()
     },
     // Import an existing keystore file; wallet stays locked (user then unlocks).
-    async importKeystore(srcPath: string): Promise<void> {
-      await W.ImportKeystore(srcPath)
+    // `name` defaults to '' — the backend derives a name from the file when empty.
+    async importKeystore(srcPath: string, name = ''): Promise<void> {
+      await W.ImportKeystore(srcPath, name)
       await this.loadWallets()
     },
     async pickKeystoreFile(): Promise<string> {

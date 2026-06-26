@@ -463,9 +463,10 @@ func (n *NodeService) GetTransactions(page, count int) ([]TxRecord, error) {
 	if err != nil {
 		return nil, err
 	}
+	dc := newDecimalsCache(clientTokenDecimals(client))
 	out := []TxRecord{}
 	for _, b := range list.List {
-		out = append(out, toTxRecord(b))
+		out = append(out, toTxRecord(b, dc.get(b.TokenStandard.String())))
 	}
 	return out, nil
 }
@@ -589,15 +590,16 @@ func (n *NodeService) GetUnreceived() ([]UnreceivedBlock, error) {
 	if err != nil {
 		return nil, err
 	}
+	dc := newDecimalsCache(clientTokenDecimals(client))
 	out := []UnreceivedBlock{}
 	for _, b := range list.List {
-		out = append(out, toUnreceivedBlock(b))
+		out = append(out, toUnreceivedBlock(b, dc.get(b.TokenStandard.String())))
 	}
 	return out, nil
 }
 
-func toUnreceivedBlock(b *api.AccountBlock) UnreceivedBlock {
-	u := UnreceivedBlock{FromHash: b.Hash.String(), FromAddress: b.Address.String(), Amount: "0", Token: b.TokenStandard.String()}
+func toUnreceivedBlock(b *api.AccountBlock, decimals int) UnreceivedBlock {
+	u := UnreceivedBlock{FromHash: b.Hash.String(), FromAddress: b.Address.String(), Amount: "0", Token: b.TokenStandard.String(), Decimals: decimals}
 	if b.Amount != nil {
 		u.Amount = b.Amount.String()
 	}
@@ -619,11 +621,12 @@ func toTokenBalance(zts types.ZenonTokenStandard, bi *api.BalanceInfo) TokenBala
 	return tb
 }
 
-func toTxRecord(b *api.AccountBlock) TxRecord {
+func toTxRecord(b *api.AccountBlock, decimals int) TxRecord {
 	rec := TxRecord{
 		Hash:      b.Hash.String(),
 		Token:     b.TokenStandard.String(),
 		Amount:    "0",
+		Decimals:  decimals,
 		Direction: "receive",
 	}
 	if b.Amount != nil {

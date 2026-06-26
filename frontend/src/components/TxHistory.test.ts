@@ -30,6 +30,7 @@ const tx: TxRecord = {
   counterparty: 'z1qrr0...',
   token: 'ZNN',
   amount: '150000000',
+  decimals: 8,
   momentumHeight: 1,
   confirmed: true,
   timestamp: 0,
@@ -46,6 +47,19 @@ describe('TxHistory', () => {
       // receive -> 'in', confirmed -> 'success' (mapping into nom-ui primitives)
       expect(w.text()).toContain('in')
       expect(w.text()).toContain('success')
+    })
+  })
+
+  it('uses the row decimals for a non-8-decimal token, not a hardcoded 8', () => {
+    const w = mount(TxHistory)
+    // 1500000 base units at 6 decimals == 1.5, NOT 0.015 (the wrong 8-dec form).
+    useTxsStore().items = [
+      { ...tx, hash: 'h2', token: 'CUSTOM', amount: '1500000', decimals: 6 },
+    ]
+    return w.vm.$nextTick().then(() => {
+      expect(w.text()).toContain('1.5')
+      expect(w.text()).toContain('CUSTOM')
+      expect(w.text()).not.toContain('0.015')
     })
   })
 

@@ -31,7 +31,7 @@ const { preview: p, status } = storeToRefs(tx)
     <div class="flex justify-between">
       <span class="text-muted-foreground">Amount</span>
       <span class="font-mono"
-        >{{ formatAmountExact(p.amount, 8) }} {{ p.symbol || p.zts }}</span
+        >{{ formatAmountExact(p.amount, p.decimals ?? 8) }} {{ p.symbol || p.zts }}</span
       >
     </div>
     <div class="flex justify-between">
@@ -52,7 +52,12 @@ const { preview: p, status } = storeToRefs(tx)
       >
         Confirm
       </Button>
-      <Button class="flex-1" variant="outline" @click="tx.cancel()">
+      <Button
+        class="flex-1"
+        variant="outline"
+        :disabled="status === 'publishing'"
+        @click="tx.cancel()"
+      >
         Cancel
       </Button>
     </div>

@@ -53,6 +53,31 @@ describe('TxModal (confirm-what-you-sign)', () => {
     expect(w.text()).not.toContain('50,454')
   })
 
+  it('renders the amount using the token decimals from preview, not a hardcoded 8', () => {
+    // FUNDS-CRITICAL: a custom token with 6 decimals. 1500000 base units == 1.5.
+    // With the old hardcoded-8 rendering this would wrongly show 0.015.
+    const tx = useTxStore()
+    tx.preview = {
+      toAddress: 'z1abc',
+      amount: '1500000',
+      zts: 'zts1custom',
+      symbol: 'CUSTOM',
+      decimals: 6,
+      needsPoW: false,
+      difficulty: 0,
+      hash: 'h',
+      usedPlasma: 0,
+    } as any
+    tx.status = 'awaiting'
+
+    const w = mount(TxModal)
+
+    // Correct 6-decimal rendering.
+    expect(w.text()).toContain('1.5 CUSTOM')
+    // The WRONG 8-decimal rendering must NOT appear.
+    expect(w.text()).not.toContain('0.015')
+  })
+
   it('Confirm calls ConfirmPublish (publishes the held block)', async () => {
     const tx = useTxStore()
     tx.preview = {
@@ -71,5 +96,26 @@ describe('TxModal (confirm-what-you-sign)', () => {
     await w.findAll('button')[0].trigger('click')
 
     expect(ConfirmPublish).toHaveBeenCalled()
+  })
+
+  it('disables Cancel while publishing (cannot abort an in-flight broadcast)', () => {
+    const tx = useTxStore()
+    tx.preview = {
+      toAddress: 'z1abc',
+      amount: '150000000',
+      zts: 'zts1znn',
+      symbol: 'ZNN',
+      needsPoW: false,
+      difficulty: 0,
+      hash: 'h',
+      usedPlasma: 0,
+    } as any
+    tx.status = 'publishing'
+
+    const w = mount(TxModal)
+    const buttons = w.findAll('button')
+    // [0] = Confirm, [1] = Cancel — both disabled while ConfirmPublish is in flight.
+    expect(buttons[0].attributes('disabled')).toBeDefined()
+    expect(buttons[1].attributes('disabled')).toBeDefined()
   })
 })

@@ -101,6 +101,7 @@ type TxRecord struct {
 	Counterparty   string `json:"counterparty"`
 	Token          string `json:"token"`
 	Amount         string `json:"amount"`
+	Decimals       int    `json:"decimals"`
 	MomentumHeight uint64 `json:"momentumHeight"`
 	Confirmed      bool   `json:"confirmed"`
 	Timestamp      int64  `json:"timestamp"`
@@ -132,6 +133,7 @@ type SendPreview struct {
 	Symbol     string `json:"symbol"`
 	Zts        string `json:"zts"`
 	Amount     string `json:"amount"`
+	Decimals   int    `json:"decimals"`
 	UsedPlasma uint64 `json:"usedPlasma"`
 	Difficulty uint64 `json:"difficulty"`
 	Hash       string `json:"hash"`
@@ -145,6 +147,7 @@ type CallPreview struct {
 	Zts        string `json:"zts"`
 	Symbol     string `json:"symbol"`
 	Amount     string `json:"amount"`
+	Decimals   int    `json:"decimals"`
 	Hash       string `json:"hash"`
 	Summary    string `json:"summary"`
 	UsedPlasma uint64 `json:"usedPlasma"`
@@ -196,6 +199,7 @@ type UnreceivedBlock struct {
 	FromAddress string `json:"fromAddress"`
 	Token       string `json:"token"`
 	Amount      string `json:"amount"`
+	Decimals    int    `json:"decimals"`
 }
 
 // PillarSummary is one pillar in the delegation picker list.

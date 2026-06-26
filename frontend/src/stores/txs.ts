@@ -6,11 +6,27 @@ export type TxRecord = {
   amount: string; decimals: number; momentumHeight: number; confirmed: boolean; timestamp: number
 }
 
+const PAGE_SIZE = 10
+
 export const useTxsStore = defineStore('txs', {
-  state: () => ({ items: [] as TxRecord[] }),
+  state: () => ({ items: [] as TxRecord[], page: 0, hasMore: false }),
   actions: {
-    async load(page = 0, count = 25) {
-      try { this.items = (await N.GetTransactions(page, count)) as unknown as TxRecord[] } catch { this.items = [] }
+    async load() {
+      try {
+        const r = (await N.GetTransactions(this.page, PAGE_SIZE)) as unknown as { records: TxRecord[]; hasMore: boolean }
+        this.items = r.records ?? []
+        this.hasMore = !!r.hasMore
+      } catch {
+        this.items = []
+        this.hasMore = false
+      }
+    },
+    async goto(page: number) {
+      this.page = Math.max(0, page)
+      await this.load()
+    },
+    resetPage() {
+      this.page = 0
     },
   },
 })

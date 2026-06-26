@@ -107,6 +107,12 @@ type TokenBalance struct {
 }
 
 // TxRecord is one account block in history.
+// TxPage is one page of history rows plus whether a next page exists.
+type TxPage struct {
+	Records []TxRecord `json:"records"`
+	HasMore bool       `json:"hasMore"`
+}
+
 type TxRecord struct {
 	Hash           string `json:"hash"`
 	Direction      string `json:"direction"` // "in" | "out" | "pair"

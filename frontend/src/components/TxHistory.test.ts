@@ -107,6 +107,18 @@ describe('TxHistory', () => {
     expect(w.text()).toContain('Generating Plasma')
   })
 
+  it('pages with the prev/next arrows', async () => {
+    const w = mount(TxHistory)
+    const store = useTxsStore()
+    store.items = [tx]
+    store.hasMore = true
+    await w.vm.$nextTick()
+    const goto = vi.spyOn(store, 'goto').mockResolvedValue()
+    expect(w.find('button[aria-label="previous page"]').attributes('disabled')).toBeDefined() // page 0
+    await w.find('button[aria-label="next page"]').trigger('click')
+    expect(goto).toHaveBeenCalledWith(1)
+  })
+
   it('shows the empty state when there are no txs', () => {
     const w = mount(TxHistory)
     expect(w.text()).toContain('No transactions.')

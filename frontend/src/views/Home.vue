@@ -60,6 +60,7 @@ async function refresh() {
 
 // On account switch: refresh data + re-point auto-receive at the new account.
 async function onActiveChange(i: number) {
+  txs.resetPage() // a new account starts at the first page of its history
   refresh()
   await autoReceive.followAccount(i)
 }
@@ -100,7 +101,10 @@ onMounted(async () => {
         <TabsList class="w-full justify-start overflow-x-auto">
           <TabsTrigger v-for="t in TABS" :key="t" :value="t">{{ t }}</TabsTrigger>
         </TabsList>
-        <TabsContent value="Tokens"><TokensPanel /></TabsContent>
+        <TabsContent value="Tokens">
+          <TokensPanel />
+          <TxHistory />
+        </TabsContent>
         <TabsContent value="Rewards"><RewardsPanel /></TabsContent>
         <TabsContent value="Plasma"><PlasmaPanel /></TabsContent>
         <TabsContent value="Pillar"><PillarPanel /></TabsContent>
@@ -109,8 +113,6 @@ onMounted(async () => {
         <TabsContent value="Accelerator"><AcceleratorPanel /></TabsContent>
       </Tabs>
     </div>
-
-    <TxHistory />
   </div>
 
   <SendModal v-model:open="sendOpen" />

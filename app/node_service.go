@@ -443,32 +443,33 @@ func (n *NodeService) GetBalances() ([]TokenBalance, error) {
 	return out, nil
 }
 
-// GetTransactions returns one page of the active address's account blocks.
-func (n *NodeService) GetTransactions(page, count int) ([]TxRecord, error) {
+// GetTransactions returns one page of the active address's account blocks plus
+// whether a further page exists (for the history's pager).
+func (n *NodeService) GetTransactions(page, count int) (TxPage, error) {
 	if page < 0 || count < 0 {
-		return nil, errors.New("page and count must be non-negative")
+		return TxPage{}, errors.New("page and count must be non-negative")
 	}
 	n.mu.RLock()
 	client := n.client
 	n.mu.RUnlock()
 
 	if client == nil {
-		return nil, errors.New("not connected")
+		return TxPage{}, errors.New("not connected")
 	}
 	addr, ok := n.wallet.activeAddress()
 	if !ok {
-		return nil, errLocked
+		return TxPage{}, errLocked
 	}
 	list, err := client.LedgerApi.GetAccountBlocksByPage(addr, uint32(page), uint32(count)) // #nosec G115 -- page/count validated non-negative above; pagination values are small
 	if err != nil {
-		return nil, err
+		return TxPage{}, err
 	}
 	dc := newDecimalsCache(clientTokenDecimals(client))
 	out := []TxRecord{}
 	for _, b := range list.List {
 		out = append(out, blockToRecords(b, dc)...)
 	}
-	return out, nil
+	return TxPage{Records: out, HasMore: list.More}, nil
 }
 
 // currentClient returns the connected client or nil, under the read lock.

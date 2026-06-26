@@ -17,7 +17,7 @@ vi.mock('../../wailsjs/go/app/NodeService', () => ({
     { zts: 'zts1znn', symbol: 'ZNN', decimals: 8, amount: '5045401869374' }, // 50454.018… -> 50,454
     { zts: 'zts1qsr', symbol: 'QSR', decimals: 8, amount: '150000000' }, // 1.5
   ]),
-  GetTransactions: vi.fn().mockResolvedValue([]),
+  GetTransactions: vi.fn().mockResolvedValue({ records: [], hasMore: false }),
   GetUnreceived: vi.fn().mockResolvedValue([
     { fromHash: 'h1', fromAddress: 'a', token: 't', amount: '1' },
     { fromHash: 'h2', fromAddress: 'b', token: 't', amount: '2' },

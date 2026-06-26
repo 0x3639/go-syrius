@@ -14,7 +14,7 @@ export function GetEmbeddedInfo():Promise<app.EmbeddedInfo>;
 
 export function GetNodeConfig():Promise<app.NodeConfig>;
 
-export function GetTransactions(arg1:number,arg2:number):Promise<Array<app.TxRecord>>;
+export function GetTransactions(arg1:number,arg2:number):Promise<app.TxPage>;
 
 export function GetUnreceived():Promise<Array<app.UnreceivedBlock>>;
 

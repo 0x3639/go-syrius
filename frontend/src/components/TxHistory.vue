@@ -77,10 +77,11 @@ function status(confirmed: boolean): 'success' | 'pending' {
     </div>
     <Table>
       <TableBody>
-        <TableEmpty v-if="unreceived.items.length === 0 && displayed.length === 0" :colspan="5">No transactions.</TableEmpty>
+        <TableEmpty v-if="displayed.length === 0 && (txs.page > 0 || unreceived.items.length === 0)" :colspan="5">No transactions.</TableEmpty>
 
-        <!-- Pending inbound blocks: click to receive; status goes Unreceived →
-             Generating Plasma/Receiving (pulsing) → Confirmed (it joins the list below). -->
+        <!-- Pending inbound blocks (newest page only): click to receive; status
+             goes Unreceived → Generating Plasma/Receiving (pulsing) → Confirmed. -->
+        <template v-if="txs.page === 0">
         <TableRow v-for="u in unreceived.items" :key="u.fromHash">
           <TableCell><TxDirection direction="in" /></TableCell>
           <TableCell></TableCell>
@@ -108,6 +109,7 @@ function status(confirmed: boolean): 'success' | 'pending' {
             </button>
           </TableCell>
         </TableRow>
+        </template>
 
         <TableRow v-for="t in displayed" :key="t.hash">
           <TableCell>
@@ -130,5 +132,27 @@ function status(confirmed: boolean): 'success' | 'pending' {
         </TableRow>
       </TableBody>
     </Table>
+
+    <div v-if="txs.page > 0 || txs.hasMore" class="mt-2 flex items-center justify-end gap-3 text-xs text-muted-foreground">
+      <span>Page {{ txs.page + 1 }}</span>
+      <button
+        type="button"
+        aria-label="previous page"
+        :disabled="txs.page === 0"
+        class="grid h-7 w-7 place-items-center rounded border border-border transition-colors hover:bg-foreground/[0.06] disabled:opacity-40"
+        @click="txs.goto(txs.page - 1)"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <button
+        type="button"
+        aria-label="next page"
+        :disabled="!txs.hasMore"
+        class="grid h-7 w-7 place-items-center rounded border border-border transition-colors hover:bg-foreground/[0.06] disabled:opacity-40"
+        @click="txs.goto(txs.page + 1)"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </div>
   </div>
 </template>

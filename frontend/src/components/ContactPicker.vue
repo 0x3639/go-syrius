@@ -1,58 +1,42 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { shortAddress } from '../lib/format'
 import { useContactsStore } from '../stores/contacts'
 
-// Inline address-book panel. Rendered in the Send form's normal flow (not an
-// overlay) so it never stacks behind other fields or feels like a modal-on-modal.
-const props = defineProps<{ open: boolean; currentAddress?: string }>()
+// Inline address-book panel for Send: SEARCH + SELECT only. Adding/editing lives
+// on the dedicated /address-book screen so this stays compact as the book grows.
+const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'select', address: string): void; (e: 'close'): void }>()
 
+const router = useRouter()
 const contacts = useContactsStore()
 const { items } = storeToRefs(contacts)
+const search = ref('')
 
-const name = ref('')
-const address = ref('')
-const err = ref('')
-
-const isValidAddr = (a: string) => /^z1[0-9a-z]{38}$/.test(a)
-
-// On open: refresh the list and prefill the add-form address from the current
-// recipient (if it's a valid z1 address).
 watch(
   () => props.open,
   (o) => {
     if (o) {
       contacts.load()
-      err.value = ''
-      name.value = ''
-      address.value = props.currentAddress && isValidAddr(props.currentAddress) ? props.currentAddress : ''
+      search.value = ''
     }
   },
   { immediate: true },
 )
 
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return items.value
+  return items.value.filter((c) => c.name.toLowerCase().includes(q) || c.address.toLowerCase().includes(q))
+})
+
 function pick(a: string) {
   emit('select', a)
 }
-
-async function save() {
-  err.value = ''
-  try {
-    await contacts.add(name.value.trim(), address.value.trim())
-    name.value = ''
-  } catch (e: any) {
-    err.value = e?.message ?? String(e)
-  }
-}
-
-async function remove(a: string) {
-  try {
-    await contacts.remove(a)
-  } catch {
-    /* ignore */
-  }
+function manage() {
+  router.push('/address-book')
 }
 </script>
 
@@ -63,54 +47,41 @@ async function remove(a: string) {
       <button type="button" aria-label="close address book" class="text-muted-foreground transition-colors hover:text-foreground" @click="emit('close')">✕</button>
     </div>
 
-    <div class="max-h-44 overflow-y-auto">
-      <p v-if="items.length === 0" class="px-3 py-3 text-sm text-muted-foreground">No saved addresses yet.</p>
+    <div class="p-2">
+      <input
+        v-model="search"
+        aria-label="search addresses"
+        placeholder="Search…"
+        class="w-full rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+      />
+    </div>
+
+    <div class="max-h-48 overflow-y-auto">
+      <p v-if="filtered.length === 0" class="px-3 pb-3 text-sm text-muted-foreground">
+        {{ items.length === 0 ? 'No saved addresses yet.' : 'No matches.' }}
+      </p>
       <div
-        v-for="ct in items"
-        :key="ct.address"
+        v-for="c in filtered"
+        :key="c.address"
         role="button"
-        :aria-label="`select ${ct.name}`"
-        class="group flex cursor-pointer items-center gap-2 border-t border-border px-3 py-2 first:border-t-0 hover:bg-foreground/[0.06]"
-        @click="pick(ct.address)"
+        :aria-label="`select ${c.name}`"
+        class="flex cursor-pointer items-center gap-2 border-t border-border px-3 py-2 hover:bg-foreground/[0.06]"
+        @click="pick(c.address)"
       >
         <div class="min-w-0 flex-1">
-          <div class="truncate text-sm font-semibold text-foreground">{{ ct.name }}</div>
-          <div class="truncate font-mono text-xs text-muted-foreground">{{ shortAddress(ct.address) }}</div>
+          <div class="truncate text-sm font-semibold text-foreground">{{ c.name }}</div>
+          <div class="truncate font-mono text-xs text-muted-foreground">{{ shortAddress(c.address) }}</div>
         </div>
-        <button
-          type="button"
-          :aria-label="`delete ${ct.name}`"
-          class="grid h-6 w-6 flex-none place-items-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-          @click.stop="remove(ct.address)"
-        >✕</button>
       </div>
     </div>
 
-    <!-- Add a contact -->
-    <div class="space-y-2 border-t border-border p-3">
-      <p class="text-xs font-medium text-muted-foreground">Add address</p>
-      <input
-        v-model="name"
-        aria-label="contact name"
-        placeholder="Name"
-        class="w-full rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary"
-      />
-      <input
-        v-model="address"
-        aria-label="contact address"
-        placeholder="z1…"
-        class="w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:border-primary"
-      />
-      <p v-if="err" class="text-xs text-destructive">{{ err }}</p>
-      <button
-        type="button"
-        aria-label="save contact"
-        :disabled="!name.trim() || !isValidAddr(address.trim())"
-        class="w-full rounded bg-primary/15 py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/25 disabled:opacity-40"
-        @click="save"
-      >
-        Save
-      </button>
-    </div>
+    <button
+      type="button"
+      aria-label="manage address book"
+      class="flex w-full items-center justify-center gap-1 border-t border-border px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-foreground/[0.06]"
+      @click="manage"
+    >
+      Manage address book →
+    </button>
   </div>
 </template>

@@ -15,6 +15,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/home', name: 'home', component: () => import('../views/Home.vue') },
   { path: '/settings', name: 'settings', component: () => import('../views/Settings.vue') },
   { path: '/tokens', name: 'tokens', component: () => import('../views/Tokens.vue') },
+  { path: '/address-book', name: 'address-book', component: () => import('../views/AddressBook.vue') },
 ]
 
 const router = createRouter({ history: createMemoryHistory(), routes })

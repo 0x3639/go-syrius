@@ -1,0 +1,121 @@
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { storeToRefs } from 'pinia'
+import { Card, CardContent, Input, Button } from 'nom-ui'
+import { shortAddress } from '../lib/format'
+import { useContactsStore, type Contact } from '../stores/contacts'
+
+const router = useRouter()
+const contacts = useContactsStore()
+const { items } = storeToRefs(contacts)
+
+const search = ref('')
+const name = ref('')
+const address = ref('')
+const err = ref('')
+const renamingAddr = ref<string | null>(null)
+const renameDraft = ref('')
+
+const isValidAddr = (a: string) => /^z1[0-9a-z]{38}$/.test(a)
+
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return items.value
+  return items.value.filter((c) => c.name.toLowerCase().includes(q) || c.address.toLowerCase().includes(q))
+})
+
+async function save() {
+  err.value = ''
+  try {
+    await contacts.add(name.value.trim(), address.value.trim())
+    name.value = ''
+    address.value = ''
+  } catch (e: any) {
+    err.value = e?.message ?? String(e)
+  }
+}
+
+async function remove(a: string) {
+  try {
+    await contacts.remove(a)
+  } catch {
+    /* ignore */
+  }
+}
+
+function startRename(c: Contact) {
+  renamingAddr.value = c.address
+  renameDraft.value = c.name
+}
+function cancelRename() {
+  renamingAddr.value = null
+  renameDraft.value = ''
+}
+async function saveRename(c: Contact) {
+  const n = renameDraft.value.trim()
+  if (n && n !== c.name) {
+    try {
+      await contacts.add(n, c.address) // AddContact upserts by address → renames
+    } catch {
+      /* ignore */
+    }
+  }
+  cancelRename()
+}
+
+onMounted(() => contacts.load())
+</script>
+
+<template>
+  <main class="grid min-h-screen justify-center bg-background p-8">
+    <Card class="relative h-fit w-[42rem] max-w-full">
+      <button
+        class="absolute right-4 top-4 text-muted-foreground transition-colors hover:text-foreground"
+        aria-label="close"
+        @click="router.push('/home')"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+      <CardContent class="space-y-4 p-6">
+        <h1 class="text-xl text-foreground">Address book</h1>
+
+        <!-- Add -->
+        <div class="space-y-2 rounded-lg border border-border bg-background/40 p-3">
+          <p class="text-xs font-medium text-muted-foreground">Add address</p>
+          <div class="flex flex-col gap-2 sm:flex-row">
+            <Input v-model="name" aria-label="contact name" placeholder="Name" class="sm:w-48" />
+            <Input v-model="address" aria-label="contact address" placeholder="z1…" class="flex-1 font-mono" />
+            <Button :disabled="!name.trim() || !isValidAddr(address.trim())" aria-label="save contact" @click="save">Save</Button>
+          </div>
+          <p v-if="err" class="text-xs text-destructive">{{ err }}</p>
+        </div>
+
+        <!-- Search -->
+        <Input v-model="search" aria-label="search addresses" placeholder="Search by name or address…" />
+
+        <!-- List -->
+        <div class="max-h-[26rem] divide-y divide-border overflow-y-auto rounded-lg border border-border">
+          <p v-if="filtered.length === 0" class="px-4 py-6 text-center text-sm text-muted-foreground">
+            {{ items.length === 0 ? 'No saved addresses yet.' : 'No matches.' }}
+          </p>
+          <div v-for="c in filtered" :key="c.address" class="group flex items-center gap-3 px-4 py-3">
+            <template v-if="renamingAddr === c.address">
+              <Input v-model="renameDraft" :aria-label="`rename ${c.name}`" class="flex-1" @keyup.enter="saveRename(c)" @keyup.esc="cancelRename" />
+              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-primary/40 text-primary" :aria-label="`save rename ${c.name}`" @click="saveRename(c)">✓</button>
+              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-border text-muted-foreground" aria-label="cancel rename" @click="cancelRename">✕</button>
+            </template>
+            <template v-else>
+              <div class="min-w-0 flex-1">
+                <div class="truncate font-semibold text-foreground">{{ c.name }}</div>
+                <div class="truncate font-mono text-xs text-muted-foreground">{{ shortAddress(c.address) }}</div>
+              </div>
+              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-transparent text-muted-foreground group-hover:border-border group-hover:text-foreground" title="Rename" :aria-label="`rename ${c.name}`" @click="startRename(c)">✎</button>
+              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-transparent text-muted-foreground hover:text-destructive group-hover:border-border" title="Delete" :aria-label="`delete ${c.name}`" @click="remove(c.address)">✕</button>
+            </template>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  </main>
+</template>

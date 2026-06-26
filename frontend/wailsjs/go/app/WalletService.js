@@ -14,8 +14,8 @@ export function GenerateMnemonic() {
   return window['go']['app']['WalletService']['GenerateMnemonic']();
 }
 
-export function ImportKeystore(arg1) {
-  return window['go']['app']['WalletService']['ImportKeystore'](arg1);
+export function ImportKeystore(arg1, arg2) {
+  return window['go']['app']['WalletService']['ImportKeystore'](arg1, arg2);
 }
 
 export function ImportMnemonic(arg1, arg2, arg3) {
@@ -32,6 +32,10 @@ export function Lock() {
 
 export function PickKeystoreFile() {
   return window['go']['app']['WalletService']['PickKeystoreFile']();
+}
+
+export function RenameWallet(arg1, arg2) {
+  return window['go']['app']['WalletService']['RenameWallet'](arg1, arg2);
 }
 
 export function RevealMnemonic(arg1) {

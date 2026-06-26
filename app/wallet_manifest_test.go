@@ -7,18 +7,33 @@ import (
 	"testing"
 )
 
-// writeFixtureKeystore writes a real, valid keystore into the wallets dir under
-// the given filename via the same Encrypt/Write path the create flow uses, and
-// returns its baseAddress. This gives ListWallets a genuine keystore to read.
+// writeFixtureKeystore drops a real, valid keystore into the wallets dir under
+// the given legacy filename and leaves NO manifest entry for it, so ListWallets'
+// legacy-migration path is genuinely exercised. It returns the baseAddress.
+//
+// ImportMnemonic now writes a uuid keystore plus a manifest entry, so we create
+// one that way, rename the file to the desired legacy name, and reset the
+// manifest to empty to simulate a pre-manifest keystore on disk.
 func writeFixtureKeystore(t *testing.T, w *WalletService, filename string) string {
 	t.Helper()
 	m, err := w.GenerateMnemonic()
 	if err != nil {
 		t.Fatalf("GenerateMnemonic: %v", err)
 	}
-	meta, err := w.ImportMnemonic(filename, "pw", m)
+	meta, err := w.ImportMnemonic("fixture", "pw", m)
 	if err != nil {
-		t.Fatalf("ImportMnemonic(%q): %v", filename, err)
+		t.Fatalf("ImportMnemonic: %v", err)
+	}
+	dir, err := w.config.walletsDir()
+	if err != nil {
+		t.Fatalf("walletsDir: %v", err)
+	}
+	if err := os.Rename(filepath.Join(dir, meta.ID), filepath.Join(dir, filename)); err != nil {
+		t.Fatalf("rename fixture to %q: %v", filename, err)
+	}
+	// Clear the manifest entry the write added so the file looks legacy/unknown.
+	if err := w.saveManifest(walletManifest{Wallets: []WalletMeta{}}); err != nil {
+		t.Fatalf("reset manifest: %v", err)
 	}
 	return meta.BaseAddress
 }

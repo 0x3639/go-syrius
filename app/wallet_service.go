@@ -123,24 +123,67 @@ func (w *WalletService) ListWallets() ([]WalletMeta, error) {
 	return m.Wallets, nil
 }
 
-// ImportKeystore validates a keystore file and copies it into the wallets dir.
-func (w *WalletService) ImportKeystore(srcPath string) (WalletMeta, error) {
+// ImportKeystore validates a keystore file and copies it into the wallets dir
+// under a fresh uuid filename, recording a manifest entry with the display name
+// (defaulting to the source filename stem when empty). The source filename is
+// not reused, so same-named imports no longer collide. Duplicate base addresses
+// are not blocked here — the frontend warns by comparing the returned
+// baseAddress against its existing list. No keystore content is modified.
+func (w *WalletService) ImportKeystore(srcPath, name string) (WalletMeta, error) {
 	kf, err := wallet.ReadKeyFile(srcPath)
 	if err != nil {
 		return WalletMeta{}, fmt.Errorf("not a valid syrius keystore: %w", err)
 	}
-	name := filepath.Base(srcPath)
-	dst, err := w.walletPath(name)
+	if name == "" {
+		base := filepath.Base(srcPath)
+		name = base[:len(base)-len(filepath.Ext(base))]
+	}
+	id, err := newWalletID()
 	if err != nil {
 		return WalletMeta{}, err
 	}
-	if _, err := os.Stat(dst); err == nil {
-		return WalletMeta{}, fmt.Errorf("a wallet named %q already exists", name)
+	dst, err := w.walletPath(id)
+	if err != nil {
+		return WalletMeta{}, err
 	}
 	if err := copyFile(srcPath, dst); err != nil {
 		return WalletMeta{}, err
 	}
-	return WalletMeta{Name: name, BaseAddress: kf.BaseAddress.String()}, nil
+	meta := WalletMeta{ID: id, Name: name, BaseAddress: kf.BaseAddress.String()}
+	if err := w.addToManifest(meta); err != nil {
+		return WalletMeta{}, err
+	}
+	return meta, nil
+}
+
+// addToManifest loads the manifest, appends meta, and persists it atomically.
+func (w *WalletService) addToManifest(meta WalletMeta) error {
+	m, err := w.loadManifest()
+	if err != nil {
+		return err
+	}
+	m.Wallets = append(m.Wallets, meta)
+	return w.saveManifest(m)
+}
+
+// RenameWallet updates the display name of the manifest entry identified by id.
+// It rejects an empty name and errors when the id is unknown. No keystore file
+// is touched.
+func (w *WalletService) RenameWallet(id, newName string) error {
+	if strings.TrimSpace(newName) == "" {
+		return errors.New("wallet name must not be empty")
+	}
+	m, err := w.loadManifest()
+	if err != nil {
+		return err
+	}
+	for i := range m.Wallets {
+		if m.Wallets[i].ID == id {
+			m.Wallets[i].Name = strings.TrimSpace(newName)
+			return w.saveManifest(m)
+		}
+	}
+	return fmt.Errorf("wallet %q not found", id)
 }
 
 // GenerateMnemonic returns a fresh 24-word (256-bit) BIP-39 mnemonic. It
@@ -161,8 +204,13 @@ func (w *WalletService) ImportMnemonic(name, password, mnemonic string) (WalletM
 }
 
 // writeKeystoreFromMnemonic assembles a go-zenon KeyStore from the mnemonic and
-// writes it as a syrius-compatible keyfile, refusing to overwrite an existing file.
+// writes it as a syrius-compatible keyfile under a fresh uuid filename, recording
+// a manifest entry with the display name. The uuid filename cannot collide, so
+// there is no overwrite check.
 func (w *WalletService) writeKeystoreFromMnemonic(name, password, mnemonic string) (WalletMeta, error) {
+	if strings.TrimSpace(name) == "" {
+		return WalletMeta{}, errors.New("wallet name must not be empty")
+	}
 	if password == "" {
 		return WalletMeta{}, errors.New("password must not be empty")
 	}
@@ -185,12 +233,13 @@ func (w *WalletService) writeKeystoreFromMnemonic(name, password, mnemonic strin
 	}
 	ks.BaseAddress = kp.Address
 
-	dst, err := w.walletPath(name)
+	id, err := newWalletID()
 	if err != nil {
 		return WalletMeta{}, err
 	}
-	if _, err := os.Stat(dst); err == nil {
-		return WalletMeta{}, fmt.Errorf("a wallet named %q already exists", name)
+	dst, err := w.walletPath(id)
+	if err != nil {
+		return WalletMeta{}, err
 	}
 	kf, err := ks.Encrypt(password)
 	if err != nil {
@@ -200,7 +249,11 @@ func (w *WalletService) writeKeystoreFromMnemonic(name, password, mnemonic strin
 	if err := kf.Write(); err != nil {
 		return WalletMeta{}, err
 	}
-	return WalletMeta{Name: name, BaseAddress: ks.BaseAddress.String()}, nil
+	meta := WalletMeta{ID: id, Name: name, BaseAddress: ks.BaseAddress.String()}
+	if err := w.addToManifest(meta); err != nil {
+		return WalletMeta{}, err
+	}
+	return meta, nil
 }
 
 // PickKeystoreFile opens a native file dialog and returns the chosen absolute

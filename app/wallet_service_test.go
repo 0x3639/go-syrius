@@ -53,12 +53,15 @@ func TestImportListUnlockLock(t *testing.T) {
 	ksPath, pw := locateSecretsKeystore(t)
 	w := newTestWalletService(t)
 
-	meta, err := w.ImportKeystore(ksPath)
+	meta, err := w.ImportKeystore(ksPath, "")
 	if err != nil {
 		t.Fatalf("ImportKeystore: %v", err)
 	}
 	if !strings.HasPrefix(meta.BaseAddress, "z1") {
 		t.Fatalf("bad baseAddress: %q", meta.BaseAddress)
+	}
+	if !strings.HasSuffix(meta.ID, ".dat") || meta.ID == filepath.Base(ksPath) {
+		t.Fatalf("expected a uuid filename id, got %q", meta.ID)
 	}
 
 	list, err := w.ListWallets()
@@ -66,10 +69,10 @@ func TestImportListUnlockLock(t *testing.T) {
 		t.Fatalf("ListWallets = %v, %v", list, err)
 	}
 
-	if err := w.Unlock(meta.Name, "wrong-password"); err == nil {
+	if err := w.Unlock(meta.ID, "wrong-password"); err == nil {
 		t.Fatal("expected unlock to fail with wrong password")
 	}
-	if err := w.Unlock(meta.Name, pw); err != nil {
+	if err := w.Unlock(meta.ID, pw); err != nil {
 		t.Fatalf("Unlock: %v", err)
 	}
 
@@ -92,11 +95,11 @@ func TestImportListUnlockLock(t *testing.T) {
 func TestSigningKeyPairMatchesActiveAddress(t *testing.T) {
 	ksPath, pw := locateSecretsKeystore(t)
 	w := newTestWalletService(t)
-	meta, err := w.ImportKeystore(ksPath)
+	meta, err := w.ImportKeystore(ksPath, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := w.Unlock(meta.Name, pw); err != nil {
+	if err := w.Unlock(meta.ID, pw); err != nil {
 		t.Fatal(err)
 	}
 
@@ -138,16 +141,29 @@ func TestImportMnemonicRoundTrip(t *testing.T) {
 	w := newTestWalletService(t)
 	m, _ := w.GenerateMnemonic()
 
-	meta, err := w.ImportMnemonic("created.dat", "pw123", m)
+	meta, err := w.ImportMnemonic("Created", "pw123", m)
 	if err != nil {
 		t.Fatalf("ImportMnemonic: %v", err)
 	}
 	if !strings.HasPrefix(meta.BaseAddress, "z1") {
 		t.Fatalf("bad baseAddress %q", meta.BaseAddress)
 	}
+	if meta.Name != "Created" || !strings.HasSuffix(meta.ID, ".dat") || meta.ID == "Created" {
+		t.Fatalf("expected uuid id + given name, got %+v", meta)
+	}
 
-	// The written keystore must open via go-zenon and derive the same address.
-	if err := w.Unlock("created.dat", "pw123"); err != nil {
+	// The keystore file must be the uuid, and a manifest entry must exist.
+	dir, _ := w.config.walletsDir()
+	if _, err := os.Stat(filepath.Join(dir, meta.ID)); err != nil {
+		t.Fatalf("uuid keystore not on disk: %v", err)
+	}
+	list, err := w.ListWallets()
+	if err != nil || len(list) != 1 || list[0].ID != meta.ID || list[0].Name != "Created" {
+		t.Fatalf("manifest entry not recorded: %v / %v", list, err)
+	}
+
+	// The written keystore must open via go-zenon (by id) and derive the same address.
+	if err := w.Unlock(meta.ID, "pw123"); err != nil {
 		t.Fatalf("Unlock created wallet: %v", err)
 	}
 	accts, err := w.CurrentAccounts()
@@ -155,33 +171,106 @@ func TestImportMnemonicRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip address mismatch: %v / %v", accts, err)
 	}
 
-	// Refuse overwrite; reject invalid mnemonic.
-	if _, err := w.ImportMnemonic("created.dat", "pw123", m); err == nil {
-		t.Fatal("expected overwrite to be refused")
-	}
-	if _, err := w.ImportMnemonic("bad.dat", "pw", "not a valid mnemonic phrase"); err == nil {
+	// Reject invalid mnemonic.
+	if _, err := w.ImportMnemonic("bad", "pw", "not a valid mnemonic phrase"); err == nil {
 		t.Fatal("expected invalid mnemonic to be rejected")
+	}
+}
+
+// TestImportKeystoreSameNameCoexist asserts importing the same-named source
+// twice yields two distinct uuid keystore files and two manifest entries.
+func TestImportKeystoreSameNameCoexist(t *testing.T) {
+	w := newTestWalletService(t)
+
+	// Build a real source keystore via the write path, then read it back out as
+	// a standalone source file we can import from repeatedly.
+	m, _ := w.GenerateMnemonic()
+	seed, err := w.ImportMnemonic("seed", "pw", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, _ := w.config.walletsDir()
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "wallet.dat") // same source name both times
+	if err := copyFile(filepath.Join(dir, seed.ID), srcPath); err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := w.ImportKeystore(srcPath, "")
+	if err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+	b, err := w.ImportKeystore(srcPath, "")
+	if err != nil {
+		t.Fatalf("second import (same-named source): %v", err)
+	}
+	if a.ID == b.ID {
+		t.Fatalf("expected distinct uuid ids, got %q twice", a.ID)
+	}
+	if a.ID == "wallet.dat" || b.ID == "wallet.dat" {
+		t.Fatalf("written filename must not be the source name: %q %q", a.ID, b.ID)
+	}
+	if a.Name != "wallet" || b.Name != "wallet" {
+		t.Fatalf("name should default to source stem: %q %q", a.Name, b.Name)
+	}
+	for _, id := range []string{a.ID, b.ID} {
+		if _, err := os.Stat(filepath.Join(dir, id)); err != nil {
+			t.Fatalf("uuid keystore %q missing: %v", id, err)
+		}
+	}
+	list, err := w.ListWallets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// seed + 2 imports = 3 entries.
+	if len(list) != 3 {
+		t.Fatalf("expected 3 manifest entries, got %d: %+v", len(list), list)
+	}
+}
+
+func TestRenameWallet(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+	meta, err := w.ImportMnemonic("Original", "pw", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := w.RenameWallet(meta.ID, "Renamed"); err != nil {
+		t.Fatalf("RenameWallet: %v", err)
+	}
+	list, _ := w.ListWallets()
+	if len(list) != 1 || list[0].Name != "Renamed" || list[0].ID != meta.ID {
+		t.Fatalf("rename not applied: %+v", list)
+	}
+
+	if err := w.RenameWallet(meta.ID, "   "); err == nil {
+		t.Fatal("expected empty/whitespace name to be rejected")
+	}
+	if err := w.RenameWallet("no-such-id.dat", "X"); err == nil {
+		t.Fatal("expected unknown id to error")
 	}
 }
 
 func TestChangePassword(t *testing.T) {
 	w := newTestWalletService(t)
 	m, _ := w.GenerateMnemonic()
-	if _, err := w.ImportMnemonic("cp.dat", "old-pw", m); err != nil {
+	meta, err := w.ImportMnemonic("cp", "old-pw", m)
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := w.ChangePassword("cp.dat", "wrong", "new-pw"); err == nil {
+	if err := w.ChangePassword(meta.ID, "wrong", "new-pw"); err == nil {
 		t.Fatal("expected wrong old password to fail")
 	}
-	if err := w.ChangePassword("cp.dat", "old-pw", "new-pw"); err != nil {
+	if err := w.ChangePassword(meta.ID, "old-pw", "new-pw"); err != nil {
 		t.Fatalf("ChangePassword: %v", err)
 	}
 
-	if err := w.Unlock("cp.dat", "old-pw"); err == nil {
+	if err := w.Unlock(meta.ID, "old-pw"); err == nil {
 		t.Fatal("old password should no longer work")
 	}
-	if err := w.Unlock("cp.dat", "new-pw"); err != nil {
+	if err := w.Unlock(meta.ID, "new-pw"); err != nil {
 		t.Fatalf("new password should work: %v", err)
 	}
 }
@@ -192,7 +281,7 @@ func TestImportRejectsNonKeystore(t *testing.T) {
 	if err := os.WriteFile(bad, []byte(`{"hello":"world"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.ImportKeystore(bad); err == nil {
+	if _, err := w.ImportKeystore(bad, ""); err == nil {
 		t.Fatal("expected ImportKeystore to reject a non-keystore file")
 	}
 }
@@ -200,14 +289,15 @@ func TestImportRejectsNonKeystore(t *testing.T) {
 func TestRevealMnemonic(t *testing.T) {
 	w := newTestWalletService(t)
 	m, _ := w.GenerateMnemonic()
-	if _, err := w.ImportMnemonic("rv.dat", "pw", m); err != nil {
+	meta, err := w.ImportMnemonic("rv", "pw", m)
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	if _, err := w.RevealMnemonic("pw"); err == nil {
 		t.Fatal("expected RevealMnemonic to fail when locked")
 	}
-	if err := w.Unlock("rv.dat", "pw"); err != nil {
+	if err := w.Unlock(meta.ID, "pw"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := w.RevealMnemonic("wrong"); err == nil {
@@ -224,11 +314,10 @@ func TestRevealMnemonic(t *testing.T) {
 
 func TestRejectsTraversalNames(t *testing.T) {
 	w := newTestWalletService(t)
-	m, _ := w.GenerateMnemonic()
 
-	if _, err := w.ImportMnemonic("../evil", "pw", m); err == nil || !strings.Contains(err.Error(), "invalid wallet name") {
-		t.Fatalf("ImportMnemonic traversal: expected invalid name error, got %v", err)
-	}
+	// Display names are no longer used as filenames (uuid storage), so a "../evil"
+	// name is harmless on the write path. The id-keyed lookups still validate
+	// against traversal via walletPath.
 	if err := w.Unlock("../evil", "pw"); err == nil || !strings.Contains(err.Error(), "invalid wallet name") {
 		t.Fatalf("Unlock traversal: expected invalid name error, got %v", err)
 	}
@@ -241,13 +330,14 @@ func TestRejectsEmptyPassword(t *testing.T) {
 	w := newTestWalletService(t)
 	m, _ := w.GenerateMnemonic()
 
-	if _, err := w.ImportMnemonic("ok.dat", "", m); err == nil {
+	if _, err := w.ImportMnemonic("ok", "", m); err == nil {
 		t.Fatal("expected ImportMnemonic with empty password to fail")
 	}
-	if _, err := w.ImportMnemonic("ok.dat", "pw", m); err != nil {
+	meta, err := w.ImportMnemonic("ok", "pw", m)
+	if err != nil {
 		t.Fatalf("ImportMnemonic: %v", err)
 	}
-	if err := w.ChangePassword("ok.dat", "pw", ""); err == nil {
+	if err := w.ChangePassword(meta.ID, "pw", ""); err == nil {
 		t.Fatal("expected ChangePassword to empty new password to fail")
 	}
 }
@@ -255,10 +345,11 @@ func TestRejectsEmptyPassword(t *testing.T) {
 func TestAccountLabels(t *testing.T) {
 	w := newTestWalletService(t)
 	m, _ := w.GenerateMnemonic()
-	if _, err := w.ImportMnemonic("lbl.dat", "pw", m); err != nil {
+	meta, err := w.ImportMnemonic("lbl", "pw", m)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := w.Unlock("lbl.dat", "pw"); err != nil {
+	if err := w.Unlock(meta.ID, "pw"); err != nil {
 		t.Fatal(err)
 	}
 

@@ -128,6 +128,9 @@ const (
 	EventTxPowProgress = "tx:pow-progress"
 	EventTxPublished   = "tx:published"
 	EventTxReceived    = "tx:received"
+	// EventAutoReceiving carries a bool: auto-receive is (true) / is no longer
+	// (false) actively receiving — drives the "Receiving…" UI indicator.
+	EventAutoReceiving = "auto-receive:active"
 )
 
 // mainnetChainID is the Network of Momentum mainnet chain identifier.

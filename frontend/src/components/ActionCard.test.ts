@@ -15,4 +15,10 @@ describe('ActionCard', () => {
     const w = mount(ActionCard, { props: { label: 'Send', direction: 'send', badge: 0 } })
     expect(w.find('[aria-label$="pending"]').exists()).toBe(false)
   })
+
+  it('shows a spinner + Receiving label when receiving', () => {
+    const w = mount(ActionCard, { props: { label: 'Receive', direction: 'receive', receiving: true } })
+    expect(w.find('svg.animate-spin').exists()).toBe(true)
+    expect(w.text()).toContain('Receiving')
+  })
 })

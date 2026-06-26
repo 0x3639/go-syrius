@@ -1,13 +1,27 @@
 import { defineStore } from 'pinia'
 import * as Cfg from '../../wailsjs/go/app/ConfigService'
 import * as N from '../../wailsjs/go/app/NodeService'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 
 // Auto-receive engine. The backend subscribes + sweeps for ONE active account at
 // a time. Kept in a store (not in Home) so the top-bar toggle works from any
-// screen, while Home drives init + account-following.
+// screen, while Home drives init + account-following. `receiving` reflects the
+// backend actively claiming blocks (PoW/plasma generation) for a progress UI.
 export const useAutoReceiveStore = defineStore('autoReceive', {
-  state: () => ({ enabled: false, account: -1 }),
+  state: () => ({ enabled: false, account: -1, receiving: false, wired: false }),
   actions: {
+    // Wire the backend's receiving:active event (once per store instance).
+    wireEvents() {
+      if (this.wired) return
+      this.wired = true
+      try {
+        EventsOn('auto-receive:active', (active: boolean) => {
+          this.receiving = !!active
+        })
+      } catch {
+        /* runtime unavailable (tests/offline) */
+      }
+    },
     // start() always stops first so it re-points at the CURRENT active account —
     // StartAutoReceive alone early-returns "already running" on the old one.
     async start(activeIndex: number) {
@@ -22,6 +36,7 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
     // Load the persisted flag + resume (the subscription doesn't survive a
     // restart). Skips a redundant restart when already on this account.
     async init(activeIndex: number) {
+      this.wireEvents()
       try {
         this.enabled = (await Cfg.GetSettings()).autoReceive
         if (this.enabled && this.account !== activeIndex) await this.start(activeIndex)

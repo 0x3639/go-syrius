@@ -7,6 +7,8 @@ vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetSettings 
 const StartAutoReceive = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const StopAutoReceive = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('../../wailsjs/go/app/NodeService', () => ({ StartAutoReceive, StopAutoReceive }))
+const onCalls = vi.hoisted(() => [] as Array<[string, (v: unknown) => void]>)
+vi.mock('../../wailsjs/runtime/runtime', () => ({ EventsOn: (n: string, cb: (v: unknown) => void) => onCalls.push([n, cb]) }))
 import { useAutoReceiveStore } from './autoReceive'
 
 beforeEach(() => {
@@ -15,6 +17,7 @@ beforeEach(() => {
   SetSettings.mockClear()
   StartAutoReceive.mockClear()
   StopAutoReceive.mockClear()
+  onCalls.length = 0
 })
 
 describe('autoReceive store', () => {
@@ -48,5 +51,16 @@ describe('autoReceive store', () => {
     await s.followAccount(1) // changed → restart
     expect(StartAutoReceive).toHaveBeenCalled()
     expect(s.account).toBe(1)
+  })
+
+  it('reflects the backend receiving:active event', () => {
+    const s = useAutoReceiveStore()
+    s.wireEvents()
+    const entry = onCalls.find(([n]) => n === 'auto-receive:active')
+    expect(entry).toBeTruthy()
+    entry![1](true)
+    expect(s.receiving).toBe(true)
+    entry![1](false)
+    expect(s.receiving).toBe(false)
   })
 })

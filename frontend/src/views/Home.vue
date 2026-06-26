@@ -88,6 +88,7 @@ onMounted(async () => {
         label="Receive"
         direction="receive"
         :badge="unreceived.items.length"
+        :receiving="autoReceive.receiving"
         @click="receiveOpen = true"
       />
     </div>

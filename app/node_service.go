@@ -533,37 +533,81 @@ func (n *NodeService) StartAutoReceive() error {
 	}
 	go func() {
 		defer sub.Unsubscribe()
-		// Sweep blocks already pending at start time. The subscription only
-		// delivers NEW unreceived blocks, so without this initial sweep an
-		// enable-while-a-block-is-already-waiting (e.g. right after collecting a
-		// reward) would never receive that block.
-		if n.receiveFn != nil {
-			if list, err := client.LedgerApi.GetUnreceivedBlocksByAddress(addr, 0, 50); err == nil {
-				for _, b := range list.List {
-					select {
-					case <-stop:
-						return
-					default:
-						_, _ = n.receiveFn(b.Hash.String())
-					}
-				}
-			}
-		}
+		// Drain whatever is already pending (the subscription only delivers NEW
+		// blocks). Then re-drain on every new-block signal.
+		n.sweepUnreceived(client, addr, stop)
 		for {
 			select {
 			case <-stop:
 				return
-			case blocks := <-ch:
-				if n.receiveFn == nil {
-					continue
-				}
-				for _, b := range blocks {
-					_, _ = n.receiveFn(b.Hash.String())
-				}
+			case <-ch:
+				n.sweepUnreceived(client, addr, stop)
 			}
 		}
 	}()
 	return nil
+}
+
+// sweepUnreceived receives every currently-unreceived block for addr, re-fetching
+// and retrying until the queue drains or stalls. Each receive shifts the account
+// frontier, and the node needs a moment to fold it in before the next receive's
+// template is valid — so a single pass (the old behaviour) could receive the
+// first block and leave later ones stuck. Emits a receiving:active event around
+// the work so the UI can show progress (PoW/plasma generation takes seconds).
+func (n *NodeService) sweepUnreceived(client *rpc_client.RpcClient, addr types.Address, stop <-chan struct{}) {
+	if n.receiveFn == nil {
+		return
+	}
+	first, err := client.LedgerApi.GetUnreceivedBlocksByAddress(addr, 0, 50)
+	if err != nil || first == nil || len(first.List) == 0 {
+		return
+	}
+	n.emitReceiving(true)
+	defer n.emitReceiving(false)
+
+	pending := first
+	stale := 0
+	for stale < 3 {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		before := len(pending.List)
+		for _, b := range pending.List {
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = n.receiveFn(b.Hash.String())
+			}
+		}
+		// Let the node fold the just-published receives into the account frontier
+		// before re-checking, so any retried block builds on the right prev-hash.
+		select {
+		case <-stop:
+			return
+		case <-time.After(1500 * time.Millisecond):
+		}
+		next, err := client.LedgerApi.GetUnreceivedBlocksByAddress(addr, 0, 50)
+		if err != nil || next == nil || len(next.List) == 0 {
+			return
+		}
+		if len(next.List) >= before {
+			stale++ // no progress; give the frontier a few more tries, then give up
+		} else {
+			stale = 0
+		}
+		pending = next
+	}
+}
+
+// emitReceiving notifies the frontend that auto-receive is (or is no longer)
+// actively receiving — used to show a "Receiving…" / generating-plasma indicator.
+func (n *NodeService) emitReceiving(active bool) {
+	if n.ctx != nil {
+		runtime.EventsEmit(n.ctx, EventAutoReceiving, active)
+	}
 }
 
 // StopAutoReceive stops the auto-receive subscription if running.

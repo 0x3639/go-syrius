@@ -4,8 +4,9 @@ const props = withDefaults(
     label?: string
     direction?: 'send' | 'receive'
     badge?: number
+    receiving?: boolean
   }>(),
-  { label: '', direction: 'send', badge: 0 },
+  { label: '', direction: 'send', badge: 0, receiving: false },
 )
 
 defineEmits<{ click: [] }>()
@@ -26,7 +27,16 @@ void props
       >{{ badge }}</span
     >
     <span class="text-primary" aria-hidden="true">
+      <!-- Receiving: a spinner (the wallet is doing PoW / generating plasma to claim the block). -->
       <svg
+        v-if="receiving"
+        class="animate-spin"
+        width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+      >
+        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+      </svg>
+      <svg
+        v-else
         width="28"
         height="28"
         viewBox="0 0 24 24"
@@ -47,6 +57,6 @@ void props
         </template>
       </svg>
     </span>
-    <span class="text-sm font-medium">{{ label }}</span>
+    <span class="text-sm font-medium">{{ receiving ? 'Receiving…' : label }}</span>
   </button>
 </template>

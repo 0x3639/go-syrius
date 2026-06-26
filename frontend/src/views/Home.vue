@@ -80,7 +80,7 @@ onMounted(async () => {
 <template>
   <TopBar />
 
-  <div class="mx-auto mt-6 w-[56rem] max-w-full space-y-4 px-4">
+  <div class="mx-auto mt-6 w-[56rem] max-w-full space-y-4 px-4 pb-12">
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
       <BalanceCard symbol="ZNN" :amount="znn?.amount ?? '0'" :decimals="znn?.decimals ?? 8" tint="green" />
       <BalanceCard symbol="QSR" :amount="qsr?.amount ?? '0'" :decimals="qsr?.decimals ?? 8" tint="blue" />

@@ -47,6 +47,15 @@ function isTransfer(t: { direction: string; amount: string }): boolean {
 }
 const displayed = computed(() => (transfersOnly.value ? items.value.filter(isTransfer) : items.value))
 
+// Explain an empty page: in Transfers mode a whole block-page can be contract/pair
+// activity that's filtered out — tell the user to switch to All rather than imply
+// there are no transactions at all.
+const emptyMessage = computed(() =>
+  transfersOnly.value && items.value.length > 0
+    ? 'No transfers on this page — switch to All to see contract / pair activity.'
+    : 'No transactions.',
+)
+
 // Our store carries `confirmed: boolean`; nom-ui TxStatus takes a 4-state enum.
 // We only distinguish confirmed vs not, so map true -> success, false -> pending.
 function status(confirmed: boolean): 'success' | 'pending' {
@@ -77,7 +86,7 @@ function status(confirmed: boolean): 'success' | 'pending' {
     </div>
     <Table>
       <TableBody>
-        <TableEmpty v-if="displayed.length === 0 && (txs.page > 0 || unreceived.items.length === 0)" :colspan="5">No transactions.</TableEmpty>
+        <TableEmpty v-if="displayed.length === 0 && (txs.page > 0 || unreceived.items.length === 0)" :colspan="5">{{ emptyMessage }}</TableEmpty>
 
         <!-- Pending inbound blocks (newest page only): click to receive; status
              goes Unreceived → Generating Plasma/Receiving (pulsing) → Confirmed. -->

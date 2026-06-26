@@ -82,7 +82,7 @@ describe('TxHistory', () => {
       { ...tx, hash: 'p1', direction: 'pair', method: '', amount: '0', token: '' },
     ]
     await w.vm.$nextTick()
-    expect(w.text()).toContain('No transactions.') // default Transfers hides both
+    expect(w.text()).toContain('No transfers on this page') // default Transfers hides both (rows exist but filtered)
     await w.find('button[aria-label="show all transactions"]').trigger('click')
     await w.vm.$nextTick()
     expect(w.text()).toContain('CollectReward')

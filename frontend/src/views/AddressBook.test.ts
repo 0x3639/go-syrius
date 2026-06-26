@@ -14,9 +14,8 @@ const DeleteContact = vi.hoisted(() => vi.fn().mockResolvedValue([]))
 vi.mock('../../wailsjs/go/app/ConfigService', () => ({ ListContacts, AddContact, DeleteContact }))
 const push = vi.fn()
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
+vi.mock('../components/TopBar.vue', () => ({ default: { template: '<div data-topbar />' } }))
 vi.mock('nom-ui', () => ({
-  Card: { template: '<div><slot /></div>' },
-  CardContent: { template: '<div><slot /></div>' },
   Button: { props: ['disabled'], template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>' },
   Input: {
     props: ['modelValue'],

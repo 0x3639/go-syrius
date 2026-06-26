@@ -2,9 +2,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { Card, CardContent, Input, Button } from 'nom-ui'
+import { Input, Button } from 'nom-ui'
 import { shortAddress } from '../lib/format'
 import { useContactsStore, type Contact } from '../stores/contacts'
+import TopBar from '../components/TopBar.vue'
 
 const router = useRouter()
 const contacts = useContactsStore()
@@ -68,17 +69,18 @@ onMounted(() => contacts.load())
 </script>
 
 <template>
-  <main class="grid min-h-screen justify-center bg-background p-8">
-    <Card class="relative h-fit w-[42rem] max-w-full">
+  <TopBar />
+  <div class="mx-auto mt-6 w-[42rem] max-w-full space-y-4 px-4 pb-10">
+    <div class="flex items-center gap-2">
       <button
-        class="absolute right-4 top-4 text-muted-foreground transition-colors hover:text-foreground"
-        aria-label="close"
+        class="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+        aria-label="back to wallet"
         @click="router.push('/home')"
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
       </button>
-      <CardContent class="space-y-4 p-6">
-        <h1 class="text-xl text-foreground">Address book</h1>
+      <h1 class="text-xl text-foreground">Address book</h1>
+    </div>
 
         <!-- Add -->
         <div class="space-y-2 rounded-lg border border-border bg-background/40 p-3">
@@ -115,7 +117,5 @@ onMounted(() => contacts.load())
             </template>
           </div>
         </div>
-      </CardContent>
-    </Card>
-  </main>
+  </div>
 </template>

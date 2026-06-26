@@ -60,7 +60,7 @@ vi.mock('nom-ui', () => ({
 import Home from './Home.vue'
 import { useWalletStore } from '../stores/wallet'
 
-const STUBS = { AccountSlotPicker: true, StatusStrip: true, TxHistory: true, SendModal: true, ReceiveModal: true }
+const STUBS = { TopBar: true, StatusStrip: true, TxHistory: true, SendModal: true, ReceiveModal: true }
 const flush = () => new Promise((r) => setTimeout(r))
 
 beforeEach(() => {
@@ -94,13 +94,4 @@ describe('Home.vue', () => {
     expect(w.find('[aria-label="2 pending"]').exists()).toBe(true)
   })
 
-  it('locks the wallet when Lock is clicked', async () => {
-    const w = mount(Home, { global: { stubs: STUBS } })
-    const wallet = useWalletStore()
-    const lock = vi.spyOn(wallet, 'lock').mockImplementation(() => {})
-    await flush()
-    const lockBtn = w.find('button[aria-label="Lock wallet"]')
-    await lockBtn.trigger('click')
-    expect(lock).toHaveBeenCalled()
-  })
 })

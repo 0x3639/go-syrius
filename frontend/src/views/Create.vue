@@ -34,16 +34,13 @@ const verifyOk = computed(
 )
 const canCreate = computed(() => name.value.trim() !== '' && password.value.length > 0 && password.value === confirm.value)
 
-function fileName(): string {
-  return name.value.endsWith('.dat') ? name.value : name.value + '.dat'
-}
-
 async function finish() {
   error.value = ''
   try {
-    const fn = fileName()
-    await wallet.importMnemonic(fn, password.value, mnemonic.value)
-    await wallet.unlock(fn, password.value)
+    // `name` is now a display name; the backend assigns a uuid keystore filename.
+    // Capture the returned meta and unlock by its real id.
+    const meta = await wallet.importMnemonic(name.value.trim(), password.value, mnemonic.value)
+    await wallet.unlock(meta.id, password.value)
     router.push('/home')
   } catch (e: any) {
     error.value = e?.message ?? String(e)

@@ -7,9 +7,11 @@ const GenerateMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue('w1 w2 w3'))
 const ImportMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue({ name: 'New.dat' }))
 const ImportKeystore = vi.hoisted(() => vi.fn().mockResolvedValue({ name: 'Old.dat' }))
 const PickKeystoreFile = vi.hoisted(() => vi.fn().mockResolvedValue('/tmp/k.dat'))
+const RenameWallet = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('../../wailsjs/go/app/WalletService', () => ({
-  ListWallets: vi.fn().mockResolvedValue([{ name: 'Main' }]),
+  ListWallets: vi.fn().mockResolvedValue([{ id: 'Main.dat', name: 'Main', baseAddress: 'z1qmain' }]),
   Unlock: vi.fn().mockResolvedValue(undefined),
+  RenameWallet,
   Lock,
   GenerateMnemonic,
   ImportMnemonic,
@@ -24,8 +26,10 @@ beforeEach(() => setActivePinia(createPinia()))
 describe('wallet store', () => {
   it('lists wallets and unlocks', async () => {
     const s = useWalletStore()
-    await s.loadWallets(); expect(s.wallets).toEqual(['Main']); expect(s.active).toBe('Main')
-    await s.unlock('Main', 'pw'); expect(s.locked).toBe(false)
+    await s.loadWallets()
+    expect(s.wallets).toEqual([{ id: 'Main.dat', name: 'Main', baseAddress: 'z1qmain' }])
+    expect(s.active).toBe('Main.dat')
+    await s.unlock('Main.dat', 'pw'); expect(s.locked).toBe(false)
   })
   it('lock() re-locks the backend keystore, not just the UI', async () => {
     const s = useWalletStore()
@@ -41,8 +45,14 @@ describe('wallet store', () => {
     await s.importMnemonic('New.dat', 'pw', 'w1 w2 w3')
     expect(ImportMnemonic).toHaveBeenCalledWith('New.dat', 'pw', 'w1 w2 w3')
     await s.importKeystore('/tmp/k.dat')
-    expect(ImportKeystore).toHaveBeenCalledWith('/tmp/k.dat')
+    expect(ImportKeystore).toHaveBeenCalledWith('/tmp/k.dat', '')
     expect(await s.pickKeystoreFile()).toBe('/tmp/k.dat')
+  })
+  it('rename calls RenameWallet then reloads', async () => {
+    const s = useWalletStore()
+    await s.rename('Main.dat', 'Renamed')
+    expect(RenameWallet).toHaveBeenCalledWith('Main.dat', 'Renamed')
+    expect(s.wallets).toEqual([{ id: 'Main.dat', name: 'Main', baseAddress: 'z1qmain' }])
   })
   it('loads accounts on unlock and selects by index', async () => {
     const s = useWalletStore()

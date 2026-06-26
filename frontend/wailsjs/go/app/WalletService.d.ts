@@ -8,7 +8,7 @@ export function CurrentAccounts():Promise<Array<app.AccountInfo>>;
 
 export function GenerateMnemonic():Promise<string>;
 
-export function ImportKeystore(arg1:string):Promise<app.WalletMeta>;
+export function ImportKeystore(arg1:string,arg2:string):Promise<app.WalletMeta>;
 
 export function ImportMnemonic(arg1:string,arg2:string,arg3:string):Promise<app.WalletMeta>;
 
@@ -17,6 +17,8 @@ export function ListWallets():Promise<Array<app.WalletMeta>>;
 export function Lock():Promise<void>;
 
 export function PickKeystoreFile():Promise<string>;
+
+export function RenameWallet(arg1:string,arg2:string):Promise<void>;
 
 export function RevealMnemonic(arg1:string):Promise<string>;
 

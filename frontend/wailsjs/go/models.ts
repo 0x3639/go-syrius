@@ -586,6 +586,7 @@ export namespace app {
 	}
 	
 	export class WalletMeta {
+	    id: string;
 	    name: string;
 	    baseAddress: string;
 	
@@ -595,6 +596,7 @@ export namespace app {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.baseAddress = source["baseAddress"];
 	    }

@@ -90,7 +90,7 @@ function status(confirmed: boolean): 'success' | 'pending' {
           <TableCell class="text-right font-mono text-foreground">
             {{ formatAmount(u.amount, u.decimals ?? 8) }} {{ u.token }}
           </TableCell>
-          <TableCell class="text-right">
+          <TableCell class="w-40 whitespace-nowrap text-right">
             <span
               v-if="unreceived.busy[u.fromHash]"
               class="inline-flex animate-pulse items-center rounded-full bg-info/15 px-2 py-0.5 text-xs font-medium text-info"
@@ -124,7 +124,7 @@ function status(confirmed: boolean): 'success' | 'pending' {
             <template v-if="!t.token"><span class="text-muted-foreground">—</span></template>
             <template v-else>{{ formatAmount(t.amount, t.decimals ?? 8) }} {{ t.token }}</template>
           </TableCell>
-          <TableCell class="text-right">
+          <TableCell class="w-40 whitespace-nowrap text-right">
             <TxStatus :status="status(t.confirmed)" />
           </TableCell>
         </TableRow>

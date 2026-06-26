@@ -66,7 +66,7 @@ describe('UnreceivedPanel', () => {
     expect(receiveSpy).toHaveBeenCalledWith('0xhash1')
   })
 
-  it('shows "Receiving…" while the row is busy', async () => {
+  it('shows a pulsing Generating Plasma status while the row is busy (no Receive button)', async () => {
     const w = mount(UnreceivedPanel)
     const store = useUnreceivedStore()
     vi.spyOn(store, 'load').mockResolvedValue()
@@ -74,8 +74,9 @@ describe('UnreceivedPanel', () => {
     store.busy = { '0xhash1': true }
     await w.vm.$nextTick()
 
-    expect(w.text()).toContain('Receiving…')
-    const btn = w.findAll('button').find((b) => b.text() === 'Receiving…')!
-    expect(btn.attributes('disabled')).toBeDefined()
+    // plasma None (default) → "Generating Plasma…"; the Receive button is replaced.
+    expect(w.text()).toContain('Generating Plasma')
+    expect(w.findAll('button').find((b) => b.text() === 'Receive')).toBeFalsy()
+    expect(w.find('.animate-pulse').exists()).toBe(true)
   })
 })

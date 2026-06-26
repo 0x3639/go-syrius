@@ -37,7 +37,13 @@ async function doImport() {
 
 <template>
   <main class="grid min-h-screen place-items-center bg-background p-8">
-    <Card class="w-[32rem]">
+    <Card class="relative w-[32rem]">
+      <button
+        class="absolute right-4 top-4 text-muted-foreground transition-colors hover:text-foreground"
+        aria-label="close"
+        @click="router.push('/unlock')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
       <CardContent class="space-y-4 p-6">
         <h1 class="text-xl text-foreground">Import from mnemonic</h1>
         <textarea
@@ -51,7 +57,6 @@ async function doImport() {
         <Input v-model="password" type="password" placeholder="Password" aria-label="password" />
         <Input v-model="confirm" type="password" placeholder="Confirm password" aria-label="confirm password" />
         <Button class="w-full" :disabled="!canImport" aria-label="Import" @click="doImport">Import</Button>
-        <button class="text-xs text-muted-foreground" @click="router.push('/unlock')">Cancel</button>
         <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>
       </CardContent>
     </Card>

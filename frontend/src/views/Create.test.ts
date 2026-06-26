@@ -63,7 +63,7 @@ describe('Create.vue', () => {
   it('copies the seed phrase to the clipboard', async () => {
     const w = mount(Create)
     await new Promise((r) => setTimeout(r)) // generateMnemonic
-    const copyBtn = w.findAll('button').find((b) => b.text().includes('Copy seed phrase'))!
+    const copyBtn = w.findAll('button').find((b) => b.text().includes('Copy recovery phrase'))!
     await copyBtn.trigger('click')
     await new Promise((r) => setTimeout(r))
     expect(ClipboardSetText).toHaveBeenCalledWith('alpha bravo charlie')

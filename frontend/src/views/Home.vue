@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Button, Tabs, TabsList, TabsTrigger, TabsContent } from 'nom-ui'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from 'nom-ui'
 import { useWalletStore } from '../stores/wallet'
 import { useBalancesStore } from '../stores/balances'
 import { useTxsStore } from '../stores/txs'
@@ -12,7 +12,7 @@ import { useNodeStore } from '../stores/node'
 import { useTxStore } from '../stores/tx'
 import * as Cfg from '../../wailsjs/go/app/ConfigService'
 import * as N from '../../wailsjs/go/app/NodeService'
-import AccountSwitcher from '../components/AccountSwitcher.vue'
+import AccountSlotPicker from '../components/AccountSlotPicker.vue'
 import BalanceCard from '../components/BalanceCard.vue'
 import ActionCard from '../components/ActionCard.vue'
 import StatusStrip from '../components/StatusStrip.vue'
@@ -86,6 +86,12 @@ async function toggleAutoReceive() {
   } catch {}
 }
 
+// Icon button: flip the state then run the persist + start/stop logic.
+async function clickAutoReceive() {
+  autoReceive.value = !autoReceive.value
+  await toggleAutoReceive()
+}
+
 async function onActiveChange(active: number) {
   refresh()
   // Follow account switches: re-sweep + re-subscribe for the new account.
@@ -110,18 +116,45 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mx-auto mt-6 w-[56rem] max-w-full space-y-4 px-4">
+  <header class="w-full border-b border-border bg-card px-6 py-3">
     <div class="flex items-center justify-between">
-      <AccountSwitcher />
-      <div class="flex items-center gap-3">
-        <label class="flex items-center gap-1 text-xs text-muted-foreground">
-          <input type="checkbox" v-model="autoReceive" @change="toggleAutoReceive" /> Auto-receive
-        </label>
-        <Button variant="ghost" aria-label="Settings" @click="router.push('/settings')">Settings</Button>
-        <Button variant="ghost" @click="wallet.lock()">Lock</Button>
+      <AccountSlotPicker />
+      <div class="flex items-center gap-1">
+        <button
+          type="button"
+          :title="autoReceive ? 'Auto-receive: on' : 'Auto-receive: off'"
+          :aria-label="autoReceive ? 'Auto-receive on' : 'Auto-receive off'"
+          :aria-pressed="autoReceive"
+          class="grid h-9 w-9 place-items-center rounded-lg transition-colors hover:bg-foreground/[0.06]"
+          :class="autoReceive ? 'text-primary' : 'text-muted-foreground'"
+          @click="clickAutoReceive"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </button>
+        <button
+          type="button"
+          title="Lock wallet"
+          aria-label="Lock wallet"
+          class="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+          @click="wallet.lock()"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+        </button>
+        <span class="mx-1 h-5 w-px bg-border"></span>
+        <button
+          type="button"
+          title="Settings"
+          aria-label="Settings"
+          class="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+          @click="router.push('/settings')"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
       </div>
     </div>
+  </header>
 
+  <div class="mx-auto mt-6 w-[56rem] max-w-full space-y-4 px-4">
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
       <BalanceCard symbol="ZNN" :amount="znn?.amount ?? '0'" :decimals="znn?.decimals ?? 8" tint="green" />
       <BalanceCard symbol="QSR" :amount="qsr?.amount ?? '0'" :decimals="qsr?.decimals ?? 8" tint="blue" />

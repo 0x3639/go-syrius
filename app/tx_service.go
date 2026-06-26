@@ -147,40 +147,37 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 
 	template := client.LedgerApi.SendTemplate(to, zts, amount, nil)
 	template.ChainIdentifier = t.configuredChainID()
-	z := zenon.NewZenon(client)
-	if t.ctx != nil {
-		z.PowCallback = func(s pow.PowStatus) {
-			runtime.EventsEmit(t.ctx, EventTxPowProgress, map[string]string{"state": s.String()})
-		}
-	}
-	built, err := z.PrepareBlock(template, kp)
+	// Determine whether PoW is needed (a cheap node query) but DON'T do it yet.
+	// PoW — and therefore the block hash — is deferred to ConfirmPublish so the
+	// user approves the effect BEFORE the wallet spends seconds generating plasma.
+	needsPoW, err := zenon.NewZenon(client).RequiresPoW(template, kp)
 	if err != nil {
 		return SendPreview{}, err
 	}
-
-	// If the wallet session changed mid-prepare (lock or unlock), the block was
-	// built against a now-stale wallet state; refuse to hold it.
 	if t.wallet.sessionGen() != gen {
 		return SendPreview{}, errors.New("wallet state changed during prepare")
 	}
 
-	t.mu.Lock()
-	t.pending = built
-	t.pendingExpect = callExpect{to: to, zts: zts, amount: new(big.Int).Set(amount), data: append([]byte(nil), built.Data...)}
-	t.pendingGen = gen
-	t.mu.Unlock()
+	t.holdPending(template, callExpect{to: to, zts: zts, amount: new(big.Int).Set(amount), data: append([]byte(nil), template.Data...)}, gen)
 
 	return SendPreview{
-		ToAddress:  built.ToAddress.String(),
-		Symbol:     t.symbolFor(built.TokenStandard.String()),
-		Zts:        built.TokenStandard.String(),
-		Amount:     built.Amount.String(),
-		Decimals:   resolveDecimals(built.TokenStandard.String(), clientTokenDecimals(client)),
-		UsedPlasma: built.FusedPlasma,
-		Difficulty: built.Difficulty,
-		Hash:       built.Hash.String(),
-		NeedsPoW:   built.Difficulty > 0,
+		ToAddress: to.String(),
+		Symbol:    t.symbolFor(zts.String()),
+		Zts:       zts.String(),
+		Amount:    amount.String(),
+		Decimals:  resolveDecimals(zts.String(), clientTokenDecimals(client)),
+		NeedsPoW:  needsPoW,
+		// UsedPlasma / Difficulty / Hash are filled by ConfirmPublish's PoW.
 	}, nil
+}
+
+// holdPending stores the un-PoW'd template + the effect to re-assert at publish.
+func (t *TxService) holdPending(template *nom.AccountBlock, expect callExpect, gen uint64) {
+	t.mu.Lock()
+	t.pending = template
+	t.pendingExpect = expect
+	t.pendingGen = gen
+	t.mu.Unlock()
 }
 
 // ConfirmPublish broadcasts the held block after re-asserting it matches the
@@ -193,40 +190,72 @@ func (t *TxService) ConfirmPublish() (string, error) {
 		return "", err
 	}
 	t.mu.Lock()
-	b, expect, pendingGen := t.pending, t.pendingExpect, t.pendingGen
+	template, expect, pendingGen := t.pending, t.pendingExpect, t.pendingGen
 	t.mu.Unlock()
-	if b == nil {
+	if template == nil {
 		return "", errors.New("no pending transaction")
 	}
 
-	// Refuse to publish if the wallet was locked or its session changed since the
-	// block was prepared (lock/unlock TOCTOU). Clear pending: the held block is
-	// no longer trustworthy and the user must re-prepare.
+	// Refuse if the wallet was locked or its session changed since prepare.
 	if _, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != pendingGen {
 		t.clearPending()
 		return "", errors.New("wallet locked or changed; not publishing")
 	}
-
-	if err := assertMatches(b, expect); err != nil {
+	// Re-assert the approved effect on the held template BEFORE the expensive PoW
+	// (and again on the built block after). PrepareBlock never alters the funds-
+	// moving fields, so a template match guarantees the built block matches.
+	if err := assertMatches(template, expect); err != nil {
 		t.clearPending()
 		return "", err
 	}
-
-	// Snapshot the client and verify the prepared block's chain matches the
-	// currently connected node. A node change between prepare and confirm could
-	// otherwise broadcast a cross-chain block. Keep pending on mismatch so the
-	// user can reconnect to the original network and retry.
+	kp, err := t.wallet.signingKeyPair()
+	if err != nil {
+		t.clearPending()
+		return "", err
+	}
 	client := t.node.currentClient()
 	if client == nil {
 		return "", errors.New("not connected")
 	}
-	if b.ChainIdentifier != t.node.currentChainID() {
-		return "", fmt.Errorf("configured Chain ID (%d) does not match the connected node's chain (%d); set the correct Chain ID in Settings or connect to a matching node", b.ChainIdentifier, t.node.currentChainID())
+	// Chain check BEFORE the expensive PoW. The template is still un-PoW'd, so a
+	// mismatch keeps it for retry after the user reconnects to the right network.
+	if template.ChainIdentifier != t.node.currentChainID() {
+		return "", fmt.Errorf("configured Chain ID (%d) does not match the connected node's chain (%d); set the correct Chain ID in Settings or connect to a matching node", template.ChainIdentifier, t.node.currentChainID())
 	}
-	if err := client.LedgerApi.PublishRawTransaction(b); err != nil {
+
+	// The slow part, now that the user has approved: autofill against the current
+	// frontier, PoW (generate plasma), hash, and sign. The template is mutated
+	// here, so any failure from this point clears pending (a retry re-prepares).
+	z := zenon.NewZenon(client)
+	if t.ctx != nil {
+		z.PowCallback = func(s pow.PowStatus) {
+			runtime.EventsEmit(t.ctx, EventTxPowProgress, map[string]string{"state": s.String()})
+		}
+	}
+	built, err := z.PrepareBlock(template, kp)
+	if err != nil {
+		t.clearPending()
 		return "", err
 	}
-	hash := b.Hash.String()
+	// Re-assert the session after PoW (it took seconds — a lock could have raced).
+	if _, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != pendingGen {
+		t.clearPending()
+		return "", errors.New("wallet locked or changed; not publishing")
+	}
+	// Confirm-what-you-sign: the built block must move exactly the approved effect.
+	if err := assertMatches(built, expect); err != nil {
+		t.clearPending()
+		return "", err
+	}
+	if built.ChainIdentifier != t.node.currentChainID() {
+		t.clearPending()
+		return "", fmt.Errorf("configured Chain ID (%d) does not match the connected node's chain (%d)", built.ChainIdentifier, t.node.currentChainID())
+	}
+	if err := client.LedgerApi.PublishRawTransaction(built); err != nil {
+		t.clearPending()
+		return "", err
+	}
+	hash := built.Hash.String()
 	t.clearPending()
 	if t.ctx != nil {
 		runtime.EventsEmit(t.ctx, EventTxPublished, map[string]string{"hash": hash})
@@ -250,35 +279,25 @@ func (t *TxService) prepareCall(template *nom.AccountBlock, expect callExpect, s
 		return CallPreview{}, err
 	}
 	template.ChainIdentifier = t.configuredChainID()
-	z := zenon.NewZenon(client)
-	if t.ctx != nil {
-		z.PowCallback = func(s pow.PowStatus) {
-			runtime.EventsEmit(t.ctx, EventTxPowProgress, map[string]string{"state": s.String()})
-		}
-	}
-	built, err := z.PrepareBlock(template, kp)
+	// PoW is deferred to ConfirmPublish (see PrepareSend); here we only learn
+	// whether it will be needed, then hold the un-PoW'd template.
+	needsPoW, err := zenon.NewZenon(client).RequiresPoW(template, kp)
 	if err != nil {
 		return CallPreview{}, err
 	}
 	if t.wallet.sessionGen() != gen {
 		return CallPreview{}, errors.New("wallet state changed during prepare")
 	}
-	t.mu.Lock()
-	t.pending = built
-	t.pendingExpect = callExpect{to: expect.to, zts: expect.zts, amount: new(big.Int).Set(expect.amount), data: append([]byte(nil), expect.data...)}
-	t.pendingGen = gen
-	t.mu.Unlock()
+	t.holdPending(template, callExpect{to: expect.to, zts: expect.zts, amount: new(big.Int).Set(expect.amount), data: append([]byte(nil), expect.data...)}, gen)
 	return CallPreview{
-		ToAddress:  built.ToAddress.String(),
-		Zts:        built.TokenStandard.String(),
-		Symbol:     t.symbolFor(built.TokenStandard.String()),
-		Amount:     built.Amount.String(),
-		Decimals:   resolveDecimals(built.TokenStandard.String(), clientTokenDecimals(client)),
-		Hash:       built.Hash.String(),
-		Summary:    summary,
-		UsedPlasma: built.FusedPlasma,
-		Difficulty: built.Difficulty,
-		NeedsPoW:   built.Difficulty > 0,
+		ToAddress: template.ToAddress.String(),
+		Zts:       template.TokenStandard.String(),
+		Symbol:    t.symbolFor(template.TokenStandard.String()),
+		Amount:    template.Amount.String(),
+		Decimals:  resolveDecimals(template.TokenStandard.String(), clientTokenDecimals(client)),
+		Summary:   summary,
+		NeedsPoW:  needsPoW,
+		// UsedPlasma / Difficulty / Hash are filled by ConfirmPublish's PoW.
 	}, nil
 }
 

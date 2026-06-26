@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import * as N from '../../wailsjs/go/app/NodeService'
 
 export type TxRecord = {
-  hash: string; direction: string; counterparty: string; token: string
+  hash: string; direction: string; method: string; counterparty: string; token: string
   amount: string; decimals: number; momentumHeight: number; confirmed: boolean; timestamp: number
 }
 

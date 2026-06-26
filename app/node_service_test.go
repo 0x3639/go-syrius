@@ -41,16 +41,16 @@ func TestToTxRecordDirection(t *testing.T) {
 		Amount:        big.NewInt(100000000),
 		TokenStandard: types.ZnnTokenStandard,
 	}
-	rec := toTxRecord(send, newDecimalsCache(nil))
-	if rec.Direction != "send" {
-		t.Fatalf("direction = %s, want send", rec.Direction)
+	recs := blockToRecords(send, newDecimalsCache(nil))
+	if len(recs) != 1 || recs[0].Direction != "out" {
+		t.Fatalf("send -> %+v, want one out record", recs)
 	}
-	if rec.Amount != "100000000" || rec.Confirmed || rec.Decimals != 8 {
-		t.Fatalf("rec = %+v", rec)
+	if recs[0].Amount != "100000000" || recs[0].Confirmed || recs[0].Decimals != 8 {
+		t.Fatalf("rec = %+v", recs[0])
 	}
 }
 
-func TestToTxRecordReceiveResolvesPairedSend(t *testing.T) {
+func TestBlockToRecordsReceiveEmitsInAndPair(t *testing.T) {
 	const sender = "z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"
 	const me = "z1qqjnwjjpnue8xmmpanz6csze6tcmtzzdtfsww7"
 	// A receive block carries amount 0 / the zero ZTS; the value lives in its pair.
@@ -62,6 +62,7 @@ func TestToTxRecordReceiveResolvesPairedSend(t *testing.T) {
 	}
 	paired := &api.AccountBlock{}
 	paired.AccountBlock = nom.AccountBlock{
+		Hash:          types.HexToHashPanic("0303030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
 		Address:       types.ParseAddressPanic(sender),
 		ToAddress:     types.ParseAddressPanic(me),
 		Amount:        big.NewInt(500000000),
@@ -69,18 +70,16 @@ func TestToTxRecordReceiveResolvesPairedSend(t *testing.T) {
 	}
 	recv.PairedAccountBlock = paired
 
-	rec := toTxRecord(recv, newDecimalsCache(nil))
-	if rec.Direction != "receive" {
-		t.Fatalf("direction = %s, want receive", rec.Direction)
+	recs := blockToRecords(recv, newDecimalsCache(nil))
+	if len(recs) != 2 {
+		t.Fatalf("receive -> %d records, want 2 (in + pair)", len(recs))
 	}
-	if rec.Amount != "500000000" {
-		t.Fatalf("amount = %s, want paired 500000000", rec.Amount)
+	in, pair := recs[0], recs[1]
+	if in.Direction != "in" || in.Amount != "500000000" || in.Token != types.ZnnTokenStandard.String() || in.Counterparty != sender {
+		t.Fatalf("in row = %+v", in)
 	}
-	if rec.Token != types.ZnnTokenStandard.String() {
-		t.Fatalf("token = %s, want ZNN zts", rec.Token)
-	}
-	if rec.Counterparty != sender {
-		t.Fatalf("counterparty = %s, want sender %s", rec.Counterparty, sender)
+	if pair.Direction != "pair" || pair.Amount != "0" {
+		t.Fatalf("pair row = %+v", pair)
 	}
 }
 

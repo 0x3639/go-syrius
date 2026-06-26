@@ -26,7 +26,8 @@ beforeEach(() => setActivePinia(createPinia()))
 
 const tx: TxRecord = {
   hash: 'h1',
-  direction: 'receive',
+  direction: 'in',
+  method: '',
   counterparty: 'z1qrr0...',
   token: 'ZNN',
   amount: '150000000',
@@ -71,6 +72,20 @@ describe('TxHistory', () => {
     await w.find('button[aria-label="show all transactions"]').trigger('click')
     await w.vm.$nextTick()
     expect(w.findAll('tr').length).toBe(2) // both rows now
+  })
+
+  it('shows method labels + a Pair chip under All, hidden under Transfers', async () => {
+    const w = mount(TxHistory)
+    useTxsStore().items = [
+      { ...tx, hash: 'm1', direction: 'out', method: 'CollectReward', amount: '0' },
+      { ...tx, hash: 'p1', direction: 'pair', method: '', amount: '0' },
+    ]
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('No transactions.') // default Transfers hides both
+    await w.find('button[aria-label="show all transactions"]').trigger('click')
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('CollectReward')
+    expect(w.text()).toContain('Pair')
   })
 
   it('shows the empty state when there are no txs', () => {

@@ -109,7 +109,8 @@ type TokenBalance struct {
 // TxRecord is one account block in history.
 type TxRecord struct {
 	Hash           string `json:"hash"`
-	Direction      string `json:"direction"` // "send" | "receive"
+	Direction      string `json:"direction"` // "in" | "out" | "pair"
+	Method         string `json:"method"`    // embedded-contract method (e.g. CollectReward), or ""
 	Counterparty   string `json:"counterparty"`
 	Token          string `json:"token"`
 	Amount         string `json:"amount"`

@@ -575,6 +575,7 @@ export namespace app {
 	export class TxRecord {
 	    hash: string;
 	    direction: string;
+	    method: string;
 	    counterparty: string;
 	    token: string;
 	    amount: string;
@@ -591,6 +592,7 @@ export namespace app {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.hash = source["hash"];
 	        this.direction = source["direction"];
+	        this.method = source["method"];
 	        this.counterparty = source["counterparty"];
 	        this.token = source["token"];
 	        this.amount = source["amount"];

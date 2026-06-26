@@ -466,7 +466,7 @@ func (n *NodeService) GetTransactions(page, count int) ([]TxRecord, error) {
 	dc := newDecimalsCache(clientTokenDecimals(client))
 	out := []TxRecord{}
 	for _, b := range list.List {
-		out = append(out, toTxRecord(b, dc))
+		out = append(out, blockToRecords(b, dc)...)
 	}
 	return out, nil
 }
@@ -621,37 +621,46 @@ func toTokenBalance(zts types.ZenonTokenStandard, bi *api.BalanceInfo) TokenBala
 	return tb
 }
 
-func toTxRecord(b *api.AccountBlock, dc *decimalsCache) TxRecord {
-	// A receive block carries the zero ZTS and amount 0 — the real token, amount,
-	// and the actual sender live in the paired SEND block. Resolve through it for
-	// receives; fall back to the block's own values if the pair is absent.
-	vb := b
-	if !nom.IsSendBlock(b.BlockType) && b.PairedAccountBlock != nil {
-		vb = b.PairedAccountBlock
-	}
-
+// recordFor builds one TxRecord from a single account block's own fields.
+func recordFor(b *api.AccountBlock, direction, counterparty, method string, dc *decimalsCache) TxRecord {
 	rec := TxRecord{
-		Hash:     b.Hash.String(),
-		Token:    vb.TokenStandard.String(),
-		Amount:   "0",
-		Decimals: dc.get(vb.TokenStandard.String()),
+		Hash:         b.Hash.String(),
+		Direction:    direction,
+		Method:       method,
+		Counterparty: counterparty,
+		Token:        b.TokenStandard.String(),
+		Amount:       "0",
+		Decimals:     dc.get(b.TokenStandard.String()),
 	}
-	if vb.Amount != nil {
-		rec.Amount = vb.Amount.String()
+	if b.Amount != nil {
+		rec.Amount = b.Amount.String()
 	}
-	if vb.TokenInfo != nil {
-		rec.Token = vb.TokenInfo.TokenSymbol
-	}
-	if nom.IsSendBlock(b.BlockType) {
-		rec.Direction = "send"
-		rec.Counterparty = b.ToAddress.String()
-	} else {
-		rec.Direction = "receive"
-		rec.Counterparty = vb.Address.String() // the sender, from the paired send block
+	if b.TokenInfo != nil {
+		rec.Token = b.TokenInfo.TokenSymbol
 	}
 	if b.ConfirmationDetail != nil {
 		rec.Confirmed = true
 		rec.MomentumHeight = b.ConfirmationDetail.MomentumHeight
 	}
 	return rec
+}
+
+// blockToRecords expands one account block into history rows, mirroring nomscan:
+//   - a SEND becomes one OUT row (with the embedded method it calls, if any);
+//   - a RECEIVE becomes an IN row for the value (the paired send: real amount,
+//     token, and sender) plus a PAIR row for the zero-amount claim block itself.
+func blockToRecords(b *api.AccountBlock, dc *decimalsCache) []TxRecord {
+	if nom.IsSendBlock(b.BlockType) {
+		return []TxRecord{recordFor(b, "out", b.ToAddress.String(), decodeMethod(b.ToAddress, b.Data), dc)}
+	}
+	out := make([]TxRecord, 0, 2)
+	if p := b.PairedAccountBlock; p != nil {
+		out = append(out, recordFor(p, "in", p.Address.String(), "", dc))
+	}
+	pairWith := b.Address.String()
+	if b.PairedAccountBlock != nil {
+		pairWith = b.PairedAccountBlock.Address.String()
+	}
+	out = append(out, recordFor(b, "pair", pairWith, "", dc))
+	return out
 }

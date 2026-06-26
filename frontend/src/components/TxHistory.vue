@@ -16,24 +16,19 @@ import { formatAmount } from '../lib/format'
 
 const { items } = storeToRefs(useTxsStore())
 
-// Default to real value transfers only — hide the zero-amount "plumbing" blocks
-// (the send that claims an incoming tx, or a send to collect rewards/fuse plasma,
-// which move no tokens themselves). Toggle to "All" to see every account block.
+// Default to real value transfers only — show only In/Out rows that move a
+// non-zero amount, hiding the Pair claim blocks and zero-amount action calls
+// (CollectReward, plasma fuse, …). Toggle to "All" for every row (like nomscan).
 const transfersOnly = ref(true)
-function isTransfer(amount: string): boolean {
+function isTransfer(t: { direction: string; amount: string }): boolean {
+  if (t.direction === 'pair') return false
   try {
-    return BigInt(amount || '0') > 0n
+    return BigInt(t.amount || '0') > 0n
   } catch {
     return true
   }
 }
-const displayed = computed(() => (transfersOnly.value ? items.value.filter((t) => isTransfer(t.amount)) : items.value))
-
-// Our store carries `direction: 'send' | 'receive'`; nom-ui TxDirection takes
-// the chain-neutral 'in' | 'out'. receive -> in (incoming/green), send -> out.
-function dir(direction: string): 'in' | 'out' {
-  return direction === 'send' ? 'out' : 'in'
-}
+const displayed = computed(() => (transfersOnly.value ? items.value.filter(isTransfer) : items.value))
 
 // Our store carries `confirmed: boolean`; nom-ui TxStatus takes a 4-state enum.
 // We only distinguish confirmed vs not, so map true -> success, false -> pending.
@@ -65,10 +60,14 @@ function status(confirmed: boolean): 'success' | 'pending' {
     </div>
     <Table>
       <TableBody>
-        <TableEmpty v-if="displayed.length === 0" :colspan="4">No transactions.</TableEmpty>
+        <TableEmpty v-if="displayed.length === 0" :colspan="5">No transactions.</TableEmpty>
         <TableRow v-for="t in displayed" :key="t.hash">
           <TableCell>
-            <TxDirection :direction="dir(t.direction)" />
+            <span v-if="t.direction === 'pair'" class="rounded bg-info/15 px-2 py-0.5 text-xs font-medium text-info">Pair</span>
+            <TxDirection v-else :direction="(t.direction as 'in' | 'out')" />
+          </TableCell>
+          <TableCell>
+            <span v-if="t.method" class="rounded bg-foreground/10 px-2 py-0.5 text-xs text-muted-foreground">{{ t.method }}</span>
           </TableCell>
           <TableCell>
             <Address :address="t.counterparty" :copy="false" :tooltip="false" />

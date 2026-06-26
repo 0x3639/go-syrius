@@ -65,7 +65,8 @@ type NodeConfig struct {
 
 // WalletMeta identifies a keystore without exposing secrets.
 type WalletMeta struct {
-	Name        string `json:"name"`
+	ID          string `json:"id"`   // keystore filename (stable storage id)
+	Name        string `json:"name"` // editable display name
 	BaseAddress string `json:"baseAddress"`
 }
 

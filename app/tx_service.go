@@ -28,6 +28,11 @@ type TxService struct {
 	pending       *nom.AccountBlock
 	pendingExpect callExpect
 	pendingGen    uint64 // wallet session generation captured at PrepareSend
+
+	// publishMu serializes ConfirmPublish for its whole duration. PoW+publish run
+	// for seconds outside mu, so without this a second (untrusted) caller could
+	// double-publish or race the held template.
+	publishMu sync.Mutex
 }
 
 // callExpect captures the funds-moving effect a prepared block must match before
@@ -183,6 +188,13 @@ func (t *TxService) holdPending(template *nom.AccountBlock, expect callExpect, g
 // ConfirmPublish broadcasts the held block after re-asserting it matches the
 // originating request, then clears it.
 func (t *TxService) ConfirmPublish() (string, error) {
+	// Only one confirm may be in flight: PoW+publish run for seconds, so a second
+	// concurrent call must be rejected rather than double-publish/race the template.
+	if !t.publishMu.TryLock() {
+		return "", errors.New("a transaction is already being published")
+	}
+	defer t.publishMu.Unlock()
+
 	// Re-assert the mainnet guard before publishing. If it fails (e.g. the block
 	// was prepared on testnet but we are now connected to mainnet), refuse to
 	// publish WITHOUT clearing pending so the user can reconnect and retry.

@@ -53,6 +53,15 @@ func TestConfirmPublishRejectsTamperedBlock(t *testing.T) {
 	}
 }
 
+func TestConfirmPublishRejectsConcurrent(t *testing.T) {
+	tx := newTestTxService(t)
+	tx.publishMu.Lock() // simulate a confirm already in flight
+	defer tx.publishMu.Unlock()
+	if _, err := tx.ConfirmPublish(); err == nil {
+		t.Fatal("expected a concurrent ConfirmPublish to be rejected")
+	}
+}
+
 func TestConfirmPublishBlockedOnMainnet(t *testing.T) {
 	tx := newTestTxService(t)
 	unlockTestWallet(t, tx.wallet)

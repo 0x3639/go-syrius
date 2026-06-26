@@ -12,6 +12,9 @@ vi.mock('../../wailsjs/go/app/WalletService', () => ({
   Unlock,
   Lock: vi.fn(),
 }))
+const ClipboardSetText = vi.hoisted(() => vi.fn().mockResolvedValue(true))
+const ClipboardGetText = vi.hoisted(() => vi.fn().mockResolvedValue(''))
+vi.mock('../../wailsjs/runtime/runtime', () => ({ ClipboardSetText, ClipboardGetText }))
 const push = vi.fn()
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 vi.mock('nom-ui', () => ({
@@ -55,5 +58,15 @@ describe('Create.vue', () => {
     expect(ImportMnemonic).toHaveBeenCalledWith('New', 'pw', 'alpha bravo charlie')
     expect(Unlock).toHaveBeenCalledWith('abc.dat', 'pw')
     expect(push).toHaveBeenCalledWith('/home')
+  })
+
+  it('copies the seed phrase to the clipboard', async () => {
+    const w = mount(Create)
+    await new Promise((r) => setTimeout(r)) // generateMnemonic
+    const copyBtn = w.findAll('button').find((b) => b.text().includes('Copy seed phrase'))!
+    await copyBtn.trigger('click')
+    await new Promise((r) => setTimeout(r))
+    expect(ClipboardSetText).toHaveBeenCalledWith('alpha bravo charlie')
+    expect(w.text()).toContain('Copied')
   })
 })

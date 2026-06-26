@@ -78,8 +78,8 @@ func TestBlockToRecordsReceiveEmitsInAndPair(t *testing.T) {
 	if in.Direction != "in" || in.Amount != "500000000" || in.Token != types.ZnnTokenStandard.String() || in.Counterparty != sender {
 		t.Fatalf("in row = %+v", in)
 	}
-	if pair.Direction != "pair" || pair.Amount != "0" {
-		t.Fatalf("pair row = %+v", pair)
+	if pair.Direction != "pair" || pair.Amount != "0" || pair.Token != "" {
+		t.Fatalf("pair row = %+v (want pair/0/empty-token)", pair)
 	}
 }
 

@@ -638,6 +638,9 @@ func recordFor(b *api.AccountBlock, direction, counterparty, method string, dc *
 	if b.TokenInfo != nil {
 		rec.Token = b.TokenInfo.TokenSymbol
 	}
+	if b.TokenStandard == types.ZeroTokenStandard {
+		rec.Token = "" // no token (claim/contract-ack block) — the UI renders a dash
+	}
 	if b.ConfirmationDetail != nil {
 		rec.Confirmed = true
 		rec.MomentumHeight = b.ConfirmationDetail.MomentumHeight

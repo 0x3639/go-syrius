@@ -73,7 +73,8 @@ function status(confirmed: boolean): 'success' | 'pending' {
             <Address :address="t.counterparty" :copy="false" :tooltip="false" />
           </TableCell>
           <TableCell class="text-right font-mono text-foreground">
-            {{ formatAmount(t.amount, t.decimals ?? 8) }} {{ t.token }}
+            <template v-if="!t.token"><span class="text-muted-foreground">—</span></template>
+            <template v-else>{{ formatAmount(t.amount, t.decimals ?? 8) }} {{ t.token }}</template>
           </TableCell>
           <TableCell class="text-right">
             <TxStatus :status="status(t.confirmed)" />

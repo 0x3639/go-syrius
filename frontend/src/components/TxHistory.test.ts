@@ -78,7 +78,7 @@ describe('TxHistory', () => {
     const w = mount(TxHistory)
     useTxsStore().items = [
       { ...tx, hash: 'm1', direction: 'out', method: 'CollectReward', amount: '0' },
-      { ...tx, hash: 'p1', direction: 'pair', method: '', amount: '0' },
+      { ...tx, hash: 'p1', direction: 'pair', method: '', amount: '0', token: '' },
     ]
     await w.vm.$nextTick()
     expect(w.text()).toContain('No transactions.') // default Transfers hides both
@@ -86,6 +86,7 @@ describe('TxHistory', () => {
     await w.vm.$nextTick()
     expect(w.text()).toContain('CollectReward')
     expect(w.text()).toContain('Pair')
+    expect(w.text()).toContain('—') // pair rows show a dash for amount/token, not the zero ZTS
   })
 
   it('shows the empty state when there are no txs', () => {

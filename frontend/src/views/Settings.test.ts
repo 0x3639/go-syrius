@@ -16,6 +16,10 @@ vi.mock('../../wailsjs/go/app/NodeService', () => ({
   DeleteEmbeddedData: vi.fn().mockResolvedValue(undefined),
 }))
 
+const GetSettings = vi.hoisted(() => vi.fn().mockResolvedValue({ chainId: 73404 }))
+const SetSettings = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetSettings }))
+
 const RevealMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue('alpha bravo charlie delta'))
 const ChangePassword = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('../../wailsjs/go/app/WalletService', () => ({
@@ -39,6 +43,7 @@ vi.mock('nom-ui', () => ({
 }))
 
 import Settings from './Settings.vue'
+import { useNodeStore } from '../stores/node'
 
 const flush = () => new Promise((r) => setTimeout(r))
 
@@ -49,6 +54,9 @@ beforeEach(() => {
   SetNodeURL.mockClear()
   ChangePassword.mockClear()
   RevealMnemonic.mockClear()
+  GetSettings.mockClear()
+  SetSettings.mockClear()
+  GetSettings.mockResolvedValue({ chainId: 73404 })
 })
 
 describe('Settings.vue', () => {
@@ -98,5 +106,32 @@ describe('Settings.vue', () => {
 
     expect(ChangePassword).toHaveBeenCalledWith('', 'old', 'newpw')
     expect(w.text()).toContain('Password changed')
+  })
+
+  it('loads the chain id from GetSettings and Apply read-modify-writes it', async () => {
+    const w = mount(Settings)
+    await flush() // onMounted: getConfig + GetSettings
+
+    const field = w.find('input[aria-label="chain id"]')
+    expect((field.element as HTMLInputElement).value).toBe('73404')
+
+    await field.setValue('1')
+    await w.findAll('button').find((b) => b.text() === 'Apply network')!.trigger('click')
+    await flush()
+
+    // read-modify-write: GetSettings object merged with the entered chain id
+    expect(SetSettings).toHaveBeenCalledWith({ chainId: 1 })
+    expect(w.text()).toContain('Network configuration applied')
+  })
+
+  it('renders a mismatch warning when the node chain differs from the configured chain', async () => {
+    const node = useNodeStore()
+    node.connected = true
+    node.chainId = 1 // connected to mainnet, configured is testnet (73404)
+
+    const w = mount(Settings)
+    await flush()
+
+    expect(w.text()).toContain("differs from the connected node's chain 1")
   })
 })

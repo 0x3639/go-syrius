@@ -38,6 +38,7 @@ type Settings struct {
 	LastWallet       string `json:"lastWallet"`
 	ActiveAccount    int    `json:"activeAccount"`
 	AllowMainnetSend bool   `json:"allowMainnetSend"`
+	ChainID          uint64 `json:"chainId"`
 	AutoReceive      bool   `json:"autoReceive"`
 	// AccountLabels maps "<wallet>:<index>" to a human label for an account.
 	AccountLabels map[string]string `json:"accountLabels"`
@@ -82,6 +83,7 @@ type NodeStatus struct {
 	Syncing   bool   `json:"syncing"`
 	Height    uint64 `json:"height"`
 	Peers     int    `json:"peers"`
+	ChainID   uint64 `json:"chainId"`
 }
 
 // TokenBalance is one token's balance for the active address.

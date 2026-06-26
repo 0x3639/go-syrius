@@ -75,6 +75,16 @@ func TestStatusDefaults(t *testing.T) {
 	}
 }
 
+func TestNodeStatusReportsChainID(t *testing.T) {
+	n := newTestNode(t)
+	n.mu.Lock()
+	n.chainID = 42
+	n.mu.Unlock()
+	if got := n.NodeStatus().ChainID; got != 42 {
+		t.Fatalf("NodeStatus().ChainID = %d, want 42", got)
+	}
+}
+
 func newTestNode(t *testing.T) *NodeService {
 	t.Helper()
 	return newNodeService(newTestConfig(t), nil)

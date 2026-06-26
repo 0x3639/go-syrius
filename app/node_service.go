@@ -181,11 +181,12 @@ func (n *NodeService) NodeStatus() NodeStatus {
 	connected := n.client != nil
 	height := n.height
 	mode := n.mode
+	chainID := n.chainID
 	n.mu.RUnlock()
 	if mode == "" {
 		mode = "remote"
 	}
-	return NodeStatus{Mode: mode, Connected: connected, Syncing: false, Height: height, Peers: 0}
+	return NodeStatus{Mode: mode, Connected: connected, Syncing: false, Height: height, Peers: 0, ChainID: chainID}
 }
 
 func (n *NodeService) emitStatus(connected bool) {
@@ -194,6 +195,7 @@ func (n *NodeService) emitStatus(connected bool) {
 	clientNil := n.client == nil
 	height := n.height
 	mode := n.mode
+	chainID := n.chainID
 	n.mu.RUnlock()
 
 	if ctx == nil {
@@ -202,7 +204,7 @@ func (n *NodeService) emitStatus(connected bool) {
 	if mode == "" {
 		mode = "remote"
 	}
-	st := NodeStatus{Mode: mode, Connected: connected && !clientNil, Height: height}
+	st := NodeStatus{Mode: mode, Connected: connected && !clientNil, Height: height, ChainID: chainID}
 	runtime.EventsEmit(ctx, EventNodeStatus, st)
 }
 

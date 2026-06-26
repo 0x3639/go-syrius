@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import TxHistory from './TxHistory.vue'
 import { useTxsStore, type TxRecord } from '../stores/txs'
+import { useUnreceivedStore } from '../stores/unreceived'
 
 // Stub nom-ui blockchain primitives to trivial templates so the test exercises
 // our row composition (mapping + formatting), not nom-ui internals.
@@ -87,6 +88,23 @@ describe('TxHistory', () => {
     expect(w.text()).toContain('CollectReward')
     expect(w.text()).toContain('Pair')
     expect(w.text()).toContain('—') // pair rows show a dash for amount/token, not the zero ZTS
+  })
+
+  it('lists unreceived blocks with a receive action that flips to a pulsing status', async () => {
+    const w = mount(TxHistory)
+    const u = useUnreceivedStore()
+    u.items = [{ fromHash: 'p1', fromAddress: 'z1qsender', token: 'ZNN', amount: '100000000', decimals: 8 }]
+    const receive = vi.spyOn(u, 'receive').mockResolvedValue(undefined)
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('Unreceived')
+    await w.find('button[aria-label="receive p1"]').trigger('click')
+    expect(receive).toHaveBeenCalledWith('p1')
+
+    // While busy, the row shows the pulsing Generating Plasma / Receiving label.
+    u.busy = { p1: true }
+    await w.vm.$nextTick()
+    expect(w.find('.animate-pulse').exists()).toBe(true)
+    expect(w.text()).toContain('Generating Plasma')
   })
 
   it('shows the empty state when there are no txs', () => {

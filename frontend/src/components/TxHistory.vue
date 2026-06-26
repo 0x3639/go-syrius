@@ -12,9 +12,26 @@ import {
   TxStatus,
 } from 'nom-ui'
 import { useTxsStore } from '../stores/txs'
+import { useUnreceivedStore } from '../stores/unreceived'
+import { usePlasmaStore } from '../stores/plasma'
 import { formatAmount } from '../lib/format'
+import { plasmaLevel } from '../lib/plasma'
 
-const { items } = storeToRefs(useTxsStore())
+const txs = useTxsStore()
+const { items } = storeToRefs(txs)
+const unreceived = useUnreceivedStore()
+const plasma = usePlasmaStore()
+
+// While claiming a pending block: PoW generates plasma when the account has none.
+const receivingLabel = computed(() =>
+  plasmaLevel(plasma.info?.currentPlasma ?? 0) === 'None' ? 'Generating Plasma…' : 'Receiving…',
+)
+
+// Receive one pending block, then refresh history so it flips to Confirmed.
+async function doReceive(hash: string) {
+  await unreceived.receive(hash)
+  await txs.load()
+}
 
 // Default to real value transfers only — show only In/Out rows that move a
 // non-zero amount, hiding the Pair claim blocks and zero-amount action calls
@@ -60,7 +77,38 @@ function status(confirmed: boolean): 'success' | 'pending' {
     </div>
     <Table>
       <TableBody>
-        <TableEmpty v-if="displayed.length === 0" :colspan="5">No transactions.</TableEmpty>
+        <TableEmpty v-if="unreceived.items.length === 0 && displayed.length === 0" :colspan="5">No transactions.</TableEmpty>
+
+        <!-- Pending inbound blocks: click to receive; status goes Unreceived →
+             Generating Plasma/Receiving (pulsing) → Confirmed (it joins the list below). -->
+        <TableRow v-for="u in unreceived.items" :key="u.fromHash">
+          <TableCell><TxDirection direction="in" /></TableCell>
+          <TableCell></TableCell>
+          <TableCell>
+            <Address :address="u.fromAddress" :copy="false" :tooltip="false" />
+          </TableCell>
+          <TableCell class="text-right font-mono text-foreground">
+            {{ formatAmount(u.amount, u.decimals ?? 8) }} {{ u.token }}
+          </TableCell>
+          <TableCell class="text-right">
+            <span
+              v-if="unreceived.busy[u.fromHash]"
+              class="inline-flex animate-pulse items-center rounded-full bg-info/15 px-2 py-0.5 text-xs font-medium text-info"
+            >{{ receivingLabel }}</span>
+            <button
+              v-else
+              type="button"
+              :aria-label="`receive ${u.fromHash}`"
+              title="Receive"
+              class="inline-flex items-center gap-1 rounded-full bg-foreground/10 px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+              @click="doReceive(u.fromHash)"
+            >
+              Unreceived
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8.5 12.5 12 16l3.5-3.5"/></svg>
+            </button>
+          </TableCell>
+        </TableRow>
+
         <TableRow v-for="t in displayed" :key="t.hash">
           <TableCell>
             <span v-if="t.direction === 'pair'" class="rounded bg-info/15 px-2 py-0.5 text-xs font-medium text-info">Pair</span>

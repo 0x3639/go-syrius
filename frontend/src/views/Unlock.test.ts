@@ -42,4 +42,17 @@ describe('Unlock.vue', () => {
     expect(unlock).toHaveBeenCalledWith('Main.dat', 'pw')
     expect(push).toHaveBeenCalledWith('/home')
   })
+
+  it('warns when an imported keystore has an already-present address', async () => {
+    const WS: any = await import('../../wailsjs/go/app/WalletService')
+    WS.PickKeystoreFile.mockResolvedValueOnce('/k.dat')
+    // Same baseAddress as the existing "Main" wallet, different id.
+    WS.ImportKeystore.mockResolvedValueOnce({ id: 'dup.dat', name: 'Copy', baseAddress: 'z1qmain' })
+    const w = mount(Unlock)
+    await new Promise((r) => setTimeout(r)) // loadWallets -> [Main z1qmain]
+    const importBtn = w.findAll('button').find((b) => b.text().includes('Import keystore'))!
+    await importBtn.trigger('click')
+    await new Promise((r) => setTimeout(r))
+    expect(w.text()).toContain('same address')
+  })
 })

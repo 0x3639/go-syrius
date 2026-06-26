@@ -75,6 +75,27 @@ func TestSaveLoadManifestRoundTrip(t *testing.T) {
 	}
 }
 
+func TestLoadManifestCorruptDoesNotHideWallets(t *testing.T) {
+	w := newTestWalletService(t)
+	p, err := w.manifestPath()
+	if err != nil {
+		t.Fatalf("manifestPath: %v", err)
+	}
+	if err := os.WriteFile(p, []byte("{ this is not json"), 0o600); err != nil {
+		t.Fatalf("write corrupt manifest: %v", err)
+	}
+	m, err := w.loadManifest()
+	if err != nil {
+		t.Fatalf("corrupt manifest must not error (would hide on-disk wallets): %v", err)
+	}
+	if len(m.Wallets) != 0 {
+		t.Fatalf("expected empty manifest after corrupt load, got %d", len(m.Wallets))
+	}
+	if _, err := os.Stat(p + ".corrupt"); err != nil {
+		t.Fatalf("expected corrupt manifest backed up to %s.corrupt: %v", p, err)
+	}
+}
+
 func TestNewWalletIDDistinctDat(t *testing.T) {
 	seen := map[string]bool{}
 	for i := 0; i < 100; i++ {

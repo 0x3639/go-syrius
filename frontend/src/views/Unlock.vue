@@ -11,6 +11,7 @@ const router = useRouter()
 const selected = ref('')
 const password = ref('')
 const error = ref('')
+const notice = ref('')
 const busy = ref(false)
 
 onMounted(async () => {
@@ -34,11 +35,17 @@ async function doUnlock() {
 
 async function doImport() {
   error.value = ''
+  notice.value = ''
   try {
     const path = await wallet.pickKeystoreFile()
     if (!path) return
-    await wallet.importKeystore(path, '')
-    if (!selected.value && wallet.wallets[0]) selected.value = wallet.wallets[0].id
+    const existing = new Set(wallet.wallets.map((w) => w.baseAddress))
+    const meta = await wallet.importKeystore(path, '')
+    selected.value = meta.id
+    if (existing.has(meta.baseAddress)) {
+      const other = wallet.wallets.find((w) => w.baseAddress === meta.baseAddress && w.id !== meta.id)
+      notice.value = `Imported. Note: this wallet has the same address as ${other?.name ?? 'an existing wallet'}.`
+    }
   } catch (e: any) {
     error.value = e?.message ?? String(e)
   }
@@ -64,6 +71,7 @@ async function doImport() {
         <Button variant="outline" class="w-full" @click="router.push('/create')">Create new wallet</Button>
         <Button variant="outline" class="w-full" @click="router.push('/import')">Import mnemonic</Button>
         <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>
+        <p v-if="notice" class="text-sm text-muted-foreground">{{ notice }}</p>
       </CardContent>
       </Card>
     </div>

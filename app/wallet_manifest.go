@@ -45,7 +45,11 @@ func (w *WalletService) loadManifest() (walletManifest, error) {
 	}
 	var m walletManifest
 	if err := json.Unmarshal(data, &m); err != nil {
-		return walletManifest{}, err
+		// A corrupt manifest must never hide on-disk wallets. Back it up and
+		// return empty so ListWallets rebuilds the registry from the keystore
+		// files (names fall back to the filename stem — recoverable).
+		_ = os.Rename(p, p+".corrupt")
+		return walletManifest{Wallets: []WalletMeta{}}, nil
 	}
 	if m.Wallets == nil {
 		m.Wallets = []WalletMeta{}

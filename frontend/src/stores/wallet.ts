@@ -68,9 +68,10 @@ export const useWalletStore = defineStore('wallet', {
     },
     // Import an existing keystore file; wallet stays locked (user then unlocks).
     // `name` defaults to '' — the backend derives a name from the file when empty.
-    async importKeystore(srcPath: string, name = ''): Promise<void> {
-      await W.ImportKeystore(srcPath, name)
+    async importKeystore(srcPath: string, name = ''): Promise<WalletMeta> {
+      const meta = (await W.ImportKeystore(srcPath, name)) as unknown as WalletMeta
       await this.loadWallets()
+      return meta
     },
     async pickKeystoreFile(): Promise<string> {
       return (await W.PickKeystoreFile()) || ''

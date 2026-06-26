@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Card, CardContent, Input, Button } from 'nom-ui'
 import { useWalletStore } from '../stores/wallet'
+import logoUrl from '../assets/images/syrius-logo.png'
 
 const wallet = useWalletStore()
 const router = useRouter()
@@ -45,7 +46,9 @@ async function doImport() {
 
 <template>
   <main class="grid min-h-screen place-items-center bg-background p-8">
-    <Card class="w-96">
+    <div class="flex flex-col items-center gap-6">
+      <img :src="logoUrl" alt="syrius" class="h-20 w-20 rounded-2xl" />
+      <Card class="w-96">
       <CardContent class="space-y-4 p-6">
         <h1 class="text-xl text-foreground">Unlock wallet</h1>
         <p v-if="wallet.wallets.length === 0" class="text-muted-foreground">
@@ -66,6 +69,7 @@ async function doImport() {
         <Button variant="outline" class="w-full" @click="router.push('/import')">Import mnemonic</Button>
         <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>
       </CardContent>
-    </Card>
+      </Card>
+    </div>
   </main>
 </template>

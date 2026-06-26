@@ -19,6 +19,12 @@ const { items } = storeToRefs(useBalancesStore())
 const recipient = ref('')
 const zts = ref('')
 const amountDecimal = ref('')
+const bookOpen = ref(false)
+
+function onPickContact(addr: string) {
+  recipient.value = addr
+  bookOpen.value = false
+}
 
 // Default to the first token's zts once balances load (verbatim from the Svelte
 // reactive `$: if (!zts && $balances[0]) zts = $balances[0].zts`).
@@ -67,10 +73,18 @@ function onSend() {
           placeholder="z1…"
           class="w-full pr-11 font-mono text-foreground"
         />
-        <div class="absolute right-1.5 top-1/2 -translate-y-1/2">
-          <ContactPicker :current-address="recipient" @select="recipient = $event" />
-        </div>
+        <button
+          type="button"
+          aria-label="address book"
+          title="Address book"
+          class="absolute right-1.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded transition-colors hover:bg-foreground/[0.08]"
+          :class="bookOpen ? 'text-foreground' : 'text-muted-foreground'"
+          @click="bookOpen = !bookOpen"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        </button>
       </div>
+      <ContactPicker class="mt-2" :open="bookOpen" :current-address="recipient" @select="onPickContact" @close="bookOpen = false" />
     </div>
     <p v-if="recipient && !validAddr" class="text-xs text-destructive">
       Invalid z1 address

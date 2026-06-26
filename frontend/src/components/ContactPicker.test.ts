@@ -20,21 +20,16 @@ beforeEach(() => {
 
 describe('ContactPicker', () => {
   it('lists saved contacts and emits select on click', async () => {
-    const w = mount(ContactPicker)
-    await flush() // onMounted load
-    await w.find('button[aria-label="address book"]').trigger('click')
-    await flush()
+    const w = mount(ContactPicker, { props: { open: true } })
+    await flush() // open watcher → load
     expect(w.text()).toContain('Alice')
     await w.find('[aria-label="select Alice"]').trigger('click')
     expect(w.emitted('select')![0]).toEqual([ADDR])
   })
 
   it('prefills the add form with a valid current address and saves a contact', async () => {
-    const w = mount(ContactPicker, { props: { currentAddress: ADDR } })
+    const w = mount(ContactPicker, { props: { open: true, currentAddress: ADDR } })
     await flush()
-    await w.find('button[aria-label="address book"]').trigger('click')
-    await flush()
-    // address prefilled from currentAddress
     expect((w.find('input[aria-label="contact address"]').element as HTMLInputElement).value).toBe(ADDR)
     await w.find('input[aria-label="contact name"]').setValue('Bob')
     await w.find('button[aria-label="save contact"]').trigger('click')
@@ -42,11 +37,14 @@ describe('ContactPicker', () => {
   })
 
   it('deletes a contact', async () => {
-    const w = mount(ContactPicker)
-    await flush()
-    await w.find('button[aria-label="address book"]').trigger('click')
+    const w = mount(ContactPicker, { props: { open: true } })
     await flush()
     await w.find('[aria-label="delete Alice"]').trigger('click')
     expect(DeleteContact).toHaveBeenCalledWith(ADDR)
+  })
+
+  it('renders nothing when closed', () => {
+    const w = mount(ContactPicker, { props: { open: false } })
+    expect(w.text()).not.toContain('Add address')
   })
 })

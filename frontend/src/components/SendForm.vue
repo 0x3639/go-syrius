@@ -59,16 +59,18 @@ function onSend() {
 <template>
   <div class="space-y-3">
     <div>
-      <div class="mb-1 flex items-center justify-between">
-        <span class="text-sm text-muted-foreground">Recipient</span>
-        <ContactPicker :current-address="recipient" @select="recipient = $event" />
+      <span class="text-sm text-muted-foreground">Recipient</span>
+      <div class="relative mt-1">
+        <Input
+          v-model="recipient"
+          aria-label="recipient"
+          placeholder="z1…"
+          class="w-full pr-11 font-mono text-foreground"
+        />
+        <div class="absolute right-1.5 top-1/2 -translate-y-1/2">
+          <ContactPicker :current-address="recipient" @select="recipient = $event" />
+        </div>
       </div>
-      <Input
-        v-model="recipient"
-        aria-label="recipient"
-        placeholder="z1…"
-        class="w-full font-mono text-foreground"
-      />
     </div>
     <p v-if="recipient && !validAddr" class="text-xs text-destructive">
       Invalid z1 address

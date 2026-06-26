@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Card, CardContent, Input, Button } from 'nom-ui'
 import { useWalletStore } from '../stores/wallet'
+import * as Cfg from '../../wailsjs/go/app/ConfigService'
 import { ClipboardSetText, ClipboardGetText } from '../../wailsjs/runtime/runtime'
 
 const wallet = useWalletStore()
@@ -65,6 +66,17 @@ async function finish() {
     // `name` is now a display name; the backend assigns a uuid keystore filename.
     // Capture the returned meta and unlock by its real id.
     const meta = await wallet.importMnemonic(name.value.trim(), password.value, mnemonic.value)
+    // A freshly created wallet starts with auto-receive OFF, so it never inherits
+    // a previously-enabled global toggle and surprise-sweeps the new account.
+    try {
+      const s = await Cfg.GetSettings()
+      if (s.autoReceive) {
+        s.autoReceive = false
+        await Cfg.SetSettings(s)
+      }
+    } catch {
+      /* best-effort */
+    }
     await wallet.unlock(meta.id, password.value)
     router.push('/home')
   } catch (e: any) {

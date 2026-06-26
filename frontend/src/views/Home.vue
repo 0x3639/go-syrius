@@ -12,6 +12,7 @@ import { useNodeStore } from '../stores/node'
 import { useTxStore } from '../stores/tx'
 import * as Cfg from '../../wailsjs/go/app/ConfigService'
 import * as N from '../../wailsjs/go/app/NodeService'
+import { plasmaLevel, plasmaColorClass } from '../lib/plasma'
 import AccountSlotPicker from '../components/AccountSlotPicker.vue'
 import BalanceCard from '../components/BalanceCard.vue'
 import ActionCard from '../components/ActionCard.vue'
@@ -50,6 +51,10 @@ watch(active, () => tx.reset())
 
 const znn = computed(() => balances.items.find((b) => b.symbol === 'ZNN'))
 const qsr = computed(() => balances.items.find((b) => b.symbol === 'QSR'))
+
+// Plasma bolt indicator: level + colour (off → red → yellow → green).
+const plasmaLvl = computed(() => plasmaLevel(plasma.info?.currentPlasma ?? 0))
+const plasmaColor = computed(() => plasmaColorClass(plasmaLvl.value))
 
 async function refresh() {
   await Promise.all([
@@ -122,6 +127,16 @@ onMounted(async () => {
       <div class="flex items-center gap-1">
         <button
           type="button"
+          :title="`Plasma: ${plasmaLvl}`"
+          :aria-label="`Plasma: ${plasmaLvl}`"
+          class="grid h-9 w-9 place-items-center rounded-lg transition-colors hover:bg-foreground/[0.06]"
+          :class="plasmaColor"
+          @click="active = 'Plasma'"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </button>
+        <button
+          type="button"
           :title="autoReceive ? 'Auto-receive: on' : 'Auto-receive: off'"
           :aria-label="autoReceive ? 'Auto-receive on' : 'Auto-receive off'"
           :aria-pressed="autoReceive"
@@ -129,8 +144,9 @@ onMounted(async () => {
           :class="autoReceive ? 'text-primary' : 'text-muted-foreground'"
           @click="clickAutoReceive"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12l4 4 4-4"/></svg>
         </button>
+        <span class="mx-1 h-5 w-px bg-border"></span>
         <button
           type="button"
           title="Lock wallet"
@@ -140,7 +156,6 @@ onMounted(async () => {
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
         </button>
-        <span class="mx-1 h-5 w-px bg-border"></span>
         <button
           type="button"
           title="Settings"

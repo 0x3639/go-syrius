@@ -4,20 +4,12 @@ import { useNodeStore } from '../stores/node'
 import { useBalancesStore } from '../stores/balances'
 import { usePlasmaStore } from '../stores/plasma'
 import { usePillarStore } from '../stores/pillar'
+import { plasmaLevel } from '../lib/plasma'
 
 const node = useNodeStore()
 const balances = useBalancesStore()
 const plasma = usePlasmaStore()
 const pillar = usePillarStore()
-
-// No canonical plasma-level mapping exists in the codebase, so we use the brief
-// thresholds (verbatim from the merged Svelte StatusStrip).
-function plasmaLevel(p: number): string {
-  if (p >= 84000) return 'High'
-  if (p >= 21000) return 'Medium'
-  if (p > 0) return 'Low'
-  return 'None'
-}
 
 const pillarName = computed(() =>
   pillar.delegation && pillar.delegation.name ? pillar.delegation.name : 'None',

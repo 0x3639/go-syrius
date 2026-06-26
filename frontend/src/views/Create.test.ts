@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 const GenerateMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue('alpha bravo charlie'))
-const ImportMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue({ name: 'New.dat' }))
+const ImportMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue({ id: 'abc.dat', name: 'New', baseAddress: 'z1' }))
 const Unlock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('../../wailsjs/go/app/WalletService', () => ({
   ListWallets: vi.fn().mockResolvedValue([]),
@@ -51,8 +51,9 @@ describe('Create.vue', () => {
     await w.findAll('button').find((b) => b.text() === 'Create wallet')!.trigger('click')
     await new Promise((r) => setTimeout(r))
 
-    expect(ImportMnemonic).toHaveBeenCalledWith('New.dat', 'pw', 'alpha bravo charlie')
-    expect(Unlock).toHaveBeenCalledWith('New.dat', 'pw')
+    // Passes the display name without `.dat`; unlocks by the backend-assigned id.
+    expect(ImportMnemonic).toHaveBeenCalledWith('New', 'pw', 'alpha bravo charlie')
+    expect(Unlock).toHaveBeenCalledWith('abc.dat', 'pw')
     expect(push).toHaveBeenCalledWith('/home')
   })
 })

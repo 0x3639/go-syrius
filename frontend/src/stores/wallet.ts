@@ -57,11 +57,14 @@ export const useWalletStore = defineStore('wallet', {
     async generateMnemonic(): Promise<string> {
       return await W.GenerateMnemonic()
     },
-    // Persist a new keystore from a mnemonic. Does NOT unlock — the caller
-    // unlocks afterward (mirrors the Svelte create/import flow). Throws on error.
-    async importMnemonic(file: string, password: string, mnemonic: string): Promise<void> {
-      await W.ImportMnemonic(file, password, mnemonic)
+    // Persist a new keystore from a mnemonic and return the new wallet's meta
+    // (the backend assigns the uuid keystore filename as `id`). Does NOT unlock —
+    // the caller unlocks afterward by `meta.id` (mirrors the create/import flow).
+    // `name` is the user-facing display name (no `.dat`). Throws on error.
+    async importMnemonic(name: string, password: string, mnemonic: string): Promise<WalletMeta> {
+      const meta = (await W.ImportMnemonic(name, password, mnemonic)) as unknown as WalletMeta
       await this.loadWallets()
+      return meta
     },
     // Import an existing keystore file; wallet stays locked (user then unlocks).
     // `name` defaults to '' — the backend derives a name from the file when empty.

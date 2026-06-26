@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
-const ImportMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue({ name: 'Imp.dat' }))
+const ImportMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue({ id: 'abc.dat', name: 'Imp', baseAddress: 'z1' }))
 const Unlock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('../../wailsjs/go/app/WalletService', () => ({
   ListWallets: vi.fn().mockResolvedValue([]),
@@ -35,8 +35,9 @@ describe('ImportMnemonic.vue', () => {
     await w.find('input[aria-label="confirm password"]').setValue('pw')
     await w.find('button[aria-label="Import"]').trigger('click')
     await new Promise((r) => setTimeout(r))
-    expect(ImportMnemonic).toHaveBeenCalledWith('Imp.dat', 'pw', twelve)
-    expect(Unlock).toHaveBeenCalledWith('Imp.dat', 'pw')
+    // Passes the display name without `.dat`; unlocks by the backend-assigned id.
+    expect(ImportMnemonic).toHaveBeenCalledWith('Imp', 'pw', twelve)
+    expect(Unlock).toHaveBeenCalledWith('abc.dat', 'pw')
     expect(push).toHaveBeenCalledWith('/home')
   })
 })

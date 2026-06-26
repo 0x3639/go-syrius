@@ -57,6 +57,8 @@ onMounted(async () => {
   if (!localDirty.value) localUrl.value = c.localUrl
   await refreshEmbedded()
   try { chainId.value = (await Cfg.GetSettings()).chainId || 1 } catch {}
+  if (!wallet.wallets.length) await wallet.loadWallets()
+  walletName.value = wallet.wallets.find((w) => w.id === wallet.active)?.name ?? ''
 })
 
 async function applyNode() {
@@ -93,6 +95,19 @@ async function retryNode() {
   try { await node.setMode(nodeMode.value) } catch (e: any) { nodeErr.value = e?.message ?? String(e) }
 }
 
+// Rename the currently-unlocked wallet (no password). Seeded from the active
+// wallet's current display name once the wallet list has loaded.
+const walletName = ref('')
+const renameMsg = ref(''), renameErr = ref('')
+const canRename = computed(() => walletName.value.trim() !== '' && wallet.active !== '')
+async function doRename() {
+  renameMsg.value = ''; renameErr.value = ''
+  try {
+    await wallet.rename(wallet.active, walletName.value.trim())
+    renameMsg.value = 'Wallet name updated'
+  } catch (e: any) { renameErr.value = e?.message ?? String(e) }
+}
+
 const oldP = ref(''), newP = ref(''), confirmP = ref(''), cpMsg = ref(''), cpErr = ref('')
 const canChange = computed(() => oldP.value.length > 0 && newP.value.length > 0 && newP.value === confirmP.value)
 async function doChange() {
@@ -116,6 +131,14 @@ function hide() { revealed.value = '' }
       <h1 class="text-xl text-foreground">Settings</h1>
       <button class="text-xs text-muted-foreground" @click="router.push('/home')">Back</button>
     </div>
+
+    <section class="rounded bg-card p-4 space-y-2">
+      <h2 class="text-sm text-muted-foreground">Wallet name</h2>
+      <input class="w-full rounded bg-background px-3 py-2 text-foreground" placeholder="Wallet name" v-model="walletName" aria-label="wallet name" />
+      <button class="rounded bg-primary px-3 py-1 text-background disabled:opacity-50" :disabled="!canRename" @click="doRename">Rename</button>
+      <p v-if="renameMsg" class="text-primary text-sm">{{ renameMsg }}</p>
+      <p v-if="renameErr" class="text-destructive text-sm" role="alert">{{ renameErr }}</p>
+    </section>
 
     <section class="rounded bg-card p-4 space-y-2">
       <h2 class="text-sm text-muted-foreground">Change password</h2>

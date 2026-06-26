@@ -20,10 +20,11 @@ const canImport = computed(
 
 async function doImport() {
   error.value = ''
-  const file = name.value.endsWith('.dat') ? name.value : name.value + '.dat'
   try {
-    await wallet.importMnemonic(file, password.value, mnemonic.value.trim())
-    await wallet.unlock(file, password.value)
+    // `name` is now a display name; the backend assigns a uuid keystore filename.
+    // Capture the returned meta and unlock by its real id.
+    const meta = await wallet.importMnemonic(name.value.trim(), password.value, mnemonic.value.trim())
+    await wallet.unlock(meta.id, password.value)
     router.push('/home')
   } catch (e: any) {
     error.value = e?.message ?? String(e)

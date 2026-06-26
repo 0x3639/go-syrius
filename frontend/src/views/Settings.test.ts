@@ -22,10 +22,13 @@ vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetSettings 
 
 const RevealMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue('alpha bravo charlie delta'))
 const ChangePassword = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const RenameWallet = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const ListWallets = vi.hoisted(() => vi.fn().mockResolvedValue([{ id: 'abc.dat', name: 'Main', baseAddress: 'z1' }]))
 vi.mock('../../wailsjs/go/app/WalletService', () => ({
-  ListWallets: vi.fn().mockResolvedValue([]),
+  ListWallets,
   RevealMnemonic,
   ChangePassword,
+  RenameWallet,
   Lock: vi.fn(),
 }))
 
@@ -54,6 +57,7 @@ beforeEach(() => {
   SetNodeURL.mockClear()
   ChangePassword.mockClear()
   RevealMnemonic.mockClear()
+  RenameWallet.mockClear()
   GetSettings.mockClear()
   SetSettings.mockClear()
   GetSettings.mockResolvedValue({ chainId: 73404 })
@@ -104,8 +108,23 @@ describe('Settings.vue', () => {
     await w.findAll('button').find((b) => b.text() === 'Change')!.trigger('click')
     await flush()
 
-    expect(ChangePassword).toHaveBeenCalledWith('', 'old', 'newpw')
+    expect(ChangePassword).toHaveBeenCalledWith('abc.dat', 'old', 'newpw')
     expect(w.text()).toContain('Password changed')
+  })
+
+  it('seeds the wallet name and Rename calls wallet.rename(activeId, newName)', async () => {
+    const w = mount(Settings)
+    await flush() // onMounted: loadWallets seeds active + name
+
+    const field = w.find('input[aria-label="wallet name"]')
+    expect((field.element as HTMLInputElement).value).toBe('Main')
+
+    await field.setValue('Renamed')
+    await w.findAll('button').find((b) => b.text() === 'Rename')!.trigger('click')
+    await flush()
+
+    expect(RenameWallet).toHaveBeenCalledWith('abc.dat', 'Renamed')
+    expect(w.text()).toContain('Wallet name updated')
   })
 
   it('loads the chain id from GetSettings and Apply read-modify-writes it', async () => {

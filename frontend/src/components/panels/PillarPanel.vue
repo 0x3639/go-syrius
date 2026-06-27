@@ -65,22 +65,22 @@ watch(
   <div class="space-y-4 p-4">
     <section class="space-y-2 rounded-lg border border-border bg-card p-4">
       <h2 class="text-sm font-medium text-foreground">Your delegation</h2>
-      <div v-if="delegated && delegation" class="flex items-center justify-between text-sm">
+      <div v-if="delegated && delegation" class="flex items-center justify-between pr-2 text-sm">
         <p>
           Delegated to <span class="font-mono text-primary">{{ delegation.name }}</span> · weight
           <span class="font-mono">{{ formatAmount(delegation.weight, 8) }} ZNN</span>
         </p>
-        <Button variant="outline" aria-label="undelegate" @click="undelegate">Undelegate</Button>
+        <Button variant="outline" class="w-32 flex-none" aria-label="undelegate" @click="undelegate">Undelegate</Button>
       </div>
       <p v-else class="text-xs text-muted-foreground">Not delegated.</p>
 
-      <div v-if="pillarReward" class="flex items-center justify-between text-sm">
+      <div v-if="pillarReward" class="flex items-center justify-between pr-2 text-sm">
         <p class="text-muted-foreground">
           Uncollected reward
           <span class="font-mono text-foreground">{{ formatAmount(pillarReward.znn, 8) }} ZNN</span> ·
           <span class="font-mono text-foreground">{{ formatAmount(pillarReward.qsr, 8) }} QSR</span>
         </p>
-        <Button :disabled="rewardZero" @click="collect">Collect</Button>
+        <Button class="w-32 flex-none" :disabled="rewardZero" @click="collect">Collect</Button>
       </div>
     </section>
 
@@ -111,7 +111,7 @@ watch(
             <span class="font-mono text-xs text-muted-foreground"
               >{{ formatAmount(p.weight, 8) }} ZNN</span
             >
-            <Button :aria-label="`delegate to ${p.name}`" @click="delegate(p.name)">Delegate</Button>
+            <Button class="w-32 flex-none" :aria-label="`delegate to ${p.name}`" @click="delegate(p.name)">Delegate</Button>
           </div>
         </div>
         <p v-if="filtered.length === 0" class="text-xs text-muted-foreground">No pillars.</p>

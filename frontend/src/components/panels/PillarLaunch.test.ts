@@ -81,6 +81,31 @@ describe('PillarLaunch wizard', () => {
     expect(begin).toHaveBeenCalledWith('plasma')
   })
 
+  it('forwards the deposit call with the QSR shortfall', async () => {
+    const { awaitConfirm } = setup({ plasma: ENOUGH_PLASMA, deposited: '0', cost: COST })
+    const w = mount(PillarLaunch)
+    await w.find('button[aria-label="deposit pillar qsr"]').trigger('click')
+    await new Promise((r) => setTimeout(r))
+    expect(Nom.PreparePillarDepositQsr).toHaveBeenCalledWith('15000000000000') // cost − deposited
+    expect(awaitConfirm).toHaveBeenCalledWith({ kind: 'deposit' })
+  })
+
+  it('forwards the register call with args in the correct order', async () => {
+    const { awaitConfirm } = setup({ plasma: ENOUGH_PLASMA, deposited: COST, cost: COST })
+    const w = mount(PillarLaunch)
+    await w.find('input[aria-label="pillar name"]').setValue('my-pillar')
+    await w.find('input[aria-label="producer address"]').setValue('z1producer')
+    await w.find('input[aria-label="reward address"]').setValue('z1reward')
+    await w.find('input[aria-label="momentum percent"]').setValue('30')
+    await w.find('input[aria-label="delegate percent"]').setValue('70')
+    await w.vm.$nextTick() // let the name-availability watcher resolve
+    await new Promise((r) => setTimeout(r))
+    await w.find('button[aria-label="register pillar"]').trigger('click')
+    await new Promise((r) => setTimeout(r))
+    expect(Nom.PrepareRegisterPillar).toHaveBeenCalledWith('my-pillar', 'z1producer', 'z1reward', 30, 70)
+    expect(awaitConfirm).toHaveBeenCalledWith({ kind: 'register' })
+  })
+
   it('disables register when the name is invalid', async () => {
     setup({ plasma: ENOUGH_PLASMA, deposited: COST, cost: COST })
     const w = mount(PillarLaunch)

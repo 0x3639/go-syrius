@@ -61,6 +61,7 @@ const currentStep = computed<1 | 2 | 3>(() => (!plasmaCleared.value ? 1 : !qsrCl
 
 const nameValid = computed(() => isValidPillarName(name.value.trim()))
 const pctValid = computed(() => {
+  if (momentumPct.value.trim() === '' || delegatePct.value.trim() === '') return false
   const m = Number(momentumPct.value)
   const d = Number(delegatePct.value)
   return Number.isInteger(m) && m >= 0 && m <= 100 && Number.isInteger(d) && d >= 0 && d <= 100

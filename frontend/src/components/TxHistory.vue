@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { storeToRefs } from 'pinia'
+import { computed } from 'vue'
 import {
   Address,
   Table,
@@ -18,7 +17,6 @@ import { formatAmount } from '../lib/format'
 import { plasmaLevel } from '../lib/plasma'
 
 const txs = useTxsStore()
-const { items } = storeToRefs(txs)
 const unreceived = useUnreceivedStore()
 const plasma = usePlasmaStore()
 
@@ -33,31 +31,15 @@ async function doReceive(hash: string) {
   await txs.load()
 }
 
-// Default to real value transfers only — show only In/Out rows that move a
-// non-zero amount, hiding the Pair claim blocks and zero-amount action calls
-// (CollectReward, plasma fuse, …). Toggle to "All" for every row (like nomscan).
-const transfersOnly = ref(true)
-function isTransfer(t: { direction: string; amount: string }): boolean {
-  if (t.direction === 'pair') return false
-  try {
-    return BigInt(t.amount || '0') > 0n
-  } catch {
-    return true
-  }
-}
-const displayed = computed(() => (transfersOnly.value ? items.value.filter(isTransfer) : items.value))
-
-// Explain an empty page: in Transfers mode a whole block-page can be contract/pair
-// activity that's filtered out — tell the user to switch to All rather than imply
-// there are no transactions at all.
+// Explain an empty page: in Transfers mode a page can be all contract/pair
+// activity that's filtered out — point to All rather than imply no transactions.
 const emptyMessage = computed(() =>
-  transfersOnly.value && items.value.length > 0
+  txs.transfersOnly && txs.buffer.length > 0
     ? 'No transfers on this page — switch to All to see contract / pair activity.'
     : 'No transactions.',
 )
 
 // Our store carries `confirmed: boolean`; nom-ui TxStatus takes a 4-state enum.
-// We only distinguish confirmed vs not, so map true -> success, false -> pending.
 function status(confirmed: boolean): 'success' | 'pending' {
   return confirmed ? 'success' : 'pending'
 }
@@ -72,21 +54,21 @@ function status(confirmed: boolean): 'success' | 'pending' {
           type="button"
           aria-label="show transfers only"
           class="rounded px-2 py-1 transition-colors"
-          :class="transfersOnly ? 'bg-foreground/10 font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'"
-          @click="transfersOnly = true"
+          :class="txs.transfersOnly ? 'bg-foreground/10 font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'"
+          @click="txs.setTransfersOnly(true)"
         >Transfers</button>
         <button
           type="button"
           aria-label="show all transactions"
           class="rounded px-2 py-1 transition-colors"
-          :class="!transfersOnly ? 'bg-foreground/10 font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'"
-          @click="transfersOnly = false"
+          :class="!txs.transfersOnly ? 'bg-foreground/10 font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'"
+          @click="txs.setTransfersOnly(false)"
         >All</button>
       </div>
     </div>
     <Table>
       <TableBody>
-        <TableEmpty v-if="displayed.length === 0 && (txs.page > 0 || unreceived.items.length === 0)" :colspan="5">{{ emptyMessage }}</TableEmpty>
+        <TableEmpty v-if="txs.pageItems.length === 0 && (txs.page > 0 || unreceived.items.length === 0)" :colspan="5">{{ emptyMessage }}</TableEmpty>
 
         <!-- Pending inbound blocks (newest page only): click to receive; status
              goes Unreceived → Generating Plasma/Receiving (pulsing) → Confirmed. -->
@@ -120,7 +102,7 @@ function status(confirmed: boolean): 'success' | 'pending' {
         </TableRow>
         </template>
 
-        <TableRow v-for="t in displayed" :key="t.hash">
+        <TableRow v-for="t in txs.pageItems" :key="t.hash">
           <TableCell>
             <span v-if="t.direction === 'pair'" class="rounded bg-info/15 px-2 py-0.5 text-xs font-medium text-info">Pair</span>
             <TxDirection v-else :direction="(t.direction as 'in' | 'out')" />
@@ -142,7 +124,7 @@ function status(confirmed: boolean): 'success' | 'pending' {
       </TableBody>
     </Table>
 
-    <div v-if="txs.page > 0 || txs.hasMore" class="mt-2 flex items-center justify-end gap-3 text-xs text-muted-foreground">
+    <div v-if="txs.page > 0 || txs.hasNextPage" class="mt-2 flex items-center justify-end gap-3 text-xs text-muted-foreground">
       <span>Page {{ txs.page + 1 }}</span>
       <button
         type="button"
@@ -156,7 +138,7 @@ function status(confirmed: boolean): 'success' | 'pending' {
       <button
         type="button"
         aria-label="next page"
-        :disabled="!txs.hasMore"
+        :disabled="!txs.hasNextPage"
         class="grid h-7 w-7 place-items-center rounded border border-border transition-colors hover:bg-foreground/[0.06] disabled:opacity-40"
         @click="txs.goto(txs.page + 1)"
       >

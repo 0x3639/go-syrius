@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
 // Stub the children so the container test asserts routing, not their internals.

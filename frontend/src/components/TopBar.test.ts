@@ -46,4 +46,22 @@ describe('TopBar', () => {
     await flush()
     expect(StartAutoReceive).toHaveBeenCalled()
   })
+
+  it('renders a locked variant with every icon shown but disabled', () => {
+    const w = mount(TopBar, { props: { locked: true }, ...opts })
+    expect(w.text()).toContain('Locked')
+    // All right-side icons are present but inert while locked.
+    for (const label of ['Plasma', 'Auto-receive', 'Lock wallet', 'Address book', 'Settings']) {
+      const btn = w.find(`button[aria-label="${label}"]`)
+      expect(btn.exists(), label).toBe(true)
+      expect(btn.attributes('disabled'), label).toBeDefined()
+    }
+  })
+
+  it('does not navigate when a locked icon is clicked', async () => {
+    const w = mount(TopBar, { props: { locked: true }, ...opts })
+    await w.find('button[aria-label="Settings"]').trigger('click')
+    await w.find('button[aria-label="Address book"]').trigger('click')
+    expect(push).not.toHaveBeenCalled()
+  })
 })

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { Card, CardContent, Input, Button } from 'nom-ui'
 import { useWalletStore } from '../stores/wallet'
 import WalletPicker from '../components/WalletPicker.vue'
+import TopBar from '../components/TopBar.vue'
 import logoUrl from '../assets/images/syrius-logo.png'
 
 const wallet = useWalletStore()
@@ -53,7 +54,11 @@ async function doImport() {
 </script>
 
 <template>
-  <main class="grid min-h-screen place-items-center bg-background p-8">
+  <div class="flex min-h-screen flex-col bg-background">
+    <!-- Locked chrome so the window matches the in-app shell instead of a bare
+         centered card (mirrors how syrius keeps its top bar on first load). -->
+    <TopBar locked />
+    <main class="grid flex-1 place-items-center p-8">
     <div class="flex flex-col items-center gap-6">
       <img :src="logoUrl" alt="syrius" class="h-20 w-20 rounded-2xl" />
       <Card class="w-96">
@@ -75,5 +80,6 @@ async function doImport() {
       </CardContent>
       </Card>
     </div>
-  </main>
+    </main>
+  </div>
 </template>

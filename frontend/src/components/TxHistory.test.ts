@@ -92,6 +92,33 @@ describe('TxHistory', () => {
     expect(w.text()).toContain('—')
   })
 
+  // Match exact badge text via spans — w.text() would collide with the
+  // "Transfers" toggle button.
+  const badges = (w: ReturnType<typeof mount>) => w.findAll('span').map((s) => s.text())
+
+  it('labels plain value transfers "Transfer", leaving contract calls to their method', async () => {
+    const w = mount(TxHistory)
+    seed([
+      { ...tx, hash: 't1', direction: 'out', method: '', amount: '150000000', token: 'ZNN' },
+      { ...tx, hash: 's1', direction: 'out', method: 'Stake', amount: '1000000000', token: 'ZNN' },
+    ])
+    await w.vm.$nextTick()
+    expect(badges(w)).toContain('Transfer')
+    expect(badges(w)).toContain('Stake')
+  })
+
+  it('does not label pair or zero-value rows as Transfer', async () => {
+    const w = mount(TxHistory)
+    seed([
+      { ...tx, hash: 'p1', direction: 'pair', method: '', amount: '0', token: '' },
+      { ...tx, hash: 'd1', direction: 'out', method: 'Delegate', amount: '0', token: 'ZNN' },
+    ])
+    await w.vm.$nextTick()
+    await w.find('button[aria-label="show all transactions"]').trigger('click')
+    await flush()
+    expect(badges(w)).not.toContain('Transfer')
+  })
+
   it('shows a truncated tx hash that copies the full value', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })

@@ -56,6 +56,16 @@ function hasValue(t: { token: string; amount: string }): boolean {
   return !!t.token && BigInt(t.amount || '0') > 0n
 }
 
+// The type badge: a contract call shows its method (Stake, Fuse, …); a plain
+// peer-to-peer send/receive (value moved, no contract method, not a pair) is
+// labelled "Transfer" so every row carries a type. Pair / zero-value rows stay
+// unlabelled.
+function typeBadge(t: { method: string; direction: string; token: string; amount: string }): string {
+  if (t.method) return t.method
+  if (t.direction !== 'pair' && hasValue(t)) return 'Transfer'
+  return ''
+}
+
 // Copy the full hash; briefly swap the copy icon for a check on the copied row.
 const copied = ref('')
 async function copyHash(h: string) {
@@ -159,7 +169,7 @@ async function copyHash(h: string) {
             <TxDirection v-else :direction="(t.direction as 'in' | 'out')" />
           </TableCell>
           <TableCell>
-            <span v-if="t.method" class="rounded bg-foreground/10 px-2 py-0.5 text-xs text-muted-foreground">{{ t.method }}</span>
+            <span v-if="typeBadge(t)" class="rounded bg-foreground/10 px-2 py-0.5 text-xs text-muted-foreground">{{ typeBadge(t) }}</span>
           </TableCell>
           <TableCell>
             <Address :address="t.counterparty" :copy="false" :tooltip="false" />

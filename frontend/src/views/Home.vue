@@ -103,7 +103,11 @@ onMounted(async () => {
         </TabsList>
         <TabsContent value="Tokens">
           <TokensPanel />
-          <TxHistory />
+          <!-- Inset to match TokensPanel's p-4 so the history card lines up with
+               the content above instead of meeting the outer card's border. -->
+          <div class="px-4 pb-4">
+            <TxHistory />
+          </div>
         </TabsContent>
         <TabsContent value="Rewards"><RewardsPanel /></TabsContent>
         <TabsContent value="Plasma"><PlasmaPanel /></TabsContent>

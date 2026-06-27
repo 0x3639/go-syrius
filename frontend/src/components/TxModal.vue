@@ -4,11 +4,13 @@ import { Button } from 'nom-ui'
 import { useTxStore } from '../stores/tx'
 import { formatAmountExact } from '../lib/format'
 
-// FUNDS-CRITICAL — confirm-what-you-sign. Every field rendered here derives from
-// `tx.preview` (the BUILT BLOCK returned by PrepareSend), NEVER from the form
-// inputs. The amount uses formatAmountExact so the user confirms the exact value
-// being signed. Do not introduce any path where the confirmed amount differs
-// from preview.amount.
+// FUNDS-CRITICAL — confirm-what-you-approve. Every field rendered here derives
+// from `tx.preview` — the EFFECT of the held, un-PoW'd template from PrepareSend,
+// NEVER from the form inputs. PoW (hashing) and signing happen on Confirm
+// (ConfirmPublish); what the user approves here is the exact effect: recipient,
+// amount, token. The amount uses formatAmountExact so the approved value is
+// exact. Do not introduce any path where the confirmed amount differs from
+// preview.amount.
 const tx = useTxStore()
 const { preview: p, status } = storeToRefs(tx)
 </script>
@@ -21,7 +23,7 @@ const { preview: p, status } = storeToRefs(tx)
     aria-label="Confirm transaction"
   >
     <h2 class="text-sm text-muted-foreground">
-      Confirm — you are signing this exact transaction
+      Confirm — you are approving this exact transaction (hashed &amp; signed on confirm)
     </h2>
     <p v-if="p.summary" class="text-sm text-primary">{{ p.summary }}</p>
     <div class="flex justify-between gap-4">

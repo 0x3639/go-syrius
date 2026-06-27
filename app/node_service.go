@@ -582,7 +582,15 @@ func (n *NodeService) sweepUnreceived(client *rpc_client.RpcClient, addr types.A
 			case <-stop:
 				return
 			default:
-				_, _ = n.receiveFn(b.Hash.String())
+				// Surface failures: a swallowed error here means auto-receive
+				// silently stalls (it retries a few times, then gives up). Emit so
+				// the UI can flag it instead of the block just never arriving.
+				if _, err := n.receiveFn(b.Hash.String()); err != nil && n.ctx != nil {
+					runtime.EventsEmit(n.ctx, EventAutoReceiveError, map[string]string{
+						"hash":  b.Hash.String(),
+						"error": err.Error(),
+					})
+				}
 			}
 		}
 		// Let the node fold the just-published receives into the account frontier

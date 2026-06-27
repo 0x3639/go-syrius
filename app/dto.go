@@ -137,6 +137,9 @@ const (
 	// EventAutoReceiving carries a bool: auto-receive is (true) / is no longer
 	// (false) actively receiving — drives the "Receiving…" UI indicator.
 	EventAutoReceiving = "auto-receive:active"
+	// EventAutoReceiveError carries {hash, error}: a single auto-receive attempt
+	// failed. Surfaced so a silently stalled auto-receive is visible to the user.
+	EventAutoReceiveError = "auto-receive:error"
 )
 
 // mainnetChainID is the Network of Momentum mainnet chain identifier.

@@ -78,6 +78,25 @@ describe('TxModal (confirm-what-you-sign)', () => {
     expect(w.text()).not.toContain('0.015')
   })
 
+  it('shows the FULL recipient address (not truncated) so the user verifies it', () => {
+    const tx = useTxStore()
+    const full = 'z1qrr0sample00000000000000000000000000pcjmg'
+    tx.preview = {
+      toAddress: full,
+      amount: '100000000',
+      zts: 'zts1znn',
+      symbol: 'ZNN',
+      needsPoW: false,
+      difficulty: 0,
+      hash: 'h',
+      usedPlasma: 0,
+    } as any
+    tx.status = 'awaiting'
+
+    const w = mount(TxModal)
+    expect(w.text()).toContain(full)
+  })
+
   it('Confirm calls ConfirmPublish (publishes the held block)', async () => {
     const tx = useTxStore()
     tx.preview = {

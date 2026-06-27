@@ -2,7 +2,7 @@
 import { storeToRefs } from 'pinia'
 import { Button } from 'nom-ui'
 import { useTxStore } from '../stores/tx'
-import { formatAmountExact, shortAddress } from '../lib/format'
+import { formatAmountExact } from '../lib/format'
 
 // FUNDS-CRITICAL — confirm-what-you-sign. Every field rendered here derives from
 // `tx.preview` (the BUILT BLOCK returned by PrepareSend), NEVER from the form
@@ -24,9 +24,11 @@ const { preview: p, status } = storeToRefs(tx)
       Confirm — you are signing this exact transaction
     </h2>
     <p v-if="p.summary" class="text-sm text-primary">{{ p.summary }}</p>
-    <div class="flex justify-between">
-      <span class="text-muted-foreground">To</span>
-      <span class="font-mono">{{ shortAddress(p.toAddress) }}</span>
+    <div class="flex justify-between gap-4">
+      <span class="shrink-0 text-muted-foreground">To</span>
+      <!-- Full address (wraps) — confirm-what-you-sign means the user verifies
+           the exact recipient, not a truncation. -->
+      <span class="break-all text-right font-mono">{{ p.toAddress }}</span>
     </div>
     <div class="flex justify-between">
       <span class="text-muted-foreground">Amount</span>

@@ -14,7 +14,7 @@ A reimplementation of the Zenon `syrius` wallet (originally Flutter/Dart) as a *
 
 ## Stack (locked decisions — see plan.md §6)
 
-- **Wails v2** (v2.10.1; not v3 — stability for a funds-handling app)
+- **Wails v2** (v2.12.0; not v3 — stability for a funds-handling app)
 - **Go 1.25.11** (go.mod toolchain floor), importing `znn-sdk-go` (pinned, author-controlled; currently v0.1.19) and `go-zenon`
 - **Vue 3 + TypeScript + Vite**, **Tailwind CSS 4**, **Pinia** for state, **vue-router** (memory history). UI built on **nom-ui** (Vue component library, `github:digitalSloth/nom-ui` pinned) — Dialog/Tabs/Address/TxStatus/TxDirection/TokenIcon/toast + its blockchain primitives. *(Originally scaffolded in Svelte; migrated to Vue 3 + nom-ui — merged to main `a9c2880`, 2026-06-25. The Go backend + Wails bindings were untouched by the migration.)*
 - Build via Wails CLI + GitHub Actions cross-platform matrix

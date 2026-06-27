@@ -24,6 +24,14 @@ export function GetProject(arg1:string):Promise<app.ProjectDTO>;
 
 export function GetProjects(arg1:number,arg2:number):Promise<app.ProjectListDTO>;
 
+export function CheckPillarName(arg1:string):Promise<boolean>;
+
+export function GetMyPillar():Promise<app.OwnedPillarInfo>;
+
+export function GetPillarDepositedQsr():Promise<string>;
+
+export function GetPillarQsrCost():Promise<string>;
+
 export function GetSentinel():Promise<app.SentinelInfo>;
 
 export function GetSentinelReward():Promise<app.RewardInfo>;
@@ -64,7 +72,15 @@ export function PrepareIssueToken(arg1:string,arg2:string,arg3:string,arg4:strin
 
 export function PrepareMint(arg1:string,arg2:string,arg3:string):Promise<app.CallPreview>;
 
+export function PreparePillarDepositQsr(arg1:string):Promise<app.CallPreview>;
+
+export function PreparePillarWithdrawQsr():Promise<app.CallPreview>;
+
+export function PrepareRegisterPillar(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<app.CallPreview>;
+
 export function PrepareRegisterSentinel():Promise<app.CallPreview>;
+
+export function PrepareRevokePillar(arg1:string):Promise<app.CallPreview>;
 
 export function PrepareRevokeSentinel():Promise<app.CallPreview>;
 

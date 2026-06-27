@@ -46,6 +46,22 @@ export function GetProjects(arg1, arg2) {
   return window['go']['app']['NomService']['GetProjects'](arg1, arg2);
 }
 
+export function CheckPillarName(arg1) {
+  return window['go']['app']['NomService']['CheckPillarName'](arg1);
+}
+
+export function GetMyPillar() {
+  return window['go']['app']['NomService']['GetMyPillar']();
+}
+
+export function GetPillarDepositedQsr() {
+  return window['go']['app']['NomService']['GetPillarDepositedQsr']();
+}
+
+export function GetPillarQsrCost() {
+  return window['go']['app']['NomService']['GetPillarQsrCost']();
+}
+
 export function GetSentinel() {
   return window['go']['app']['NomService']['GetSentinel']();
 }
@@ -126,8 +142,24 @@ export function PrepareMint(arg1, arg2, arg3) {
   return window['go']['app']['NomService']['PrepareMint'](arg1, arg2, arg3);
 }
 
+export function PreparePillarDepositQsr(arg1) {
+  return window['go']['app']['NomService']['PreparePillarDepositQsr'](arg1);
+}
+
+export function PreparePillarWithdrawQsr() {
+  return window['go']['app']['NomService']['PreparePillarWithdrawQsr']();
+}
+
+export function PrepareRegisterPillar(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['app']['NomService']['PrepareRegisterPillar'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function PrepareRegisterSentinel() {
   return window['go']['app']['NomService']['PrepareRegisterSentinel']();
+}
+
+export function PrepareRevokePillar(arg1) {
+  return window['go']['app']['NomService']['PrepareRevokePillar'](arg1);
 }
 
 export function PrepareRevokeSentinel() {

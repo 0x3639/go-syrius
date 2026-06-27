@@ -496,3 +496,71 @@ func TestValidatePillarName(t *testing.T) {
 		t.Fatal("expected 41-char name to be rejected")
 	}
 }
+
+func TestPreparePillarDepositQsrValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	for _, bad := range []string{"0", "-1", "", "abc"} {
+		if _, err := s.PreparePillarDepositQsr(bad); err == nil {
+			t.Fatalf("expected %q to be rejected", bad)
+		}
+	}
+}
+
+func TestPrepareRegisterPillarValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	good := "z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"
+	// invalid name
+	if _, err := s.PrepareRegisterPillar("bad name!", good, good, 50, 50); err == nil {
+		t.Fatal("expected invalid name to be rejected")
+	}
+	// invalid producer address
+	if _, err := s.PrepareRegisterPillar("Pillar-A", "nope", good, 50, 50); err == nil {
+		t.Fatal("expected invalid producer to be rejected")
+	}
+	// invalid reward address
+	if _, err := s.PrepareRegisterPillar("Pillar-A", good, "nope", 50, 50); err == nil {
+		t.Fatal("expected invalid reward to be rejected")
+	}
+	// out-of-range percentage
+	if _, err := s.PrepareRegisterPillar("Pillar-A", good, good, 101, 50); err == nil {
+		t.Fatal("expected momentum pct > 100 to be rejected")
+	}
+	if _, err := s.PrepareRegisterPillar("Pillar-A", good, good, 50, 101); err == nil {
+		t.Fatal("expected delegate pct > 100 to be rejected")
+	}
+}
+
+func TestPrepareRevokePillarValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	if _, err := s.PrepareRevokePillar("   "); err == nil {
+		t.Fatal("expected empty name to be rejected")
+	}
+}
+
+func TestPillarRegisterTemplateTokenStandards(t *testing.T) {
+	api := embedded.NewPillarApi(nil) // builders construct blocks from args/constants; no client deref
+	addr, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
+	znn := types.ZnnTokenStandard.String()
+	qsr := types.QsrTokenStandard.String()
+
+	deposit := api.DepositQsr(big.NewInt(123))
+	if deposit.ToAddress != types.PillarContract || deposit.TokenStandard.String() != qsr {
+		t.Fatalf("deposit: to=%v zts=%v", deposit.ToAddress, deposit.TokenStandard.String())
+	}
+	reg := api.Register("Pillar-A", addr, addr, 0, 100)
+	if reg.ToAddress != types.PillarContract || reg.TokenStandard.String() != znn {
+		t.Fatalf("register: to=%v zts=%v", reg.ToAddress, reg.TokenStandard.String())
+	}
+	// Register must carry the 15,000 ZNN collateral (15000 * 1e8).
+	if reg.Amount == nil || reg.Amount.String() != "1500000000000" {
+		t.Fatalf("register amount=%v want 1500000000000", reg.Amount)
+	}
+	for name, b := range map[string]*nom.AccountBlock{"withdraw": api.WithdrawQsr(), "revoke": api.Revoke("Pillar-A")} {
+		if b.ToAddress != types.PillarContract || b.TokenStandard.String() != znn {
+			t.Fatalf("%s: to=%v zts=%v", name, b.ToAddress, b.TokenStandard.String())
+		}
+		if b.Amount == nil || b.Amount.Sign() != 0 {
+			t.Fatalf("%s: amount=%v want 0", name, b.Amount)
+		}
+	}
+}

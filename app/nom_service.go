@@ -553,6 +553,83 @@ func (s *NomService) CheckPillarName(name string) (bool, error) {
 	return *avail, nil
 }
 
+// PreparePillarDepositQsr builds a DepositQsr template (escrows QSR toward pillar
+// registration; this QSR is BURNED on registration). qsr is a base-unit decimal
+// string, validated before any node use.
+func (s *NomService) PreparePillarDepositQsr(qsr string) (CallPreview, error) {
+	amt, ok := new(big.Int).SetString(strings.TrimSpace(qsr), 10)
+	if !ok || amt.Sign() <= 0 {
+		return CallPreview{}, errors.New("deposit amount must be a positive QSR value")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.PillarApi.DepositQsr(amt)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.PillarContract, zts: types.QsrTokenStandard, amount: amt, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Deposit %s QSR for pillar (burned on registration)", formatBaseAmount(amt.String(), 8)))
+}
+
+// PreparePillarWithdrawQsr builds a WithdrawQsr template (recovers escrowed QSR
+// not yet consumed by registration).
+func (s *NomService) PreparePillarWithdrawQsr() (CallPreview, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.PillarApi.WithdrawQsr()
+	return s.tx.prepareCall(template,
+		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		"Withdraw deposited pillar QSR")
+}
+
+// PrepareRegisterPillar builds a Register template (sends the 15,000 ZNN
+// collateral; requires the QSR cost already deposited). Amount is read from the
+// SDK template, never hardcoded. All inputs are validated before any node use.
+func (s *NomService) PrepareRegisterPillar(name, producer, reward string, momentumPct, delegatePct uint8) (CallPreview, error) {
+	name = strings.TrimSpace(name)
+	if err := validatePillarName(name); err != nil {
+		return CallPreview{}, err
+	}
+	producerAddr, err := types.ParseAddress(strings.TrimSpace(producer))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid producer address: %w", err)
+	}
+	rewardAddr, err := types.ParseAddress(strings.TrimSpace(reward))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid reward address: %w", err)
+	}
+	if momentumPct > 100 || delegatePct > 100 {
+		return CallPreview{}, errors.New("reward percentages must be between 0 and 100")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.PillarApi.Register(name, producerAddr, rewardAddr, momentumPct, delegatePct)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Register pillar %q (15,000 ZNN)", name))
+}
+
+// PrepareRevokePillar builds a Revoke template (returns the 15,000 ZNN collateral
+// after the lock window).
+func (s *NomService) PrepareRevokePillar(name string) (CallPreview, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return CallPreview{}, errors.New("pillar name is required")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.PillarApi.Revoke(name)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Revoke pillar %q", name))
+}
+
 // sentinelDTO maps an SDK SentinelInfo to the DTO. A nil result or a zero
 // RegistrationTimestamp means the address has no sentinel (empty Owner).
 func sentinelDTO(s *embedded.SentinelInfo) SentinelInfo {

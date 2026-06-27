@@ -1,16 +1,25 @@
 <script setup lang="ts">
-defineProps<{ current: 1 | 2 | 3 }>()
-const STEPS = [
-  { n: 1, label: 'Deposit 50,000 QSR' },
-  { n: 2, label: 'Deposit 5,000 ZNN' },
-  { n: 3, label: 'Sentinel active' },
-] as const
+const props = withDefaults(
+  defineProps<{
+    current: 1 | 2 | 3
+    steps?: { n: number; label: string }[]
+    ariaLabel?: string
+  }>(),
+  {
+    steps: () => [
+      { n: 1, label: 'Deposit 50,000 QSR' },
+      { n: 2, label: 'Deposit 5,000 ZNN' },
+      { n: 3, label: 'Sentinel active' },
+    ],
+    ariaLabel: 'Sentinel launch progress',
+  },
+)
 </script>
 
 <template>
-  <ol class="flex flex-wrap items-center gap-2" aria-label="Sentinel launch progress">
+  <ol class="flex flex-wrap items-center gap-2" :aria-label="props.ariaLabel">
     <li
-      v-for="(s, i) in STEPS"
+      v-for="(s, i) in props.steps"
       :key="s.n"
       class="flex items-center gap-2"
       :data-state="s.n < current ? 'done' : s.n === current ? 'current' : 'todo'"
@@ -30,7 +39,7 @@ const STEPS = [
         class="whitespace-nowrap text-xs"
         :class="s.n === current ? 'font-medium text-foreground' : 'text-muted-foreground'"
       >{{ s.label }}</span>
-      <span v-if="i < STEPS.length - 1" class="mx-1 hidden h-px w-6 bg-border sm:block" />
+      <span v-if="i < props.steps.length - 1" class="mx-1 hidden h-px w-6 bg-border sm:block" />
     </li>
   </ol>
 </template>

@@ -254,6 +254,19 @@ type SentinelInfo struct {
 	Active                bool   `json:"active"`
 }
 
+// OwnedPillarInfo describes the pillar owned by the active address. An empty
+// Name means the address owns no pillar.
+type OwnedPillarInfo struct {
+	Name                  string `json:"name"`
+	OwnerAddress          string `json:"ownerAddress"`
+	ProducerAddress       string `json:"producerAddress"`
+	RewardAddress         string `json:"rewardAddress"`
+	GiveMomentumRewardPct int    `json:"giveMomentumRewardPct"`
+	GiveDelegateRewardPct int    `json:"giveDelegateRewardPct"`
+	IsRevocable           bool   `json:"isRevocable"`
+	RevokeCooldown        int64  `json:"revokeCooldown"`
+}
+
 // TokenInfo is one ZTS token's metadata. An empty TokenStandard means not found.
 type TokenInfo struct {
 	Name          string `json:"name"`

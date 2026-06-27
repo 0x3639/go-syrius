@@ -428,3 +428,71 @@ func TestTokenTemplateTokenStandards(t *testing.T) {
 		t.Fatalf("burn: Amount=%v want %v", burn.Amount, amt)
 	}
 }
+
+func TestOwnedPillarDTO(t *testing.T) {
+	owner, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
+	producer, _ := types.ParseAddress("z1qr4pexnnfaexqqz8nscjjcsajy5hdqfkgadvwx")
+	p := &embedded.PillarInfo{
+		Name:                         "My-Pillar",
+		OwnerAddress:                 owner,
+		ProducerAddress:              producer,
+		WithdrawAddress:              owner,
+		GiveMomentumRewardPercentage: 0,
+		GiveDelegateRewardPercentage: 100,
+		IsRevocable:                  true,
+		RevokeCooldown:               42,
+	}
+	d := ownedPillarDTO([]*embedded.PillarInfo{p})
+	if d.Name != "My-Pillar" || d.OwnerAddress != owner.String() {
+		t.Fatalf("bad mapping: %+v", d)
+	}
+	if d.ProducerAddress != producer.String() || d.RewardAddress != owner.String() {
+		t.Fatalf("bad addresses: %+v", d)
+	}
+	if d.GiveMomentumRewardPct != 0 || d.GiveDelegateRewardPct != 100 {
+		t.Fatalf("bad percentages: %+v", d)
+	}
+	if !d.IsRevocable || d.RevokeCooldown != 42 {
+		t.Fatalf("bad flags: %+v", d)
+	}
+	// empty slice → empty Name (no pillar owned)
+	if ownedPillarDTO(nil).Name != "" {
+		t.Fatal("nil should map to empty Name")
+	}
+	if ownedPillarDTO([]*embedded.PillarInfo{}).Name != "" {
+		t.Fatal("empty slice should map to empty Name")
+	}
+}
+
+func TestValidatePillarName(t *testing.T) {
+	valid := []string{"Pillar", "my-pillar", "a.b_c", "P1", "Node-01.eu", "ab"}
+	for _, n := range valid {
+		if err := validatePillarName(n); err != nil {
+			t.Fatalf("expected %q valid, got %v", n, err)
+		}
+	}
+	invalid := []string{
+		"",                // empty
+		"-leading",        // leading separator
+		"trailing-",       // trailing separator
+		"double--dash",    // consecutive separators
+		"has space",       // space
+		"bad!",            // symbol
+		"a",               // too short? (1 char IS allowed) -- see note
+	}
+	// NOTE: single-char "a" IS valid per the regex; drop it from the invalid set.
+	invalid = invalid[:len(invalid)-1]
+	for _, n := range invalid {
+		if err := validatePillarName(n); err == nil {
+			t.Fatalf("expected %q invalid", n)
+		}
+	}
+	// 41 chars → too long
+	long := ""
+	for i := 0; i < 41; i++ {
+		long += "a"
+	}
+	if err := validatePillarName(long); err == nil {
+		t.Fatal("expected 41-char name to be rejected")
+	}
+}

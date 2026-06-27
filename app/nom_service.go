@@ -442,6 +442,117 @@ func (s *NomService) GetPillarReward() (RewardInfo, error) {
 	return RewardInfo{Znn: znn, Qsr: qsr}, nil
 }
 
+// pillarNameRe matches go-zenon's pillar name rule: alphanumerics with single
+// '-', '.', or '_' allowed only between alphanumerics.
+var pillarNameRe = regexp.MustCompile(`^([a-zA-Z0-9]+[-._]?)*[a-zA-Z0-9]$`)
+
+// validatePillarName mirrors go-zenon's checkPillarNameStatic (1–40 chars + regex).
+// The node re-validates authoritatively; this is the first gate.
+func validatePillarName(name string) error {
+	if len(name) == 0 || len(name) > 40 {
+		return errors.New("pillar name must be 1–40 characters")
+	}
+	if !pillarNameRe.MatchString(name) {
+		return errors.New("pillar name may use only letters, digits, and single - . _ between them")
+	}
+	return nil
+}
+
+// ownedPillarDTO maps the first pillar owned by the address to the DTO. An empty
+// slice (or nil first element) maps to an empty Name (= owns no pillar).
+func ownedPillarDTO(list []*embedded.PillarInfo) OwnedPillarInfo {
+	if len(list) == 0 || list[0] == nil {
+		return OwnedPillarInfo{}
+	}
+	p := list[0]
+	return OwnedPillarInfo{
+		Name:                  p.Name,
+		OwnerAddress:          p.OwnerAddress.String(),
+		ProducerAddress:       p.ProducerAddress.String(),
+		RewardAddress:         p.WithdrawAddress.String(),
+		GiveMomentumRewardPct: int(p.GiveMomentumRewardPercentage),
+		GiveDelegateRewardPct: int(p.GiveDelegateRewardPercentage),
+		IsRevocable:           p.IsRevocable,
+		RevokeCooldown:        p.RevokeCooldown,
+	}
+}
+
+// GetMyPillar returns the pillar owned by the active address (empty Name = none).
+func (s *NomService) GetMyPillar() (OwnedPillarInfo, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return OwnedPillarInfo{}, errors.New("not connected")
+	}
+	addr, ok := s.wallet.activeAddress()
+	if !ok {
+		return OwnedPillarInfo{}, errLocked
+	}
+	list, err := client.PillarApi.GetByOwner(addr)
+	if err != nil {
+		return OwnedPillarInfo{}, err
+	}
+	return ownedPillarDTO(list), nil
+}
+
+// GetPillarDepositedQsr returns the active address's QSR escrowed toward pillar
+// registration (base-unit decimal string; "0" if none).
+func (s *NomService) GetPillarDepositedQsr() (string, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return "", errors.New("not connected")
+	}
+	addr, ok := s.wallet.activeAddress()
+	if !ok {
+		return "", errLocked
+	}
+	q, err := client.PillarApi.GetDepositedQsr(addr)
+	if err != nil {
+		return "", err
+	}
+	if q == nil {
+		return "0", nil
+	}
+	return q.String(), nil
+}
+
+// GetPillarQsrCost returns the current QSR cost to register the next pillar
+// (base-unit decimal string). This QSR is burned on registration.
+func (s *NomService) GetPillarQsrCost() (string, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return "", errors.New("not connected")
+	}
+	cost, err := client.PillarApi.GetQsrRegistrationCost()
+	if err != nil {
+		return "", err
+	}
+	if cost == nil {
+		return "0", nil
+	}
+	return cost.String(), nil
+}
+
+// CheckPillarName validates the name locally then asks the node whether it is
+// available (true = free to register).
+func (s *NomService) CheckPillarName(name string) (bool, error) {
+	name = strings.TrimSpace(name)
+	if err := validatePillarName(name); err != nil {
+		return false, err
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return false, errors.New("not connected")
+	}
+	avail, err := client.PillarApi.CheckNameAvailability(name)
+	if err != nil {
+		return false, err
+	}
+	if avail == nil {
+		return false, nil
+	}
+	return *avail, nil
+}
+
 // sentinelDTO maps an SDK SentinelInfo to the DTO. A nil result or a zero
 // RegistrationTimestamp means the address has no sentinel (empty Owner).
 func sentinelDTO(s *embedded.SentinelInfo) SentinelInfo {

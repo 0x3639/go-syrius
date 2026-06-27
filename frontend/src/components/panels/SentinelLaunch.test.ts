@@ -12,6 +12,7 @@ vi.mock('../../../wailsjs/go/app/NomService', () => ({
 }))
 
 import SentinelLaunch from './SentinelLaunch.vue'
+import * as Nom from '../../../wailsjs/go/app/NomService'
 import { useSentinelStore } from '../../stores/sentinel'
 import { useTxStore } from '../../stores/tx'
 
@@ -58,9 +59,21 @@ describe('SentinelLaunch', () => {
     const w = mount(SentinelLaunch)
     await w.find('button[aria-label="deposit qsr"]').trigger('click')
     await new Promise((r) => setTimeout(r))
+    expect(Nom.PrepareDepositQsr).toHaveBeenCalledWith('5000000000000')
     expect(awaitConfirm).toHaveBeenCalledWith({ kind: 'deposit' })
     tx.status = 'done'
     await w.vm.$nextTick()
     expect(begin).toHaveBeenCalledWith('deposit')
+  })
+
+  it('slow clearing: offers a Stop waiting escape that calls stopPolling', async () => {
+    const { s } = setup('0', 'register')
+    s.pollCount = 6
+    const stop = vi.spyOn(s, 'stopPolling').mockImplementation(() => {})
+    const w = mount(SentinelLaunch)
+    const btn = w.find('button[aria-label="stop waiting"]')
+    expect(btn.exists()).toBe(true)
+    await btn.trigger('click')
+    expect(stop).toHaveBeenCalled()
   })
 })

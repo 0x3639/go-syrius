@@ -66,6 +66,10 @@ async function withdrawQsr() {
 watch(
   () => tx.status,
   (s) => {
+    if (s === 'idle' || s === 'error') {
+      lastAction = null
+      return
+    }
     if (s !== 'done') return
     if (lastAction === 'deposit' || lastAction === 'register') {
       sentinelStore.beginPending(lastAction)
@@ -100,6 +104,14 @@ watch(
           @click="sentinelStore.refresh()"
         >
           Refresh
+        </button>
+        <button
+          type="button"
+          aria-label="stop waiting"
+          class="rounded border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          @click="sentinelStore.stopPolling()"
+        >
+          Stop waiting
         </button>
       </div>
     </div>

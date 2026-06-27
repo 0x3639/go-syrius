@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatAmount, formatAmountExact, toBase } from './format'
+import { formatAmount, formatAmountExact, toBase, isValidPillarName } from './format'
 
 describe('toBase (decimal -> base units)', () => {
   it('converts decimal strings to base-unit integers at the given precision', () => {
@@ -27,5 +27,18 @@ describe('formatAmountExact', () => {
   it('keeps full precision', () => {
     expect(formatAmountExact('5045401869374', 8)).toBe('50454.01869374')
     expect(formatAmountExact('150000000', 8)).toBe('1.5')
+  })
+})
+
+describe('isValidPillarName', () => {
+  it('accepts alphanumerics with single separators between them', () => {
+    for (const n of ['Pillar', 'my-pillar', 'a.b_c', 'P1', 'Node-01.eu', 'a']) {
+      expect(isValidPillarName(n)).toBe(true)
+    }
+  })
+  it('rejects empty, edge separators, doubles, spaces, symbols, and >40 chars', () => {
+    for (const n of ['', '-x', 'x-', 'a--b', 'has space', 'bad!', 'a'.repeat(41)]) {
+      expect(isValidPillarName(n)).toBe(false)
+    }
   })
 })

@@ -9,10 +9,14 @@ const STEPS = [
 
 <template>
   <ol class="flex flex-wrap items-center gap-2" aria-label="Sentinel launch progress">
-    <li v-for="(s, i) in STEPS" :key="s.n" class="flex items-center gap-2">
+    <li
+      v-for="(s, i) in STEPS"
+      :key="s.n"
+      class="flex items-center gap-2"
+      :data-state="s.n < current ? 'done' : s.n === current ? 'current' : 'todo'"
+    >
       <span
         class="grid h-6 w-6 shrink-0 place-items-center rounded-full border text-xs font-medium"
-        :data-state="s.n < current ? 'done' : s.n === current ? 'current' : 'todo'"
         :class="s.n < current
           ? 'border-primary bg-primary text-primary-foreground'
           : s.n === current

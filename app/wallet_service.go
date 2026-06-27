@@ -408,9 +408,33 @@ func (w *WalletService) CurrentAccounts() ([]AccountInfo, error) {
 
 // SelectAccount sets the active account index and persists it.
 func (w *WalletService) SelectAccount(index int) error {
-	if index < 0 || index >= maxAccounts {
+	if index < 0 {
 		return fmt.Errorf("account index %d out of range", index)
 	}
+	w.mu.Lock()
+	if w.keystore == nil {
+		w.mu.Unlock()
+		return errLocked
+	}
+	name := w.activeWallet
+	w.mu.Unlock()
+
+	// Bound by the wallet's REVEALED account count, not maxAccounts. CurrentAccounts
+	// only exposes accountCountFor(...) accounts; without this a direct Wails call
+	// could activate — and then sign from — an index the UI never revealed. Fall
+	// back to accountRange (the always-revealed minimum) if settings are
+	// unavailable, and only persist when we could read them.
+	count := accountRange
+	persist := false
+	s, err := w.config.GetSettings()
+	if err == nil {
+		count = accountCountFor(s, name)
+		persist = true
+	}
+	if index >= count {
+		return fmt.Errorf("account index %d out of range (only %d revealed)", index, count)
+	}
+
 	w.mu.Lock()
 	if w.keystore == nil {
 		w.mu.Unlock()
@@ -419,8 +443,7 @@ func (w *WalletService) SelectAccount(index int) error {
 	w.active = index
 	w.mu.Unlock()
 
-	s, err := w.config.GetSettings()
-	if err == nil {
+	if persist {
 		s.ActiveAccount = index
 		_ = w.config.SetSettings(s)
 	}

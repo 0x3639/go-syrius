@@ -400,3 +400,35 @@ func TestAddAccount(t *testing.T) {
 		t.Fatal("existing account address changed after AddAccount")
 	}
 }
+
+func TestSelectAccountRejectsUnrevealedIndex(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+	meta, err := w.ImportMnemonic("sel", "pw", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Unlock(meta.ID, "pw"); err != nil {
+		t.Fatal(err)
+	}
+	// Default reveals accountRange accounts: indices 0..accountRange-1 selectable.
+	if err := w.SelectAccount(accountRange - 1); err != nil {
+		t.Fatalf("SelectAccount(%d) should succeed: %v", accountRange-1, err)
+	}
+	// An index at/above the revealed count must be rejected. Previously SelectAccount
+	// only bounded by maxAccounts, so a direct Wails call could activate — and then
+	// sign from — an account the UI never revealed.
+	if err := w.SelectAccount(accountRange); err == nil {
+		t.Fatalf("SelectAccount(%d) must be rejected (only %d revealed)", accountRange, accountRange)
+	}
+	if err := w.SelectAccount(maxAccounts - 1); err == nil {
+		t.Fatal("SelectAccount(maxAccounts-1) must be rejected while unrevealed")
+	}
+	// Revealing one more makes exactly the next index selectable.
+	if _, err := w.AddAccount(); err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	if err := w.SelectAccount(accountRange); err != nil {
+		t.Fatalf("SelectAccount(%d) should succeed after AddAccount: %v", accountRange, err)
+	}
+}

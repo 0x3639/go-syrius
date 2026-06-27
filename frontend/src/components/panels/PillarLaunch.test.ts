@@ -62,6 +62,18 @@ describe('PillarLaunch wizard', () => {
     expect(w.find('button[aria-label="register pillar"]').exists()).toBe(true)
   })
 
+  it('lets the user click back to the Deposit QSR step to withdraw after it cleared', async () => {
+    setup({ plasma: ENOUGH_PLASMA, deposited: COST, cost: COST })
+    const w = mount(PillarLaunch)
+    // On step 3 the withdraw hatch is not shown.
+    expect(w.find('button[aria-label="withdraw pillar qsr"]').exists()).toBe(false)
+    // The header's "Deposit QSR" step is clickable (a completed step).
+    await w.find('button[aria-label="Deposit QSR"]').trigger('click')
+    expect(w.find('button[aria-label="withdraw pillar qsr"]').exists()).toBe(true)
+    // It's already cleared, so the deposit button is hidden (nothing to top up).
+    expect(w.find('button[aria-label="deposit pillar qsr"]').exists()).toBe(false)
+  })
+
   it('clearing: hides actions and shows the waiting message while pending', () => {
     setup({ plasma: 0, pendingStep: 'plasma' })
     const w = mount(PillarLaunch)

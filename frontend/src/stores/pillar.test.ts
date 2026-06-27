@@ -11,6 +11,24 @@ vi.mock('../../wailsjs/go/app/NomService', () => ({
 
 beforeEach(() => setActivePinia(createPinia()))
 
+describe('pillar store plasmaCleared', () => {
+  it('clears on sufficient current plasma', () => {
+    const s = usePillarStore()
+    s.plasma = { currentPlasma: Number(PILLAR_PLASMA_REQUIRED), maxPlasma: 0, qsrFused: '0' } as never
+    expect(s.plasmaCleared).toBe(true)
+  })
+  it('clears on sufficient fused capacity even when current plasma is momentarily low', () => {
+    const s = usePillarStore()
+    s.plasma = { currentPlasma: 0, maxPlasma: Number(PILLAR_PLASMA_REQUIRED), qsrFused: '50000000000' } as never
+    expect(s.plasmaCleared).toBe(true)
+  })
+  it('does not clear when neither current nor max plasma is sufficient', () => {
+    const s = usePillarStore()
+    s.plasma = { currentPlasma: 100, maxPlasma: 100, qsrFused: '0' } as never
+    expect(s.plasmaCleared).toBe(false)
+  })
+})
+
 describe('pillar store registration pending/poll', () => {
   it('beginPending(plasma) clears once plasma reaches the requirement', async () => {
     vi.useFakeTimers()

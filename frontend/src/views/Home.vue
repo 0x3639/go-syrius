@@ -53,6 +53,7 @@ async function refresh() {
     balances.load(),
     plasma.refresh(),
     pillar.refreshDelegation(),
+    pillar.refreshMyPillar(),
     txs.load(),
     unreceived.load(),
   ])

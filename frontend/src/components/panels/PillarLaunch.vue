@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Input, Button } from 'nom-ui'
 import * as Nom from '../../../wailsjs/go/app/NomService'
-import { usePillarStore, PILLAR_PLASMA_REQUIRED, FUSE_RECOMMENDED_QSR } from '../../stores/pillar'
+import { usePillarStore, FUSE_RECOMMENDED_QSR } from '../../stores/pillar'
 import { useTxStore } from '../../stores/tx'
 import { useWalletStore } from '../../stores/wallet'
 import { formatAmount, toBase, isValidPillarName } from '../../lib/format'
@@ -20,7 +20,7 @@ const PILLAR_STEPS = [
 const pillarStore = usePillarStore()
 const tx = useTxStore()
 const wallet = useWalletStore()
-const { depositedQsr, qsrCost, plasma, pendingStep, pollCount } = storeToRefs(pillarStore)
+const { depositedQsr, qsrCost, plasma, plasmaCleared, pendingStep, pollCount } = storeToRefs(pillarStore)
 const error = ref('')
 
 // Registration form.
@@ -31,14 +31,6 @@ const momentumPct = ref('100')
 const delegatePct = ref('100')
 const nameAvailable = ref<boolean | null>(null)
 
-const plasmaCurrent = computed(() => {
-  try {
-    return BigInt(plasma.value?.currentPlasma ?? 0)
-  } catch {
-    return 0n
-  }
-})
-const plasmaCleared = computed(() => plasmaCurrent.value >= PILLAR_PLASMA_REQUIRED)
 const deposited = computed(() => {
   try {
     return BigInt(depositedQsr.value || '0')
@@ -57,7 +49,21 @@ const shortfall = computed(() => (cost.value > deposited.value ? cost.value - de
 const qsrCleared = computed(() => cost.value > 0n && deposited.value >= cost.value)
 const clearing = computed(() => pendingStep.value !== null)
 const slow = computed(() => pendingStep.value !== null && pollCount.value >= SLOW_AFTER_POLLS)
-const currentStep = computed<1 | 2 | 3>(() => (!plasmaCleared.value ? 1 : !qsrCleared.value ? 2 : 3))
+// derivedStep is the first incomplete step (the forced minimum). displayStep lets
+// the user navigate BACK to an already-completed step via the clickable header —
+// e.g. returning to "Deposit QSR" to withdraw after the deposit cleared.
+const derivedStep = computed<1 | 2 | 3>(() => (!plasmaCleared.value ? 1 : !qsrCleared.value ? 2 : 3))
+const viewStep = ref<1 | 2 | 3 | null>(null)
+const displayStep = computed<1 | 2 | 3>(() =>
+  viewStep.value !== null && viewStep.value <= derivedStep.value ? viewStep.value : derivedStep.value,
+)
+function goToStep(n: number) {
+  viewStep.value = n as 1 | 2 | 3
+}
+// When chain state moves the derived step, follow it (drop any manual back-nav).
+watch(derivedStep, () => {
+  viewStep.value = null
+})
 
 const nameValid = computed(() => isValidPillarName(name.value.trim()))
 const pctValid = computed(() => {
@@ -159,7 +165,14 @@ watch(
 
 <template>
   <section class="space-y-4 rounded-lg border border-border bg-card p-4">
-    <StepHeader :steps="PILLAR_STEPS" :current="currentStep" ariaLabel="Pillar registration progress" />
+    <StepHeader
+      :steps="PILLAR_STEPS"
+      :current="displayStep"
+      :clickable="true"
+      :max-step="derivedStep"
+      ariaLabel="Pillar registration progress"
+      @select="goToStep"
+    />
 
     <!-- Clearing (transient): waiting for the contract / fusion to settle. -->
     <div v-if="clearing" class="space-y-2">
@@ -173,7 +186,13 @@ watch(
               : 'Registering your pillar — waiting for activation…'
         }}</span>
       </div>
-      <p class="text-xs text-muted-foreground">This usually takes a few momentums.</p>
+      <p class="text-xs text-muted-foreground">
+        {{
+          pendingStep === 'plasma'
+            ? 'Fusing on an address with no plasma needs proof-of-work first, so this can take a couple of minutes. You can leave this page and come back — the fusion continues.'
+            : 'This usually takes a few momentums.'
+        }}
+      </p>
       <div v-if="slow" class="flex items-center gap-2">
         <p class="text-xs text-muted-foreground">Taking longer than usual — the network may be busy.</p>
         <button
@@ -195,19 +214,29 @@ watch(
     </div>
 
     <!-- Step 1: ensure enough fused plasma. -->
-    <template v-else-if="!plasmaCleared">
-      <p class="text-xs text-muted-foreground">
+    <template v-else-if="displayStep === 1">
+      <p v-if="plasmaCleared" class="text-sm text-foreground">✓ Plasma is sufficient.</p>
+      <p v-else class="text-xs text-muted-foreground">
         Registering a pillar needs fused plasma. We recommend fusing 500 QSR (you can cancel the
-        fusion later from the Plasma tab to reclaim it).
+        fusion later from the Plasma tab to reclaim it). If this address already has enough fused
+        plasma, this step clears automatically.
       </p>
       <p class="text-sm text-muted-foreground">
         Current plasma <span class="font-mono text-foreground">{{ plasma?.currentPlasma ?? 0 }}</span>
+        · fused <span class="font-mono text-foreground">{{ formatAmount(plasma?.qsrFused ?? '0', 8) }} QSR</span>
       </p>
       <Button class="w-full" aria-label="fuse plasma" @click="fuse">Fuse 500 QSR for plasma</Button>
+      <p v-if="!plasmaCleared" class="text-xs text-muted-foreground">
+        Fusing from a zero-plasma address runs proof-of-work first and can take a couple of minutes
+        to confirm — please don't cancel early.
+      </p>
+      <p v-else class="text-xs text-muted-foreground">Use the steps above to continue.</p>
     </template>
 
-    <!-- Step 2: deposit the (dynamic) QSR registration cost. -->
-    <template v-else-if="!qsrCleared">
+    <!-- Step 2: deposit the (dynamic, chain-queried) QSR registration cost. The
+         withdraw escape hatch stays available even after the deposit clears, so
+         the user can navigate back here and reclaim it before registering. -->
+    <template v-else-if="displayStep === 2">
       <p class="rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
         ⚠ Deposited QSR is <strong>burned and unrecoverable</strong> once the pillar is registered.
         You can withdraw it before registering if you change your mind.
@@ -218,11 +247,17 @@ watch(
           >{{ formatAmount(depositedQsr, 8) }} / {{ formatAmount(qsrCost, 8) }} QSR</span
         >
       </p>
-      <Button class="w-full" :disabled="shortfall === 0n" aria-label="deposit pillar qsr" @click="deposit"
+      <p v-if="qsrCleared" class="text-sm text-foreground">✓ Enough deposited. Use the steps above to continue to registration.</p>
+      <Button
+        v-else
+        class="w-full"
+        :disabled="shortfall === 0n"
+        aria-label="deposit pillar qsr"
+        @click="deposit"
         >Deposit {{ formatAmount(shortfall.toString(), 8) }} QSR</Button
       >
       <Button variant="outline" class="w-full" aria-label="withdraw pillar qsr" @click="withdraw"
-        >Changed your mind? Withdraw deposited QSR</Button
+        >Withdraw deposited QSR</Button
       >
     </template>
 

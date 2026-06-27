@@ -4,10 +4,12 @@ import { setActivePinia, createPinia } from 'pinia'
 
 vi.mock('nom-ui', () => ({
   Button: { props: ['disabled'], template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>' },
+  Input: { props: ['modelValue'], template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
 }))
 vi.mock('../../../wailsjs/go/app/NomService', () => ({
   PrepareCollectPillarReward: vi.fn(() => Promise.resolve({ kind: 'collect' })),
   PrepareRevokePillar: vi.fn(() => Promise.resolve({ kind: 'revoke' })),
+  PrepareUpdatePillar: vi.fn(() => Promise.resolve({ kind: 'update' })),
 }))
 
 import PillarActive from './PillarActive.vue'
@@ -65,5 +67,31 @@ describe('PillarActive', () => {
     await w.find('button[aria-label="revoke pillar"]').trigger('click')
     await new Promise((r) => setTimeout(r))
     expect(Nom.PrepareRevokePillar).toHaveBeenCalledWith('Pillar-A')
+  })
+
+  it('reveals an edit form pre-filled from the current pillar', async () => {
+    setup()
+    const w = mount(PillarActive)
+    expect(w.find('input[aria-label="edit producer address"]').exists()).toBe(false)
+    await w.find('button[aria-label="edit pillar"]').trigger('click')
+    expect((w.find('input[aria-label="edit producer address"]').element as HTMLInputElement).value).toBe('z1prod')
+    expect((w.find('input[aria-label="edit reward address"]').element as HTMLInputElement).value).toBe('z1rew')
+    expect((w.find('input[aria-label="edit momentum percent"]').element as HTMLInputElement).value).toBe('0')
+    expect((w.find('input[aria-label="edit delegate percent"]').element as HTMLInputElement).value).toBe('100')
+  })
+
+  it('forwards update with name + edited fields in order', async () => {
+    const { awaitConfirm } = setup()
+    const w = mount(PillarActive)
+    await w.find('button[aria-label="edit pillar"]').trigger('click')
+    // Distinct values so an arg-order swap would fail.
+    await w.find('input[aria-label="edit producer address"]').setValue('z1newproducer')
+    await w.find('input[aria-label="edit reward address"]').setValue('z1newreward')
+    await w.find('input[aria-label="edit momentum percent"]').setValue('30')
+    await w.find('input[aria-label="edit delegate percent"]').setValue('70')
+    await w.find('button[aria-label="save pillar"]').trigger('click')
+    await new Promise((r) => setTimeout(r))
+    expect(Nom.PrepareUpdatePillar).toHaveBeenCalledWith('Pillar-A', 'z1newproducer', 'z1newreward', 30, 70)
+    expect(awaitConfirm).toHaveBeenCalledWith({ kind: 'update' })
   })
 })

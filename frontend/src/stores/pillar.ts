@@ -35,9 +35,15 @@ export const usePillarStore = defineStore('pillar', {
         return false
       }
     },
+    // Plasma is sufficient if the address has enough available plasma right now,
+    // OR enough fused-plasma capacity (maxPlasma) — current plasma dips after each
+    // tx and regenerates, so an already-fused address must not be blocked by a
+    // momentary low reading.
     plasmaCleared(s): boolean {
       try {
-        return BigInt(s.plasma?.currentPlasma ?? 0) >= PILLAR_PLASMA_REQUIRED
+        const current = BigInt(s.plasma?.currentPlasma ?? 0)
+        const max = BigInt(s.plasma?.maxPlasma ?? 0)
+        return current >= PILLAR_PLASMA_REQUIRED || max >= PILLAR_PLASMA_REQUIRED
       } catch {
         return false
       }
@@ -65,6 +71,14 @@ export const usePillarStore = defineStore('pillar', {
         this.qsrCost = await Nom.GetPillarQsrCost()
         this.plasma = await Nom.GetPlasmaInfo()
         this.reward = await Nom.GetPillarReward()
+      } catch { /* not connected / locked — leave as-is */ }
+    },
+    // Lightweight owned-pillar refresh for the always-visible status strip — just
+    // the owned pillar (1 RPC), independent of which tab is open. The pillar is
+    // owned per-address, so this must follow account switches.
+    async refreshMyPillar() {
+      try {
+        this.myPillar = await Nom.GetMyPillar()
       } catch { /* not connected / locked — leave as-is */ }
     },
     // Start polling for a just-published step to settle on-chain, then advance.

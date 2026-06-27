@@ -11,9 +11,12 @@ const balances = useBalancesStore()
 const plasma = usePlasmaStore()
 const pillar = usePillarStore()
 
-const pillarName = computed(() =>
-  pillar.delegation && pillar.delegation.name ? pillar.delegation.name : 'None',
-)
+// Prefer the pillar this address OWNS; fall back to the one it delegates to.
+const pillarName = computed(() => {
+  if (pillar.myPillar && pillar.myPillar.name) return pillar.myPillar.name
+  if (pillar.delegation && pillar.delegation.name) return pillar.delegation.name
+  return 'None'
+})
 const level = computed(() => plasmaLevel(plasma.info?.currentPlasma ?? 0))
 </script>
 

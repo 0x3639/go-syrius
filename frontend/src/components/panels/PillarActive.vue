@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { Button } from 'nom-ui'
+import { Input, Button } from 'nom-ui'
 import * as Nom from '../../../wailsjs/go/app/NomService'
 import { usePillarStore } from '../../stores/pillar'
 import { useTxStore } from '../../stores/tx'
-import { formatAmount, shortAddress } from '../../lib/format'
+import { formatAmount } from '../../lib/format'
+import Field from '../Field.vue'
 
 const pillarStore = usePillarStore()
 const tx = useTxStore()
@@ -14,6 +15,42 @@ const error = ref('')
 
 const rewardZero = computed(
   () => !reward.value || (reward.value.znn === '0' && reward.value.qsr === '0'),
+)
+
+// Edit (UpdatePillar) form — producer address, reward address, and the two
+// reward percentages. Pre-filled from the current pillar; the name is the
+// identifier and cannot change.
+const editing = ref(false)
+const editProducer = ref('')
+const editReward = ref('')
+const editMomentum = ref('')
+const editDelegate = ref('')
+
+function startEdit() {
+  if (!myPillar.value) return
+  editProducer.value = myPillar.value.producerAddress
+  editReward.value = myPillar.value.rewardAddress
+  editMomentum.value = String(myPillar.value.giveMomentumRewardPct)
+  editDelegate.value = String(myPillar.value.giveDelegateRewardPct)
+  error.value = ''
+  editing.value = true
+}
+function cancelEdit() {
+  editing.value = false
+}
+
+const pctValid = computed(() => {
+  const m = Number(editMomentum.value)
+  const d = Number(editDelegate.value)
+  return (
+    editMomentum.value.trim() !== '' &&
+    editDelegate.value.trim() !== '' &&
+    Number.isInteger(m) && m >= 0 && m <= 100 &&
+    Number.isInteger(d) && d >= 0 && d <= 100
+  )
+})
+const canSave = computed(
+  () => editProducer.value.trim() !== '' && editReward.value.trim() !== '' && pctValid.value,
 )
 
 async function collect() {
@@ -32,8 +69,26 @@ async function revoke() {
     error.value = e instanceof Error ? e.message : String(e)
   }
 }
+async function saveEdit() {
+  error.value = ''
+  try {
+    tx.awaitConfirm(
+      await Nom.PrepareUpdatePillar(
+        myPillar.value?.name ?? '',
+        editProducer.value.trim(),
+        editReward.value.trim(),
+        Number(editMomentum.value),
+        Number(editDelegate.value),
+      ),
+    )
+    editing.value = false
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
 
-// Refresh after a collect/revoke settles (reward updates; revoke clears ownership).
+// Refresh after a collect/revoke/update settles (reward updates; revoke clears
+// ownership; update changes producer/reward/percentages).
 watch(
   () => tx.status,
   (s) => {
@@ -49,38 +104,68 @@ watch(
       <h2 class="text-sm font-medium text-foreground">Your Pillar</h2>
       <span class="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">{{ myPillar.name }}</span>
     </div>
-    <dl class="space-y-1 text-sm text-muted-foreground">
-      <div class="flex justify-between">
-        <dt>Producer</dt>
-        <dd class="font-mono text-foreground">{{ shortAddress(myPillar.producerAddress) }}</dd>
+
+    <!-- Read view -->
+    <template v-if="!editing">
+      <dl class="space-y-2 text-sm text-muted-foreground">
+        <div>
+          <dt>Producer</dt>
+          <dd class="break-all font-mono text-foreground">{{ myPillar.producerAddress }}</dd>
+        </div>
+        <div>
+          <dt>Reward address</dt>
+          <dd class="break-all font-mono text-foreground">{{ myPillar.rewardAddress }}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt>Momentum / Delegate %</dt>
+          <dd class="font-mono text-foreground">{{ myPillar.giveMomentumRewardPct }}% / {{ myPillar.giveDelegateRewardPct }}%</dd>
+        </div>
+      </dl>
+      <p v-if="reward" class="text-sm text-muted-foreground">
+        Uncollected reward
+        <span class="font-mono text-foreground"
+          >{{ formatAmount(reward.znn, 8) }} ZNN · {{ formatAmount(reward.qsr, 8) }} QSR</span
+        >
+      </p>
+      <div class="flex flex-wrap items-center gap-2">
+        <Button :disabled="rewardZero" aria-label="collect pillar reward" @click="collect">Collect</Button>
+        <Button variant="outline" aria-label="edit pillar" @click="startEdit">Edit configuration</Button>
+        <Button
+          variant="outline"
+          :disabled="!myPillar.isRevocable"
+          aria-label="revoke pillar"
+          @click="revoke"
+          >Revoke<template v-if="!myPillar.isRevocable">
+            (cooldown {{ myPillar.revokeCooldown }}s)</template
+          ></Button
+        >
       </div>
-      <div class="flex justify-between">
-        <dt>Reward address</dt>
-        <dd class="font-mono text-foreground">{{ shortAddress(myPillar.rewardAddress) }}</dd>
+    </template>
+
+    <!-- Edit view (UpdatePillar) -->
+    <template v-else>
+      <p class="text-xs text-muted-foreground">
+        Update your pillar's producer address, reward address, and reward percentages. The pillar
+        name cannot be changed.
+      </p>
+      <Field label="Producer address" hint="Your pillar node's block-producing address.">
+        <Input v-model="editProducer" placeholder="z1…" aria-label="edit producer address" />
+      </Field>
+      <Field label="Reward address" hint="Where pillar rewards are collected.">
+        <Input v-model="editReward" placeholder="z1…" aria-label="edit reward address" />
+      </Field>
+      <Field label="Momentum reward % (to delegators)">
+        <Input v-model="editMomentum" placeholder="0–100" aria-label="edit momentum percent" />
+      </Field>
+      <Field label="Delegate reward % (to delegators)">
+        <Input v-model="editDelegate" placeholder="0–100" aria-label="edit delegate percent" />
+      </Field>
+      <div class="flex flex-wrap items-center gap-2">
+        <Button :disabled="!canSave" aria-label="save pillar" @click="saveEdit">Save changes</Button>
+        <Button variant="outline" aria-label="cancel edit" @click="cancelEdit">Cancel</Button>
       </div>
-      <div class="flex justify-between">
-        <dt>Momentum / Delegate %</dt>
-        <dd class="font-mono text-foreground">{{ myPillar.giveMomentumRewardPct }}% / {{ myPillar.giveDelegateRewardPct }}%</dd>
-      </div>
-    </dl>
-    <p v-if="reward" class="text-sm text-muted-foreground">
-      Uncollected reward
-      <span class="font-mono text-foreground"
-        >{{ formatAmount(reward.znn, 8) }} ZNN · {{ formatAmount(reward.qsr, 8) }} QSR</span
-      >
-    </p>
-    <div class="flex flex-wrap items-center gap-2">
-      <Button :disabled="rewardZero" aria-label="collect pillar reward" @click="collect">Collect</Button>
-      <Button
-        variant="outline"
-        :disabled="!myPillar.isRevocable"
-        aria-label="revoke pillar"
-        @click="revoke"
-        >Revoke<template v-if="!myPillar.isRevocable">
-          (cooldown {{ myPillar.revokeCooldown }}s)</template
-        ></Button
-      >
-    </div>
+    </template>
+
     <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>
   </section>
 </template>

@@ -15,6 +15,7 @@ vi.mock('./PillarActive.vue', () => ({ default: { name: 'PillarActive', template
 
 import PillarPanel from './PillarPanel.vue'
 import { usePillarStore } from '../../stores/pillar'
+import { useWalletStore } from '../../stores/wallet'
 
 function setup(myPillar: unknown) {
   setActivePinia(createPinia())
@@ -50,5 +51,21 @@ describe('PillarPanel container', () => {
     const stop = vi.spyOn(s, 'stopPolling')
     mount(PillarPanel).unmount()
     expect(stop).toHaveBeenCalled()
+  })
+
+  it('re-fetches registration (and stops polling) when the active account changes', async () => {
+    setActivePinia(createPinia())
+    const s = usePillarStore()
+    s.myPillar = { name: 'Pillar-A' } as never
+    const refresh = vi.spyOn(s, 'refreshRegistration').mockResolvedValue()
+    const stop = vi.spyOn(s, 'stopPolling')
+    const wallet = useWalletStore()
+    mount(PillarPanel)
+    refresh.mockClear()
+    stop.mockClear()
+    wallet.activeIndex = 1
+    await new Promise((r) => setTimeout(r))
+    expect(stop).toHaveBeenCalled()
+    expect(refresh).toHaveBeenCalled()
   })
 })

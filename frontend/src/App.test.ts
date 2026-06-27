@@ -12,6 +12,10 @@ vi.mock('nom-ui', () => ({
   Toaster: { template: '<div />' },
 }))
 vi.mock('../wailsjs/go/app/NodeService', () => ({ Connect: vi.fn().mockResolvedValue(undefined) }))
+// Stub the splash so jsdom never pulls lottie-web in; assert on its presence.
+vi.mock('./components/IntroSplash.vue', () => ({
+  default: { name: 'IntroSplash', emits: ['done'], template: '<div data-test="intro" />' },
+}))
 
 import App from './App.vue'
 import { useWalletStore } from './stores/wallet'
@@ -19,6 +23,7 @@ import { useWalletStore } from './stores/wallet'
 beforeEach(() => {
   setActivePinia(createPinia())
   push.mockClear()
+  localStorage.clear()
 })
 
 describe('App — lock leaves the protected UI', () => {
@@ -29,5 +34,29 @@ describe('App — lock leaves the protected UI', () => {
     wallet.locked = true // lock (e.g. the Lock button)
     await w.vm.$nextTick()
     expect(push).toHaveBeenCalledWith('/unlock')
+  })
+})
+
+describe('App — intro splash', () => {
+  it('shows the intro splash when the seen flag is absent', () => {
+    useWalletStore().locked = true
+    const w = mount(App)
+    expect(w.find('[data-test="intro"]').exists()).toBe(true)
+  })
+
+  it('hides the intro splash when the seen flag is set', () => {
+    localStorage.setItem('zn:introSeen', '1')
+    useWalletStore().locked = true
+    const w = mount(App)
+    expect(w.find('[data-test="intro"]').exists()).toBe(false)
+  })
+
+  it('sets the seen flag and removes the splash on done', async () => {
+    useWalletStore().locked = true
+    const w = mount(App)
+    w.findComponent({ name: 'IntroSplash' }).vm.$emit('done')
+    await w.vm.$nextTick()
+    expect(localStorage.getItem('zn:introSeen')).toBe('1')
+    expect(w.find('[data-test="intro"]').exists()).toBe(false)
   })
 })

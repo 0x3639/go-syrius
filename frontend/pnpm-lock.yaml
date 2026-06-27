@@ -11,6 +11,9 @@ importers:
       '@types/qrcode':
         specifier: ^1.5.6
         version: 1.5.6
+      lottie-web:
+        specifier: ^5.13.0
+        version: 5.13.0
       nom-ui:
         specifier: github:digitalSloth/nom-ui#63f755a52cf6ee3665d3755755c506e3aa191bd4
         version: https://codeload.github.com/digitalSloth/nom-ui/tar.gz/63f755a52cf6ee3665d3755755c506e3aa191bd4(vue@3.5.38(typescript@5.9.3))
@@ -1191,6 +1194,9 @@ packages:
   locate-path@5.0.0:
     resolution: {integrity: sha512-t7hw9pI+WvuwNJXwk5zVHpyhIqzg2qTlklJOf0mVxGSbe3Fp2VieZcduNYjaLDoy6p9uGpQEGWG87WpMKlNq8g==}
     engines: {node: '>=8'}
+
+  lottie-web@5.13.0:
+    resolution: {integrity: sha512-+gfBXl6sxXMPe8tKQm7qzLnUy5DUPJPKIyRHwtpCpyUEYjHYRJC/5gjUvdkuO2c3JllrPtHXH5UJJK8LRYl5yQ==}
 
   loupe@3.2.1:
     resolution: {integrity: sha512-CdzqowRJCeLU72bHvWqwRBBlLcMEtIvGrlvef74kMnV2AolS9Y8xUv1I0U/MNAWMhBlKIoyuEgoJ0t/bbwHbLQ==}
@@ -2667,6 +2673,8 @@ snapshots:
   locate-path@5.0.0:
     dependencies:
       p-locate: 4.1.0
+
+  lottie-web@5.13.0: {}
 
   loupe@3.2.1: {}
 

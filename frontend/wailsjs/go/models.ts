@@ -150,6 +150,32 @@ export namespace app {
 	        this.chainId = source["chainId"];
 	    }
 	}
+	export class OwnedPillarInfo {
+	    name: string;
+	    ownerAddress: string;
+	    producerAddress: string;
+	    rewardAddress: string;
+	    giveMomentumRewardPct: number;
+	    giveDelegateRewardPct: number;
+	    isRevocable: boolean;
+	    revokeCooldown: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new OwnedPillarInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.ownerAddress = source["ownerAddress"];
+	        this.producerAddress = source["producerAddress"];
+	        this.rewardAddress = source["rewardAddress"];
+	        this.giveMomentumRewardPct = source["giveMomentumRewardPct"];
+	        this.giveDelegateRewardPct = source["giveDelegateRewardPct"];
+	        this.isRevocable = source["isRevocable"];
+	        this.revokeCooldown = source["revokeCooldown"];
+	    }
+	}
 	export class VoteBreakdownDTO {
 	    total: number;
 	    yes: number;
@@ -250,32 +276,6 @@ export namespace app {
 	        this.qsrFused = source["qsrFused"];
 	        this.currentPlasma = source["currentPlasma"];
 	        this.maxPlasma = source["maxPlasma"];
-	    }
-	}
-	export class OwnedPillarInfo {
-	    name: string;
-	    ownerAddress: string;
-	    producerAddress: string;
-	    rewardAddress: string;
-	    giveMomentumRewardPct: number;
-	    giveDelegateRewardPct: number;
-	    isRevocable: boolean;
-	    revokeCooldown: number;
-
-	    static createFrom(source: any = {}) {
-	        return new OwnedPillarInfo(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.ownerAddress = source["ownerAddress"];
-	        this.producerAddress = source["producerAddress"];
-	        this.rewardAddress = source["rewardAddress"];
-	        this.giveMomentumRewardPct = source["giveMomentumRewardPct"];
-	        this.giveDelegateRewardPct = source["giveDelegateRewardPct"];
-	        this.isRevocable = source["isRevocable"];
-	        this.revokeCooldown = source["revokeCooldown"];
 	    }
 	}
 	export class ProjectDTO {

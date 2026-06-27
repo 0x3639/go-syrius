@@ -613,6 +613,36 @@ func (s *NomService) PrepareRegisterPillar(name, producer, reward string, moment
 		fmt.Sprintf("Register pillar %q (15,000 ZNN)", name))
 }
 
+// PrepareUpdatePillar builds an UpdatePillar template (changes the producer
+// address, reward address, and reward percentages of an existing pillar; no
+// funds move). name identifies the pillar to update. All inputs are validated
+// before any node use.
+func (s *NomService) PrepareUpdatePillar(name, producer, reward string, momentumPct, delegatePct uint8) (CallPreview, error) {
+	name = strings.TrimSpace(name)
+	if err := validatePillarName(name); err != nil {
+		return CallPreview{}, err
+	}
+	producerAddr, err := types.ParseAddress(strings.TrimSpace(producer))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid producer address: %w", err)
+	}
+	rewardAddr, err := types.ParseAddress(strings.TrimSpace(reward))
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid reward address: %w", err)
+	}
+	if momentumPct > 100 || delegatePct > 100 {
+		return CallPreview{}, errors.New("reward percentages must be between 0 and 100")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.PillarApi.UpdatePillar(name, producerAddr, rewardAddr, momentumPct, delegatePct)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Update pillar %q", name))
+}
+
 // PrepareRevokePillar builds a Revoke template (returns the 15,000 ZNN collateral
 // after the lock window).
 func (s *NomService) PrepareRevokePillar(name string) (CallPreview, error) {

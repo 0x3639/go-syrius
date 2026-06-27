@@ -530,6 +530,26 @@ func TestPrepareRegisterPillarValidatesInput(t *testing.T) {
 	}
 }
 
+func TestPrepareUpdatePillarValidatesInput(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	good := "z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"
+	if _, err := s.PrepareUpdatePillar("bad name!", good, good, 50, 50); err == nil {
+		t.Fatal("expected invalid name to be rejected")
+	}
+	if _, err := s.PrepareUpdatePillar("Pillar-A", "nope", good, 50, 50); err == nil {
+		t.Fatal("expected invalid producer to be rejected")
+	}
+	if _, err := s.PrepareUpdatePillar("Pillar-A", good, "nope", 50, 50); err == nil {
+		t.Fatal("expected invalid reward to be rejected")
+	}
+	if _, err := s.PrepareUpdatePillar("Pillar-A", good, good, 101, 50); err == nil {
+		t.Fatal("expected momentum pct > 100 to be rejected")
+	}
+	if _, err := s.PrepareUpdatePillar("Pillar-A", good, good, 50, 101); err == nil {
+		t.Fatal("expected delegate pct > 100 to be rejected")
+	}
+}
+
 func TestPrepareRevokePillarValidatesInput(t *testing.T) {
 	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
 	if _, err := s.PrepareRevokePillar("   "); err == nil {
@@ -555,7 +575,11 @@ func TestPillarRegisterTemplateTokenStandards(t *testing.T) {
 	if reg.Amount == nil || reg.Amount.String() != "1500000000000" {
 		t.Fatalf("register amount=%v want 1500000000000", reg.Amount)
 	}
-	for name, b := range map[string]*nom.AccountBlock{"withdraw": api.WithdrawQsr(), "revoke": api.Revoke("Pillar-A")} {
+	for name, b := range map[string]*nom.AccountBlock{
+		"withdraw": api.WithdrawQsr(),
+		"revoke":   api.Revoke("Pillar-A"),
+		"update":   api.UpdatePillar("Pillar-A", addr, addr, 0, 100),
+	} {
 		if b.ToAddress != types.PillarContract || b.TokenStandard.String() != znn {
 			t.Fatalf("%s: to=%v zts=%v", name, b.ToAddress, b.TokenStandard.String())
 		}

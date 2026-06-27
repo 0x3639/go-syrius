@@ -92,6 +92,29 @@ describe('TxHistory', () => {
     expect(w.text()).toContain('—')
   })
 
+  it('shows a truncated tx hash that copies the full value', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const w = mount(TxHistory)
+    seed([{ ...tx, hash: 'abcdef0123456789ff' }])
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('abcdef…89ff') // 6…4 truncation
+    await w.find('button[aria-label="copy hash abcdef0123456789ff"]').trigger('click')
+    expect(writeText).toHaveBeenCalledWith('abcdef0123456789ff')
+  })
+
+  it('renders — for zero-amount contract calls (Delegate/Undelegate), like Pair', async () => {
+    const w = mount(TxHistory)
+    seed([{ ...tx, hash: 'd1', direction: 'out', method: 'Delegate', amount: '0', token: 'ZNN' }])
+    await w.vm.$nextTick()
+    // Zero-amount rows are plumbing, hidden under Transfers; reveal under All.
+    await w.find('button[aria-label="show all transactions"]').trigger('click')
+    await flush()
+    expect(w.text()).toContain('Delegate')
+    expect(w.text()).toContain('—')
+    expect(w.text()).not.toContain('0 ZNN')
+  })
+
   it('lists unreceived blocks with a receive action that flips to a pulsing status', async () => {
     const w = mount(TxHistory)
     const u = useUnreceivedStore()

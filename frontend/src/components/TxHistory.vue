@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import {
   Address,
   Table,
@@ -43,6 +43,32 @@ const emptyMessage = computed(() =>
 function status(confirmed: boolean): 'success' | 'pending' {
   return confirmed ? 'success' : 'pending'
 }
+
+// Truncate a 64-char block hash for the row; the full value is copyable.
+function shortHash(h: string): string {
+  return h && h.length > 12 ? `${h.slice(0, 6)}…${h.slice(-4)}` : h
+}
+
+// Show an amount only when value actually moved. Contract calls like
+// Delegate/Undelegate carry a token but amount 0 — render "—" like the Pair
+// row instead of a misleading "0 ZNN".
+function hasValue(t: { token: string; amount: string }): boolean {
+  return !!t.token && BigInt(t.amount || '0') > 0n
+}
+
+// Copy the full hash; briefly swap the copy icon for a check on the copied row.
+const copied = ref('')
+async function copyHash(h: string) {
+  try {
+    await navigator.clipboard?.writeText(h)
+    copied.value = h
+    window.setTimeout(() => {
+      if (copied.value === h) copied.value = ''
+    }, 1200)
+  } catch {
+    /* clipboard unavailable (e.g. no permission); ignore */
+  }
+}
 </script>
 
 <template>
@@ -66,9 +92,20 @@ function status(confirmed: boolean): 'success' | 'pending' {
         >All</button>
       </div>
     </div>
-    <Table>
+    <!-- Fixed layout + explicit column widths so the columns never reflow when
+         the visible method badges change (Transfers↔All, paging). Address takes
+         the remaining space; the rest are pinned. -->
+    <Table class="table-fixed">
+      <colgroup>
+        <col class="w-20" />
+        <col class="w-32" />
+        <col />
+        <col class="w-36" />
+        <col class="w-28" />
+        <col class="w-40" />
+      </colgroup>
       <TableBody>
-        <TableEmpty v-if="txs.pageItems.length === 0 && (txs.page > 0 || unreceived.items.length === 0)" :colspan="5">{{ emptyMessage }}</TableEmpty>
+        <TableEmpty v-if="txs.pageItems.length === 0 && (txs.page > 0 || unreceived.items.length === 0)" :colspan="6">{{ emptyMessage }}</TableEmpty>
 
         <!-- Pending inbound blocks (newest page only): click to receive; status
              goes Unreceived → Generating Plasma/Receiving (pulsing) → Confirmed. -->
@@ -79,10 +116,24 @@ function status(confirmed: boolean): 'success' | 'pending' {
           <TableCell>
             <Address :address="u.fromAddress" :copy="false" :tooltip="false" />
           </TableCell>
+          <TableCell>
+            <button
+              v-if="u.fromHash"
+              type="button"
+              :aria-label="`copy hash ${u.fromHash}`"
+              title="Copy hash"
+              class="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"
+              @click="copyHash(u.fromHash)"
+            >
+              <span>{{ shortHash(u.fromHash) }}</span>
+              <svg v-if="copied === u.fromHash" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </TableCell>
           <TableCell class="text-right font-mono text-foreground">
             {{ formatAmount(u.amount, u.decimals ?? 8) }} {{ u.token }}
           </TableCell>
-          <TableCell class="w-40 whitespace-nowrap text-right">
+          <TableCell class="whitespace-nowrap text-right">
             <span
               v-if="unreceived.busy[u.fromHash]"
               class="inline-flex animate-pulse items-center rounded-full bg-info/15 px-2 py-0.5 text-xs font-medium text-info"
@@ -113,11 +164,25 @@ function status(confirmed: boolean): 'success' | 'pending' {
           <TableCell>
             <Address :address="t.counterparty" :copy="false" :tooltip="false" />
           </TableCell>
+          <TableCell>
+            <button
+              v-if="t.hash"
+              type="button"
+              :aria-label="`copy hash ${t.hash}`"
+              title="Copy hash"
+              class="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"
+              @click="copyHash(t.hash)"
+            >
+              <span>{{ shortHash(t.hash) }}</span>
+              <svg v-if="copied === t.hash" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </TableCell>
           <TableCell class="text-right font-mono text-foreground">
-            <template v-if="!t.token"><span class="text-muted-foreground">—</span></template>
+            <template v-if="!hasValue(t)"><span class="text-muted-foreground">—</span></template>
             <template v-else>{{ formatAmount(t.amount, t.decimals ?? 8) }} {{ t.token }}</template>
           </TableCell>
-          <TableCell class="w-40 whitespace-nowrap text-right">
+          <TableCell class="whitespace-nowrap text-right">
             <TxStatus :status="status(t.confirmed)" />
           </TableCell>
         </TableRow>

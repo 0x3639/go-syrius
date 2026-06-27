@@ -247,6 +247,42 @@ func TestReceiveRejectsBadHash(t *testing.T) {
 	}
 }
 
+const zeroHash = "0000000000000000000000000000000000000000000000000000000000000000"
+
+func TestReceiveBlockedOnMainnet(t *testing.T) {
+	tx := newTestTxService(t)
+	// Non-nil client so the "not connected" check passes; the guard fires before
+	// any client method, so the empty client is never dereferenced.
+	tx.node.client = &rpc_client.RpcClient{}
+	tx.node.chainID = mainnetChainID // mainnet, AllowMainnetSend false by default
+	_, err := tx.Receive(zeroHash)
+	if err == nil {
+		t.Fatal("expected mainnet guard error; receive signs+publishes and must obey the guard")
+	}
+	if !strings.Contains(err.Error(), "mainnet") {
+		t.Fatalf("expected error to mention mainnet, got: %v", err)
+	}
+}
+
+func TestReceiveRejectsChainMismatch(t *testing.T) {
+	tx := newTestTxService(t)
+	tx.node.client = &rpc_client.RpcClient{}
+	tx.node.chainID = 12 // connected chain
+	// Configure a different non-mainnet chain id: guard passes, chain check fails.
+	s, _ := tx.config.GetSettings()
+	s.ChainID = 3
+	if err := tx.config.SetSettings(s); err != nil {
+		t.Fatalf("SetSettings: %v", err)
+	}
+	_, err := tx.Receive(zeroHash)
+	if err == nil {
+		t.Fatal("expected chain-mismatch error; receive must not publish onto the wrong chain")
+	}
+	if !strings.Contains(err.Error(), "chain") {
+		t.Fatalf("expected error to mention chain, got: %v", err)
+	}
+}
+
 func TestSymbolFor(t *testing.T) {
 	tx := newTestTxService(t)
 	if tx.symbolFor(types.ZnnTokenStandard.String()) != "ZNN" || tx.symbolFor(types.QsrTokenStandard.String()) != "QSR" {

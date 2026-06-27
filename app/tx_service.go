@@ -323,12 +323,26 @@ func (t *TxService) Receive(fromHash string) (string, error) {
 	if client == nil {
 		return "", errors.New("not connected")
 	}
+	// Receiving signs and publishes a block too, so apply the same guards as a
+	// send: the mainnet opt-in, and a chain-ID match. Auto-receive drives this
+	// path automatically, so an unguarded receive could publish onto the wrong
+	// network without the user ever clicking Confirm.
+	if err := t.guard(); err != nil {
+		return "", err
+	}
+	// Chain check before building/signing, independent of any client call (like
+	// the send path), so a network mismatch fails fast without publishing onto
+	// the wrong chain.
+	cid := t.configuredChainID()
+	if cid != t.node.currentChainID() {
+		return "", fmt.Errorf("configured Chain ID (%d) does not match the connected node's chain (%d); set the correct Chain ID in Settings or connect to a matching node", cid, t.node.currentChainID())
+	}
 	kp, err := t.wallet.signingKeyPair()
 	if err != nil {
 		return "", err
 	}
 	template := client.LedgerApi.ReceiveTemplate(hash)
-	template.ChainIdentifier = t.configuredChainID()
+	template.ChainIdentifier = cid
 	published, err := zenon.NewZenon(client).Send(template, kp)
 	if err != nil {
 		return "", err

@@ -2,6 +2,7 @@ package app
 
 import (
 	"math/big"
+	"strings"
 	"testing"
 
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
@@ -554,6 +555,17 @@ func TestPrepareRevokePillarValidatesInput(t *testing.T) {
 	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
 	if _, err := s.PrepareRevokePillar("   "); err == nil {
 		t.Fatal("expected empty name to be rejected")
+	}
+}
+
+func TestPillarConfigSummary(t *testing.T) {
+	producer, _ := types.ParseAddress("z1qqsf6r4mte4lws3c2dp9j97y79v2sd0wd4t8nu")
+	reward, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
+	s := pillarConfigSummary("Register", "test", producer, reward, 0, 100)
+	for _, want := range []string{"Register", `"test"`, producer.String(), reward.String(), "momentum 0%", "delegate 100%"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("summary %q missing %q", s, want)
+		}
 	}
 }
 

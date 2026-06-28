@@ -610,7 +610,16 @@ func (s *NomService) PrepareRegisterPillar(name, producer, reward string, moment
 	template := client.PillarApi.Register(name, producerAddr, rewardAddr, momentumPct, delegatePct)
 	return s.tx.prepareCall(template,
 		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Register pillar %q (15,000 ZNN)", name))
+		pillarConfigSummary("Register", name, producerAddr, rewardAddr, momentumPct, delegatePct)+" (15,000 ZNN collateral)")
+}
+
+// pillarConfigSummary renders the verifiable effect of a register/update for the
+// confirm dialog: the producer and reward addresses and the reward percentages.
+// Without these the user can only see the pillar name + contract address and
+// cannot confirm what they are actually signing (confirm-what-you-sign).
+func pillarConfigSummary(verb, name string, producer, reward types.Address, momentumPct, delegatePct uint8) string {
+	return fmt.Sprintf("%s pillar %q — producer %s, reward %s, momentum %d%% / delegate %d%%",
+		verb, name, producer.String(), reward.String(), momentumPct, delegatePct)
 }
 
 // PrepareUpdatePillar builds an UpdatePillar template (changes the producer
@@ -640,7 +649,7 @@ func (s *NomService) PrepareUpdatePillar(name, producer, reward string, momentum
 	template := client.PillarApi.UpdatePillar(name, producerAddr, rewardAddr, momentumPct, delegatePct)
 	return s.tx.prepareCall(template,
 		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Update pillar %q", name))
+		pillarConfigSummary("Update", name, producerAddr, rewardAddr, momentumPct, delegatePct))
 }
 
 // PrepareRevokePillar builds a Revoke template (returns the 15,000 ZNN collateral

@@ -6,10 +6,12 @@ import (
 	"math/big"
 	"regexp"
 	"strings"
+	"time"
 
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
 	"github.com/zenon-network/go-zenon/common/types"
 	constants "github.com/zenon-network/go-zenon/vm/constants"
+	definition "github.com/zenon-network/go-zenon/vm/embedded/definition"
 )
 
 // Accelerator-Z project/phase status values (mirrors go-zenon definition).
@@ -354,4 +356,100 @@ func (s *NomService) PrepareUpdatePhase(projectId, name, description, url, znnNe
 	return s.tx.prepareCall(template,
 		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
 		fmt.Sprintf("Update current phase of project %s", projectId))
+}
+
+// annotateMyVotes records, for one pillar, its vote on each item (or -1 = not
+// voted), and flags items the pillar still needs to vote on. votes is the result
+// of GetPillarVotes(pillarName, ids); entries may be nil (no vote) and are keyed
+// by their Id so ordering is irrelevant.
+func annotateMyVotes(items []VotableItem, pillarName string, votes []*definition.PillarVote) {
+	voted := make(map[string]int, len(votes))
+	for _, v := range votes {
+		if v != nil {
+			voted[v.Id.String()] = int(v.Vote)
+		}
+	}
+	for i := range items {
+		vote := -1
+		if vv, ok := voted[items[i].Id]; ok {
+			vote = vv
+		}
+		items[i].MyVotes = append(items[i].MyVotes, PillarVoteState{Pillar: pillarName, Vote: vote})
+		if vote == -1 {
+			items[i].NeedsMyVote = true
+		}
+	}
+}
+
+// GetActivePillarCount returns the number of pillars (for AZ quorum math). Uses
+// the AcceleratorApi/PillarApi page count.
+func (s *NomService) GetActivePillarCount() (int, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return 0, errors.New("not connected")
+	}
+	list, err := client.PillarApi.GetAll(0, 1)
+	if err != nil {
+		return 0, err
+	}
+	return list.Count, nil
+}
+
+// GetVotableForMyPillars returns the items currently open for voting (projects in
+// their voting window + Active projects' open phases), annotated with the vote
+// state of each pillar the active address owns. Drives the Vote view + the
+// top-bar badge. Read-only.
+func (s *NomService) GetVotableForMyPillars() ([]VotableItem, error) {
+	addr, ok := s.wallet.activeAddress()
+	if !ok {
+		return nil, errLocked
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return nil, errors.New("not connected")
+	}
+
+	// Collect all projects (page through GetAll).
+	all := make([]*embedded.Project, 0)
+	var pageIndex uint32 = 0
+	const pageSize uint32 = 50
+	for {
+		list, err := client.AcceleratorApi.GetAll(pageIndex, pageSize)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, list.List...)
+		if len(all) >= list.Count || len(list.List) == 0 {
+			break
+		}
+		pageIndex++
+	}
+
+	items := buildVotableItems(all, time.Now().Unix())
+	if len(items) == 0 {
+		return items, nil
+	}
+
+	// Annotate with each owned pillar's vote across all votable ids.
+	pillars, err := client.PillarApi.GetByOwner(addr)
+	if err != nil {
+		return nil, err
+	}
+	if len(pillars) == 0 {
+		return items, nil // no pillar → nothing actionable; NeedsMyVote stays false
+	}
+	ids := make([]types.Hash, 0, len(items))
+	for _, it := range items {
+		if h, err := types.HexToHash(it.Id); err == nil {
+			ids = append(ids, h)
+		}
+	}
+	for _, p := range pillars {
+		votes, err := client.AcceleratorApi.GetPillarVotes(p.Name, ids)
+		if err != nil {
+			return nil, err
+		}
+		annotateMyVotes(items, p.Name, votes)
+	}
+	return items, nil
 }

@@ -8,6 +8,7 @@ import (
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
 	"github.com/zenon-network/go-zenon/common/types"
 	constants "github.com/zenon-network/go-zenon/vm/constants"
+	definition "github.com/zenon-network/go-zenon/vm/embedded/definition"
 )
 
 // strings32 is 31 zero bytes (hex) so a 1-byte prefix forms a 32-byte hash.
@@ -257,5 +258,34 @@ func TestBuildVotableItems(t *testing.T) {
 	// Default annotation: no pillars yet → not flagged needs-vote.
 	if items[0].NeedsMyVote || items[0].MyVotes != nil {
 		t.Fatalf("expected unannotated item: %+v", items[0])
+	}
+}
+
+func TestAnnotateMyVotes(t *testing.T) {
+	idA := types.HexToHashPanic("0a" + strings32)
+	idB := types.HexToHashPanic("0b" + strings32)
+	items := []VotableItem{{Id: idA.String()}, {Id: idB.String()}}
+	// Pillar voted "no" (1) on A only; B is nil/absent → not voted.
+	votes := []*definition.PillarVote{{Id: idA, Name: "MyPillar", Vote: 1}, nil}
+	annotateMyVotes(items, "MyPillar", votes)
+	if len(items[0].MyVotes) != 1 || items[0].MyVotes[0].Pillar != "MyPillar" || items[0].MyVotes[0].Vote != 1 {
+		t.Fatalf("A should be voted no by MyPillar: %+v", items[0])
+	}
+	if items[0].NeedsMyVote {
+		t.Fatalf("A is voted, must not need vote: %+v", items[0])
+	}
+	if items[1].MyVotes[0].Vote != -1 || !items[1].NeedsMyVote {
+		t.Fatalf("B unvoted must be -1 + needsMyVote: %+v", items[1])
+	}
+}
+
+func TestAcceleratorVoteReadsGuard(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	// Not connected (test node has no client) → both reads error, no panic.
+	if _, err := s.GetActivePillarCount(); err == nil {
+		t.Fatal("GetActivePillarCount must error when not connected")
+	}
+	if _, err := s.GetVotableForMyPillars(); err == nil {
+		t.Fatal("GetVotableForMyPillars must error when not connected/locked")
 	}
 }

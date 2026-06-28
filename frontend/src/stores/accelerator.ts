@@ -7,8 +7,15 @@ export const useAcceleratorStore = defineStore('accelerator', {
     projects: [] as app.ProjectDTO[],
     selectedProject: null as app.ProjectDTO | null,
     votablePillars: [] as string[],
+    votable: [] as app.VotableItem[],
+    numActivePillars: 0,
     error: '',
   }),
+  getters: {
+    needsVoteCount(state): number {
+      return state.votable.filter((v) => v.needsMyVote).length
+    },
+  },
   actions: {
     async loadProjects(page = 0) {
       this.error = ''
@@ -32,6 +39,16 @@ export const useAcceleratorStore = defineStore('accelerator', {
         this.votablePillars = await Nom.GetVotablePillars()
       } catch {
         this.votablePillars = [] // locked / not connected ⇒ no voting
+      }
+    },
+    // Votable items for the active address's pillars + active pillar count, for
+    // the Vote view and the top-bar badge. Swallows errors (badge shows 0).
+    async refreshVotable() {
+      try {
+        this.votable = await Nom.GetVotableForMyPillars()
+        this.numActivePillars = await Nom.GetActivePillarCount()
+      } catch {
+        this.votable = []
       }
     },
   },

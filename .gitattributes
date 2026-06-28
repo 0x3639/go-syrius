@@ -1,0 +1,5 @@
+# Wails-generated bindings — emitted verbatim by `wails generate module`.
+# Mark as generated (collapses them in diffs / excludes from language stats) and
+# disable whitespace checks so the generator's tab-indented blank lines don't
+# trip `git diff --check`. Do not hand-edit these files; regenerate instead.
+frontend/wailsjs/** linguist-generated -whitespace

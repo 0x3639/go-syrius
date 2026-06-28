@@ -44,6 +44,19 @@ describe('GovernanceVote', () => {
     expect(w.text()).not.toContain('ExpiredAct')
   })
 
+  it('shows the pillar as static text (no dropdown) when the account owns exactly one pillar', () => {
+    setup({ pillars: ['Solo-Pillar'] })
+    const w = mount(GovernanceVote)
+    expect(w.find('select[aria-label="vote pillar"]').exists()).toBe(false)
+    expect(w.text()).toContain('Solo-Pillar')
+  })
+
+  it('shows a dropdown only when the account owns multiple pillars', () => {
+    setup({ pillars: ['P1', 'P2'] })
+    const w = mount(GovernanceVote)
+    expect(w.find('select[aria-label="vote pillar"]').exists()).toBe(true)
+  })
+
   it('forwards a Yes vote with (id, selectedPillar, 0)', async () => {
     setup({ pillars: ['P1', 'P2'] })
     // Spy AFTER setup() installs the fresh pinia, so the spy targets the same

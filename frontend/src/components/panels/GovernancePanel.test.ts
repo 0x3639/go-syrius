@@ -19,21 +19,38 @@ vi.mock('../../../wailsjs/go/app/NomService', () => ({
 }))
 
 import GovernancePanel from './GovernancePanel.vue'
+import * as Nom from '../../../wailsjs/go/app/NomService'
 import { useGovernanceStore } from '../../stores/governance'
 
 describe('GovernancePanel', () => {
-  it('loads governance data on mount and renders both sub-tabs', async () => {
+  it('loads governance data on mount and always shows Actions + Propose', async () => {
     setActivePinia(createPinia())
     const gov = useGovernanceStore()
     const loadActions = vi.spyOn(gov, 'loadActions')
     const w = mount(GovernancePanel)
     await new Promise((r) => setTimeout(r))
     expect(loadActions).toHaveBeenCalled()
-    expect(w.find('button[aria-label="sub Vote"]').exists()).toBe(true)
     expect(w.find('button[aria-label="sub Actions"]').exists()).toBe(true)
+    expect(w.find('button[aria-label="sub Propose"]').exists()).toBe(true)
   })
 
-  it('renders the Propose sub-tab and loads kinds on mount', async () => {
+  it('hides the Vote sub-tab when the active account owns no pillar', async () => {
+    setActivePinia(createPinia())
+    // default GetVotablePillars mock resolves [] → no pillar
+    const w = mount(GovernancePanel)
+    await new Promise((r) => setTimeout(r))
+    expect(w.find('button[aria-label="sub Vote"]').exists()).toBe(false)
+  })
+
+  it('shows the Vote sub-tab when the active account owns a pillar', async () => {
+    setActivePinia(createPinia())
+    vi.mocked(Nom.GetVotablePillars).mockResolvedValueOnce(['P1'] as never)
+    const w = mount(GovernancePanel)
+    await new Promise((r) => setTimeout(r))
+    expect(w.find('button[aria-label="sub Vote"]').exists()).toBe(true)
+  })
+
+  it('loads propose kinds on mount and shows the Propose sub-tab', async () => {
     setActivePinia(createPinia())
     const gov = useGovernanceStore()
     const loadProposeKinds = vi.spyOn(gov, 'loadProposeKinds')

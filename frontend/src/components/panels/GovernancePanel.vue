@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from 'nom-ui'
 import { useGovernanceStore } from '../../stores/governance'
 import { useWalletStore } from '../../stores/wallet'
@@ -10,6 +11,12 @@ import GovernancePropose from './GovernancePropose.vue'
 const props = defineProps<{ initialSub?: string }>()
 const gov = useGovernanceStore()
 const wallet = useWalletStore()
+const { votablePillars } = storeToRefs(gov)
+
+// Only a pillar owner can vote, so the Vote sub-tab is shown only when the
+// active wallet account owns at least one pillar (switch accounts to vote as a
+// pillar). The pillar set is per-account (GetVotablePillars(activeAddress)).
+const ownsPillar = computed(() => votablePillars.value.length > 0)
 
 const sub = ref(props.initialSub || 'Actions')
 watch(
@@ -18,6 +25,11 @@ watch(
     if (v) sub.value = v
   },
 )
+// If the active account loses pillar ownership (account switch) while Vote is
+// open, fall back to Actions so the Tabs body isn't left empty.
+watch(ownsPillar, (owns) => {
+  if (!owns && sub.value === 'Vote') sub.value = 'Actions'
+})
 
 function load() {
   gov.loadActions()
@@ -33,11 +45,11 @@ watch(() => wallet.activeIndex, load)
   <div class="p-4">
     <Tabs v-model="sub">
       <TabsList class="w-full justify-start">
-        <TabsTrigger value="Vote">Vote</TabsTrigger>
+        <TabsTrigger v-if="ownsPillar" value="Vote">Vote</TabsTrigger>
         <TabsTrigger value="Actions">Actions</TabsTrigger>
         <TabsTrigger value="Propose">Propose</TabsTrigger>
       </TabsList>
-      <TabsContent value="Vote"><GovernanceVote /></TabsContent>
+      <TabsContent v-if="ownsPillar" value="Vote"><GovernanceVote /></TabsContent>
       <TabsContent value="Actions"><GovernanceActions /></TabsContent>
       <TabsContent value="Propose"><GovernancePropose /></TabsContent>
     </Tabs>

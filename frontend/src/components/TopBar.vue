@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { useToast } from 'nom-ui'
 import { useWalletStore } from '../stores/wallet'
 import { usePlasmaStore } from '../stores/plasma'
+import { usePillarStore } from '../stores/pillar'
+import { useAcceleratorStore } from '../stores/accelerator'
 import { useAutoReceiveStore } from '../stores/autoReceive'
 import { plasmaLevel, plasmaColorClass } from '../lib/plasma'
 import AccountSlotPicker from './AccountSlotPicker.vue'
@@ -19,7 +21,13 @@ defineProps<{ locked?: boolean }>()
 const router = useRouter()
 const wallet = useWalletStore()
 const plasma = usePlasmaStore()
+const pillar = usePillarStore()
+const accelerator = useAcceleratorStore()
 const autoReceive = useAutoReceiveStore()
+
+function gotoVotes() {
+  router.push({ name: 'home', query: { tab: 'Accelerator', sub: 'Vote' } })
+}
 
 const plasmaLvl = computed(() => plasmaLevel(plasma.info?.currentPlasma ?? 0))
 const plasmaColor = computed(() => plasmaColorClass(plasmaLvl.value))
@@ -75,6 +83,21 @@ watch(
           @click="autoReceive.toggle(wallet.activeIndex)"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12l4 4 4-4"/></svg>
+        </button>
+        <button
+          v-if="!locked && pillar.ownsPillar"
+          type="button"
+          :title="accelerator.needsVoteCount > 0 ? `${accelerator.needsVoteCount} AZ item(s) to vote on` : 'Accelerator votes'"
+          aria-label="Accelerator votes"
+          class="relative grid h-9 w-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+          @click="gotoVotes"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h6M9 16h6M9 8h6"/><rect width="16" height="20" x="4" y="2" rx="2"/></svg>
+          <span
+            v-if="accelerator.needsVoteCount > 0"
+            class="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
+            >{{ accelerator.needsVoteCount }}</span
+          >
         </button>
         <span class="mx-1 h-5 w-px bg-border"></span>
         <button

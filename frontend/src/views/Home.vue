@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from 'nom-ui'
 import { useWalletStore } from '../stores/wallet'
 import { useBalancesStore } from '../stores/balances'
@@ -7,6 +8,7 @@ import { useTxsStore } from '../stores/txs'
 import { useUnreceivedStore } from '../stores/unreceived'
 import { usePlasmaStore } from '../stores/plasma'
 import { usePillarStore } from '../stores/pillar'
+import { useAcceleratorStore } from '../stores/accelerator'
 import { useNodeStore } from '../stores/node'
 import { useTxStore } from '../stores/tx'
 import { useAutoReceiveStore } from '../stores/autoReceive'
@@ -32,14 +34,26 @@ const txs = useTxsStore()
 const unreceived = useUnreceivedStore()
 const plasma = usePlasmaStore()
 const pillar = usePillarStore()
+const accelerator = useAcceleratorStore()
 const node = useNodeStore()
 const tx = useTxStore()
 const autoReceive = useAutoReceiveStore()
+const route = useRoute()
 
 const TABS = ['Tokens', 'Rewards', 'Plasma', 'Pillar', 'Staking', 'Sentinels', 'Accelerator']
 const active = ref('Tokens')
+const initialSub = ref('')
 const sendOpen = ref(false)
 const receiveOpen = ref(false)
+
+// Deep-link support: the top-bar ballot badge pushes ?tab=Accelerator&sub=Vote.
+// Mirror those into the active tab + the panel's initial sub-view.
+function applyQuery() {
+  const t = route.query.tab
+  if (typeof t === 'string' && TABS.includes(t)) active.value = t
+  const sub = route.query.sub
+  initialSub.value = typeof sub === 'string' ? sub : ''
+}
 
 // Reset the tx flow when switching tabs (mirrors the Svelte resetTx on tab
 // change) so a half-built block doesn't leak across panels.
@@ -54,6 +68,7 @@ async function refresh() {
     plasma.refresh(),
     pillar.refreshDelegation(),
     pillar.refreshMyPillar(),
+    accelerator.refreshVotable(),
     txs.load(),
     unreceived.load(),
   ])
@@ -71,7 +86,10 @@ watch(
   (i) => { if (i >= 0) onActiveChange(i) },
 )
 
+watch(() => route.query, applyQuery)
+
 onMounted(async () => {
+  applyQuery()
   node.initEvents(refresh)
   refresh()
   await autoReceive.init(wallet.activeIndex)
@@ -115,7 +133,7 @@ onMounted(async () => {
         <TabsContent value="Pillar"><PillarPanel /></TabsContent>
         <TabsContent value="Staking"><StakingPanel /></TabsContent>
         <TabsContent value="Sentinels"><SentinelsPanel /></TabsContent>
-        <TabsContent value="Accelerator"><AcceleratorPanel /></TabsContent>
+        <TabsContent value="Accelerator"><AcceleratorPanel :initial-sub="initialSub" /></TabsContent>
       </Tabs>
     </div>
   </div>

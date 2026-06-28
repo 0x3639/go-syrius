@@ -12,6 +12,8 @@ const push = vi.fn()
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 import TopBar from './TopBar.vue'
 import { useWalletStore } from '../stores/wallet'
+import { usePillarStore } from '../stores/pillar'
+import { useAcceleratorStore } from '../stores/accelerator'
 
 const flush = () => new Promise((r) => setTimeout(r))
 const opts = { global: { stubs: { AccountSlotPicker: true } } }
@@ -63,5 +65,17 @@ describe('TopBar', () => {
     await w.find('button[aria-label="Settings"]').trigger('click')
     await w.find('button[aria-label="Address book"]').trigger('click')
     expect(push).not.toHaveBeenCalled()
+  })
+
+  it('shows the accelerator vote badge when a pillar is owned with pending votes', async () => {
+    const w = mount(TopBar, opts)
+    const pillar = usePillarStore()
+    const acc = useAcceleratorStore()
+    pillar.myPillar = { name: 'P' } as never
+    acc.votable = [{ needsMyVote: true }, { needsMyVote: true }] as never
+    await w.vm.$nextTick()
+    const btn = w.find('button[aria-label="Accelerator votes"]')
+    expect(btn.exists()).toBe(true)
+    expect(btn.text()).toContain('2')
   })
 })

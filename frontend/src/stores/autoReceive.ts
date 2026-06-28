@@ -28,9 +28,11 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
           this.receiving = !!active
         })
         // Auto-receive runs in the background with no Confirm dialog, so a
-        // failure is otherwise invisible — record it for the UI to surface.
-        EventsOn('auto-receive:error', (msg: string) => {
-          this.lastError = typeof msg === 'string' && msg ? msg : 'Auto-receive failed'
+        // failure is otherwise invisible — record it for the UI to surface. The
+        // backend emits { hash, error }; tolerate a bare string too.
+        EventsOn('auto-receive:error', (payload: { hash?: string; error?: string } | string) => {
+          const msg = typeof payload === 'string' ? payload : payload?.error
+          this.lastError = msg && msg.length > 0 ? msg : 'Auto-receive failed'
           this.errorCount++
         })
       } catch {

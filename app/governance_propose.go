@@ -176,6 +176,73 @@ func proposeKinds() []ProposeKindDTO {
 		{Kind: "spork.activate", Label: "Spork — Activate", Group: "Spork", Fields: []ProposeFieldDTO{
 			{Key: "id", Label: "Spork id (hash)", Type: "hash", Placeholder: "0x…", Required: true},
 		}},
+		{Kind: "bridge.addNetwork", Label: "Bridge — Add Network", Group: "Bridge", Fields: []ProposeFieldDTO{
+			{Key: "networkClass", Label: "Network class", Type: "number", Placeholder: "1", Required: true},
+			{Key: "chainId", Label: "Chain id", Type: "number", Placeholder: "1", Required: true},
+			{Key: "name", Label: "Name", Type: "text", Placeholder: "Ethereum", Required: true},
+			{Key: "contractAddress", Label: "Contract address", Type: "text", Placeholder: "0x…", Required: true},
+			{Key: "metadata", Label: "Metadata (JSON)", Type: "text", Placeholder: "{}", Required: false},
+		}},
+		{Kind: "bridge.removeNetwork", Label: "Bridge — Remove Network", Group: "Bridge", Fields: []ProposeFieldDTO{
+			{Key: "networkClass", Label: "Network class", Type: "number", Placeholder: "1", Required: true},
+			{Key: "chainId", Label: "Chain id", Type: "number", Placeholder: "1", Required: true},
+		}},
+		{Kind: "bridge.setTokenPair", Label: "Bridge — Set Token Pair", Group: "Bridge", Fields: []ProposeFieldDTO{
+			{Key: "networkClass", Label: "Network class", Type: "number", Placeholder: "1", Required: true},
+			{Key: "chainId", Label: "Chain id", Type: "number", Placeholder: "1", Required: true},
+			{Key: "tokenStandard", Label: "Token standard (ZTS)", Type: "text", Placeholder: "zts1…", Required: true},
+			{Key: "tokenAddress", Label: "Foreign token address", Type: "text", Placeholder: "0x…", Required: true},
+			{Key: "bridgeable", Label: "Bridgeable", Type: "bool", Placeholder: "", Required: true},
+			{Key: "redeemable", Label: "Redeemable", Type: "bool", Placeholder: "", Required: true},
+			{Key: "owned", Label: "Owned", Type: "bool", Placeholder: "", Required: true},
+			{Key: "minAmount", Label: "Min amount", Type: "amount", Placeholder: "0", Required: true},
+			{Key: "fee", Label: "Fee (per-ten-thousand)", Type: "number", Placeholder: "0", Required: true},
+			{Key: "redeemDelay", Label: "Redeem delay (momentums)", Type: "number", Placeholder: "0", Required: true},
+			{Key: "metadata", Label: "Metadata (JSON)", Type: "text", Placeholder: "{}", Required: false},
+		}},
+		{Kind: "bridge.removeTokenPair", Label: "Bridge — Remove Token Pair", Group: "Bridge", Fields: []ProposeFieldDTO{
+			{Key: "networkClass", Label: "Network class", Type: "number", Placeholder: "1", Required: true},
+			{Key: "chainId", Label: "Chain id", Type: "number", Placeholder: "1", Required: true},
+			{Key: "tokenStandard", Label: "Token standard (ZTS)", Type: "text", Placeholder: "zts1…", Required: true},
+			{Key: "tokenAddress", Label: "Foreign token address", Type: "text", Placeholder: "0x…", Required: true},
+		}},
+		{Kind: "bridge.halt", Label: "Bridge — Halt", Group: "Bridge", Fields: []ProposeFieldDTO{
+			{Key: "signature", Label: "Signature", Type: "text", Placeholder: "", Required: true},
+		}},
+		{Kind: "bridge.unhalt", Label: "Bridge — Unhalt", Group: "Bridge", Fields: []ProposeFieldDTO{}},
+		{Kind: "bridge.emergency", Label: "Bridge — Emergency", Group: "Bridge", Fields: []ProposeFieldDTO{}},
+		{Kind: "bridge.changeAdministrator", Label: "Bridge — Change Administrator", Group: "Bridge", Fields: []ProposeFieldDTO{
+			{Key: "administrator", Label: "New administrator", Type: "address", Placeholder: "z1…", Required: true},
+		}},
+		{Kind: "bridge.changeTssECDSAPubKey", Label: "Bridge — Change TSS Pubkey", Group: "Bridge", Fields: []ProposeFieldDTO{
+			{Key: "pubKey", Label: "New TSS pubkey", Type: "text", Placeholder: "", Required: true},
+			{Key: "signature", Label: "Old-key signature", Type: "text", Placeholder: "", Required: true},
+			{Key: "newSignature", Label: "New-key signature", Type: "text", Placeholder: "", Required: true},
+		}},
+		{Kind: "bridge.setAllowKeygen", Label: "Bridge — Set Allow Keygen", Group: "Bridge", Fields: []ProposeFieldDTO{
+			{Key: "allowKeygen", Label: "Allow keygen", Type: "bool", Placeholder: "", Required: true},
+		}},
+		{Kind: "bridge.setOrchestratorInfo", Label: "Bridge — Set Orchestrator Info", Group: "Bridge", Fields: []ProposeFieldDTO{
+			{Key: "windowSize", Label: "Window size", Type: "number", Placeholder: "", Required: true},
+			{Key: "keyGenThreshold", Label: "Keygen threshold", Type: "number", Placeholder: "", Required: true},
+			{Key: "confirmationsToFinality", Label: "Confirmations to finality", Type: "number", Placeholder: "", Required: true},
+			{Key: "estimatedMomentumTime", Label: "Estimated momentum time", Type: "number", Placeholder: "", Required: true},
+		}},
+		{Kind: "bridge.setMetadata", Label: "Bridge — Set Metadata", Group: "Bridge", Fields: []ProposeFieldDTO{
+			{Key: "metadata", Label: "Metadata (JSON)", Type: "text", Placeholder: "{}", Required: true},
+		}},
+		{Kind: "bridge.setNetworkMetadata", Label: "Bridge — Set Network Metadata", Group: "Bridge", Fields: []ProposeFieldDTO{
+			{Key: "networkClass", Label: "Network class", Type: "number", Placeholder: "1", Required: true},
+			{Key: "chainId", Label: "Chain id", Type: "number", Placeholder: "1", Required: true},
+			{Key: "metadata", Label: "Metadata (JSON)", Type: "text", Placeholder: "{}", Required: true},
+		}},
+		{Kind: "bridge.revokeUnwrapRequest", Label: "Bridge — Revoke Unwrap Request", Group: "Bridge", Fields: []ProposeFieldDTO{
+			{Key: "transactionHash", Label: "Transaction hash", Type: "hash", Placeholder: "0x…", Required: true},
+			{Key: "logIndex", Label: "Log index", Type: "number", Placeholder: "0", Required: true},
+		}},
+		{Kind: "bridge.nominateGuardians", Label: "Bridge — Nominate Guardians", Group: "Bridge", Fields: []ProposeFieldDTO{
+			{Key: "guardians", Label: "Guardian addresses", Type: "list", Placeholder: "z1…,z1…", Required: true},
+		}},
 		{Kind: "custom", Label: "Custom (advanced)", Group: "Custom", Fields: []ProposeFieldDTO{
 			{Key: "destination", Label: "Destination contract", Type: "address", Placeholder: "z1…", Required: true},
 			{Key: "data", Label: "Call data (base64)", Type: "base64", Placeholder: "base64-encoded ABI call bytes", Required: true},
@@ -216,6 +283,184 @@ func buildProposalPayloadWith(api *embedded.GovernanceApi, kind string, p map[st
 			return embedded.ProposalPayload{}, errors.New("data must be valid standard base64")
 		}
 		return embedded.ProposalPayload{Destination: dest, Data: data}, nil
+	case "bridge.addNetwork":
+		nc, err := parseU32Param(p, "networkClass")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		cid, err := parseU32Param(p, "chainId")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		name, err := reqParam(p, "name")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		ca, err := reqParam(p, "contractAddress")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadBridgeAddNetwork(nc, cid, name, ca, optParam(p, "metadata")), nil
+	case "bridge.removeNetwork":
+		nc, err := parseU32Param(p, "networkClass")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		cid, err := parseU32Param(p, "chainId")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadBridgeRemoveNetwork(nc, cid), nil
+	case "bridge.setTokenPair":
+		nc, err := parseU32Param(p, "networkClass")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		cid, err := parseU32Param(p, "chainId")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		zts, err := parseZtsParam(p, "tokenStandard")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		ta, err := reqParam(p, "tokenAddress")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		bridgeable, err := parseBoolParam(p, "bridgeable")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		redeemable, err := parseBoolParam(p, "redeemable")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		owned, err := parseBoolParam(p, "owned")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		minAmt, err := parseBigIntParam(p, "minAmount")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		fee, err := parseU32Param(p, "fee")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		rd, err := parseU32Param(p, "redeemDelay")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadBridgeSetTokenPair(nc, cid, zts, ta, bridgeable, redeemable, owned, minAmt, fee, rd, optParam(p, "metadata")), nil
+	case "bridge.removeTokenPair":
+		nc, err := parseU32Param(p, "networkClass")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		cid, err := parseU32Param(p, "chainId")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		zts, err := parseZtsParam(p, "tokenStandard")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		ta, err := reqParam(p, "tokenAddress")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadBridgeRemoveTokenPair(nc, cid, zts, ta), nil
+	case "bridge.halt":
+		sig, err := reqParam(p, "signature")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadBridgeHalt(sig), nil
+	case "bridge.unhalt":
+		return api.PayloadBridgeUnhalt(), nil
+	case "bridge.emergency":
+		return api.PayloadBridgeEmergency(), nil
+	case "bridge.changeAdministrator":
+		a, err := parseAddrParam(p, "administrator")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadBridgeChangeAdministrator(a), nil
+	case "bridge.changeTssECDSAPubKey":
+		pk, err := reqParam(p, "pubKey")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		sig, err := reqParam(p, "signature")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		ns, err := reqParam(p, "newSignature")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadBridgeChangeTssECDSAPubKey(pk, sig, ns), nil
+	case "bridge.setAllowKeygen":
+		b, err := parseBoolParam(p, "allowKeygen")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadBridgeSetAllowKeygen(b), nil
+	case "bridge.setOrchestratorInfo":
+		ws, err := parseU64Param(p, "windowSize")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		kt, err := parseU32Param(p, "keyGenThreshold")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		cf, err := parseU32Param(p, "confirmationsToFinality")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		et, err := parseU32Param(p, "estimatedMomentumTime")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadBridgeSetOrchestratorInfo(ws, kt, cf, et), nil
+	case "bridge.setMetadata":
+		m, err := reqParam(p, "metadata")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadBridgeSetMetadata(m), nil
+	case "bridge.setNetworkMetadata":
+		nc, err := parseU32Param(p, "networkClass")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		cid, err := parseU32Param(p, "chainId")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		m, err := reqParam(p, "metadata")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadBridgeSetNetworkMetadata(nc, cid, m), nil
+	case "bridge.revokeUnwrapRequest":
+		h, err := parseHashParam(p, "transactionHash")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		li, err := parseU32Param(p, "logIndex")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadBridgeRevokeUnwrapRequest(h, li), nil
+	case "bridge.nominateGuardians":
+		gs, err := parseAddrList(p, "guardians")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadBridgeNominateGuardians(gs), nil
 	}
 	return embedded.ProposalPayload{}, fmt.Errorf("unknown action kind %q", kind)
 }

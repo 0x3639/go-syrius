@@ -5,10 +5,12 @@ import { Input, Button } from 'nom-ui'
 import Field from '../components/Field.vue'
 import { useNodeStore } from '../stores/node'
 import { useWalletStore } from '../stores/wallet'
+import { useUiStore } from '../stores/ui'
 import * as Cfg from '../../wailsjs/go/app/ConfigService'
 
 const node = useNodeStore()
 const wallet = useWalletStore()
+const ui = useUiStore()
 const router = useRouter()
 
 const nodeMode = ref('remote')
@@ -57,6 +59,7 @@ onMounted(async () => {
   if (!localDirty.value) localUrl.value = c.localUrl
   await refreshEmbedded()
   try { chainId.value = (await Cfg.GetSettings()).chainId || 1 } catch {}
+  await ui.init()
   if (!wallet.wallets.length) await wallet.loadWallets()
   walletName.value = wallet.wallets.find((w) => w.id === wallet.active)?.name ?? ''
 })
@@ -218,6 +221,22 @@ function hide() { revealed.value = '' }
       <Button @click="applyChainId">Apply network</Button>
       <p v-if="chainMsg" class="text-primary text-sm">{{ chainMsg }}</p>
       <p v-if="chainErr" class="text-destructive text-sm" role="alert">{{ chainErr }}</p>
+    </section>
+
+    <section class="rounded bg-card p-4 space-y-2">
+      <h2 class="text-sm text-muted-foreground">Testnet features</h2>
+      <label class="flex items-center gap-2 text-foreground">
+        <input
+          type="checkbox"
+          aria-label="show governance"
+          :checked="ui.showGovernance"
+          @change="ui.setShowGovernance(($event.target as HTMLInputElement).checked)"
+        />
+        Show Governance
+      </label>
+      <p class="text-xs text-destructive">
+        Governance is experimental and only functional on testnet. Enabling it adds a Governance tab to the navigation.
+      </p>
     </section>
   </div>
 </template>

@@ -58,7 +58,7 @@ vi.mock('nom-ui', () => ({
 }))
 
 import Home from './Home.vue'
-import { useWalletStore } from '../stores/wallet'
+import * as Cfg from '../../wailsjs/go/app/ConfigService'
 
 const STUBS = { TopBar: true, StatusStrip: true, TxHistory: true, SendModal: true, ReceiveModal: true }
 const flush = () => new Promise((r) => setTimeout(r))
@@ -66,6 +66,8 @@ const flush = () => new Promise((r) => setTimeout(r))
 beforeEach(() => {
   setActivePinia(createPinia())
   push.mockClear()
+  // Reset settings to the default (Governance off) so per-test overrides isolate.
+  vi.mocked(Cfg.GetSettings).mockResolvedValue({ autoReceive: false } as never)
 })
 
 describe('Home.vue', () => {
@@ -94,4 +96,19 @@ describe('Home.vue', () => {
     expect(w.find('[aria-label="2 pending"]').exists()).toBe(true)
   })
 
+  it('hides the Governance tab by default', async () => {
+    const w = mount(Home, { global: { stubs: STUBS } })
+    await flush()
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('Accelerator') // base tabs render
+    expect(w.text()).not.toContain('Governance')
+  })
+
+  it('shows the Governance tab when showGovernance is enabled in settings', async () => {
+    vi.mocked(Cfg.GetSettings).mockResolvedValue({ showGovernance: true } as never)
+    const w = mount(Home, { global: { stubs: { ...STUBS, GovernancePanel: true } } })
+    await flush()
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('Governance')
+  })
 })

@@ -12,6 +12,7 @@ import { useAcceleratorStore } from '../stores/accelerator'
 import { useNodeStore } from '../stores/node'
 import { useTxStore } from '../stores/tx'
 import { useAutoReceiveStore } from '../stores/autoReceive'
+import { useUiStore } from '../stores/ui'
 import TopBar from '../components/TopBar.vue'
 import BalanceCard from '../components/BalanceCard.vue'
 import ActionCard from '../components/ActionCard.vue'
@@ -39,9 +40,15 @@ const accelerator = useAcceleratorStore()
 const node = useNodeStore()
 const tx = useTxStore()
 const autoReceive = useAutoReceiveStore()
+const ui = useUiStore()
 const route = useRoute()
 
-const TABS = ['Tokens', 'Rewards', 'Plasma', 'Pillar', 'Staking', 'Sentinels', 'Accelerator', 'Governance']
+// Governance is an experimental, testnet-only tab revealed via Settings; the
+// other NoM tabs are always present.
+const TABS = computed(() => {
+  const base = ['Tokens', 'Rewards', 'Plasma', 'Pillar', 'Staking', 'Sentinels', 'Accelerator']
+  return ui.showGovernance ? [...base, 'Governance'] : base
+})
 const active = ref('Tokens')
 const initialSub = ref('')
 const sendOpen = ref(false)
@@ -51,7 +58,7 @@ const receiveOpen = ref(false)
 // Mirror those into the active tab + the panel's initial sub-view.
 function applyQuery() {
   const t = route.query.tab
-  if (typeof t === 'string' && TABS.includes(t)) active.value = t
+  if (typeof t === 'string' && TABS.value.includes(t)) active.value = t
   const sub = route.query.sub
   initialSub.value = typeof sub === 'string' ? sub : ''
 }
@@ -93,6 +100,7 @@ onMounted(async () => {
   applyQuery()
   node.initEvents(refresh)
   refresh()
+  ui.init()
   await autoReceive.init(wallet.activeIndex)
 })
 </script>
@@ -135,7 +143,7 @@ onMounted(async () => {
         <TabsContent value="Staking"><StakingPanel /></TabsContent>
         <TabsContent value="Sentinels"><SentinelsPanel /></TabsContent>
         <TabsContent value="Accelerator"><AcceleratorPanel :initial-sub="initialSub" /></TabsContent>
-        <TabsContent value="Governance"><GovernancePanel /></TabsContent>
+        <TabsContent v-if="ui.showGovernance" value="Governance"><GovernancePanel /></TabsContent>
       </Tabs>
     </div>
   </div>

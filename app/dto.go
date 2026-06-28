@@ -40,6 +40,9 @@ type Settings struct {
 	AllowMainnetSend bool   `json:"allowMainnetSend"`
 	ChainID          uint64 `json:"chainId"`
 	AutoReceive      bool   `json:"autoReceive"`
+	// ShowGovernance reveals the (experimental, testnet-only) Governance tab in
+	// the navigation. Off by default.
+	ShowGovernance bool `json:"showGovernance"`
 	// AccountLabels maps "<wallet>:<index>" to a human label for an account.
 	AccountLabels map[string]string `json:"accountLabels"`
 	// AccountCounts maps a wallet id to how many accounts (derivation indices)

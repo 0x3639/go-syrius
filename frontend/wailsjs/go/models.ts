@@ -621,6 +621,7 @@ export namespace app {
 	    allowMainnetSend: boolean;
 	    chainId: number;
 	    autoReceive: boolean;
+	    showGovernance: boolean;
 	    accountLabels: Record<string, string>;
 	    accountCounts: Record<string, number>;
 	    contacts: Contact[];
@@ -641,6 +642,7 @@ export namespace app {
 	        this.allowMainnetSend = source["allowMainnetSend"];
 	        this.chainId = source["chainId"];
 	        this.autoReceive = source["autoReceive"];
+	        this.showGovernance = source["showGovernance"];
 	        this.accountLabels = source["accountLabels"];
 	        this.accountCounts = source["accountCounts"];
 	        this.contacts = this.convertValues(source["contacts"], Contact);

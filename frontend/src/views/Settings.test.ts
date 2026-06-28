@@ -143,6 +143,19 @@ describe('Settings.vue', () => {
     expect(w.text()).toContain('Network configuration applied')
   })
 
+  it('toggling Show Governance read-modify-writes showGovernance into settings', async () => {
+    const w = mount(Settings)
+    await flush() // onMounted: ui.init() loads showGovernance (absent → false)
+
+    const cb = w.find('input[aria-label="show governance"]')
+    expect((cb.element as HTMLInputElement).checked).toBe(false)
+
+    await cb.setValue(true)
+    await flush()
+
+    expect(SetSettings).toHaveBeenCalledWith({ chainId: 73404, showGovernance: true })
+  })
+
   it('renders a mismatch warning when the node chain differs from the configured chain', async () => {
     const node = useNodeStore()
     node.connected = true

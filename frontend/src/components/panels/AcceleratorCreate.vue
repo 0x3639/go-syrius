@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { Input, Button } from 'nom-ui'
 import * as Nom from '../../../wailsjs/go/app/NomService'
 import { useAcceleratorStore } from '../../stores/accelerator'
@@ -8,7 +9,10 @@ import Field from '../Field.vue'
 
 const acc = useAcceleratorStore()
 const tx = useTxStore()
+const { myProjects } = storeToRefs(acc)
 const error = ref('')
+
+onMounted(() => acc.loadMyProjects())
 
 // create project
 const cName = ref('')
@@ -54,7 +58,10 @@ async function updatePhase() {
 watch(
   () => tx.status,
   (s) => {
-    if (s === 'done') acc.loadProjects()
+    if (s === 'done') {
+      acc.loadProjects()
+      acc.loadMyProjects()
+    }
   },
 )
 </script>
@@ -74,21 +81,35 @@ watch(
     </section>
 
     <section class="space-y-2 rounded-lg border border-border bg-card p-4">
-      <h3 class="text-sm font-medium text-foreground">Submit / update a phase</h3>
+      <h3 class="text-sm font-medium text-foreground">Request a phase payout</h3>
       <p class="text-xs text-muted-foreground">
-        Both use the project id; Update edits the project's current (voting) phase. Only the project
-        owner can add or update phases (enforced on-chain).
+        Pick one of your approved projects and submit a phase requesting its payout — pillars vote and
+        approved phases pay out automatically. "Update phase" edits your current (still-voting) phase
+        instead. Only the project owner can do this (enforced on-chain).
       </p>
-      <Field label="Project id"><Input v-model="phProjectId" placeholder="project id (0x…)" aria-label="project id" /></Field>
+      <Field label="Project">
+        <select
+          v-model="phProjectId"
+          aria-label="project id"
+          class="w-full rounded border border-border bg-muted px-3 py-2 text-foreground outline-none focus:ring-2 focus:ring-primary"
+        >
+          <option value="" disabled>Select an approved project…</option>
+          <option v-for="p in myProjects" :key="p.id" :value="p.id">{{ p.name }}</option>
+        </select>
+      </Field>
+      <p v-if="myProjects.length === 0" class="text-xs text-muted-foreground">
+        No approved projects of yours yet. Create one above and wait for pillars to approve it before
+        requesting a phase payout.
+      </p>
       <div class="grid grid-cols-2 gap-2">
-        <Field label="Name"><Input v-model="phName" placeholder="name" aria-label="phase name" /></Field>
+        <Field label="Phase name"><Input v-model="phName" placeholder="name" aria-label="phase name" /></Field>
         <Field label="URL"><Input v-model="phUrl" placeholder="url" aria-label="phase url" /></Field>
-        <Field label="ZNN needed (base units)"><Input v-model="phZnn" placeholder="ZNN needed" aria-label="phase znn" /></Field>
-        <Field label="QSR needed (base units)"><Input v-model="phQsr" placeholder="QSR needed" aria-label="phase qsr" /></Field>
+        <Field label="ZNN payout (base units)"><Input v-model="phZnn" placeholder="ZNN needed" aria-label="phase znn" /></Field>
+        <Field label="QSR payout (base units)"><Input v-model="phQsr" placeholder="QSR needed" aria-label="phase qsr" /></Field>
       </div>
-      <Field label="Description"><Input v-model="phDesc" placeholder="description" aria-label="phase description" /></Field>
+      <Field label="Description"><Input v-model="phDesc" placeholder="what this phase delivers" aria-label="phase description" /></Field>
       <div class="flex gap-2">
-        <Button variant="outline" aria-label="add phase" @click="addPhase">Add phase</Button>
+        <Button aria-label="add phase" @click="addPhase">Request phase payout</Button>
         <Button variant="outline" aria-label="update phase" @click="updatePhase">Update phase</Button>
       </div>
     </section>

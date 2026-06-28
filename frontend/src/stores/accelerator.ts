@@ -5,6 +5,7 @@ import type { app } from '../../wailsjs/go/models'
 export const useAcceleratorStore = defineStore('accelerator', {
   state: () => ({
     projects: [] as app.ProjectDTO[],
+    myProjects: [] as app.ProjectDTO[],
     selectedProject: null as app.ProjectDTO | null,
     votablePillars: [] as string[],
     votable: [] as app.VotableItem[],
@@ -32,6 +33,15 @@ export const useAcceleratorStore = defineStore('accelerator', {
         this.selectedProject = await Nom.GetProject(id)
       } catch (e: any) {
         this.error = e?.message ?? String(e)
+      }
+    },
+    // The active address's Active (approved, unfinished) projects — the picker
+    // for requesting a phase payout. Swallows errors (locked/disconnected → []).
+    async loadMyProjects() {
+      try {
+        this.myProjects = await Nom.GetMyProjects()
+      } catch {
+        this.myProjects = []
       }
     },
     async loadVotablePillars() {

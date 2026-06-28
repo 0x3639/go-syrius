@@ -58,6 +58,10 @@ export function GetPlasmaInfo() {
   return window['go']['app']['NomService']['GetPlasmaInfo']();
 }
 
+export function GetMyProjects() {
+  return window['go']['app']['NomService']['GetMyProjects']();
+}
+
 export function GetProject(arg1) {
   return window['go']['app']['NomService']['GetProject'](arg1);
 }

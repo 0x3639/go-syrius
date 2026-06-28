@@ -14,6 +14,25 @@ import (
 // strings32 is 31 zero bytes (hex) so a 1-byte prefix forms a 32-byte hash.
 var strings32 = "00000000000000000000000000000000000000000000000000000000000000"[:62]
 
+func TestMyActiveProjects(t *testing.T) {
+	mine, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
+	other, _ := types.ParseAddress("z1qr4pexnnfaexqqz8nscjjcsajy5hdqfkgadvwx")
+	projects := []*embedded.Project{
+		{Id: types.HexToHashPanic("a1" + strings32), Name: "MineActive", Owner: mine, Status: 1},
+		{Id: types.HexToHashPanic("a2" + strings32), Name: "MineVoting", Owner: mine, Status: 0},
+		{Id: types.HexToHashPanic("a3" + strings32), Name: "MineDone", Owner: mine, Status: 4},
+		{Id: types.HexToHashPanic("a4" + strings32), Name: "OtherActive", Owner: other, Status: 1},
+		nil,
+	}
+	out := myActiveProjects(projects, mine)
+	if len(out) != 1 {
+		t.Fatalf("expected only the owner's Active project, got %d: %+v", len(out), out)
+	}
+	if out[0].Name != "MineActive" {
+		t.Fatalf("expected MineActive, got %q", out[0].Name)
+	}
+}
+
 func TestProjectDTONilSafe(t *testing.T) {
 	// A project with nil funds/votes/phases must map without panicking.
 	p := &embedded.Project{Name: "Proj", Status: 1}

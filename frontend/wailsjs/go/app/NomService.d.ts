@@ -30,6 +30,8 @@ export function GetPillarReward():Promise<app.RewardInfo>;
 
 export function GetPlasmaInfo():Promise<app.PlasmaInfo>;
 
+export function GetMyProjects():Promise<Array<app.ProjectDTO>>;
+
 export function GetProject(arg1:string):Promise<app.ProjectDTO>;
 
 export function GetProjects(arg1:number,arg2:number):Promise<app.ProjectListDTO>;

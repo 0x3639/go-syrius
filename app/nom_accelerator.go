@@ -453,3 +453,50 @@ func (s *NomService) GetVotableForMyPillars() ([]VotableItem, error) {
 	}
 	return items, nil
 }
+
+// myActiveProjects filters projects to those owned by addr with Active status
+// (approved, not yet finished) — the candidates for requesting a phase payout.
+// Pure: no node I/O.
+func myActiveProjects(projects []*embedded.Project, addr types.Address) []ProjectDTO {
+	out := []ProjectDTO{}
+	for _, p := range projects {
+		if p == nil {
+			continue
+		}
+		if p.Owner == addr && int(p.Status) == statusActive {
+			out = append(out, projectDTO(p))
+		}
+	}
+	return out
+}
+
+// GetMyProjects returns the active address's Active (approved, unfinished)
+// Accelerator-Z projects — populates the "request a phase payout" project
+// picker. Read-only.
+func (s *NomService) GetMyProjects() ([]ProjectDTO, error) {
+	addr, ok := s.wallet.activeAddress()
+	if !ok {
+		return nil, errLocked
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return nil, errors.New("not connected")
+	}
+	out := []ProjectDTO{}
+	var pageIndex uint32 = 0
+	const pageSize uint32 = 50
+	seen := 0
+	for {
+		list, err := client.AcceleratorApi.GetAll(pageIndex, pageSize)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, myActiveProjects(list.List, addr)...)
+		seen += len(list.List)
+		if seen >= list.Count || len(list.List) == 0 {
+			break
+		}
+		pageIndex++
+	}
+	return out, nil
+}

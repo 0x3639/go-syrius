@@ -33,7 +33,7 @@ vi.mock('../../wailsjs/runtime/runtime', () => ({ EventsOn: vi.fn() }))
 
 // --- router: keep the test component-local. ---
 const push = vi.fn()
-vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => ({ query: {} }) }))
 
 // --- nom-ui: trivial stubs. Tabs renders all content (so TokensPanel shows);
 // Input/TokenIcon support TokensPanel; Dialog* support the child modals. ---

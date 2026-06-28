@@ -72,16 +72,21 @@ watch(
     </p>
     <template v-else>
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <label class="flex items-center gap-2 text-sm text-muted-foreground">
+        <div class="flex items-center gap-2 text-sm text-muted-foreground">
           Vote as
+          <!-- An address can own multiple pillars; show a picker only when there's
+               a genuine choice, otherwise the pillar is fixed by the active wallet
+               account (switch accounts to vote as another). -->
           <select
+            v-if="votablePillars.length > 1"
             v-model="selectedPillar"
             aria-label="vote pillar"
             class="rounded border border-border bg-muted px-2 py-1 text-foreground outline-none focus:ring-2 focus:ring-primary"
           >
             <option v-for="n in votablePillars" :key="n" :value="n">{{ n }}</option>
           </select>
-        </label>
+          <span v-else aria-label="vote pillar" class="font-medium text-foreground">{{ selectedPillar }}</span>
+        </div>
         <label class="flex items-center gap-2 text-xs text-muted-foreground">
           <input v-model="showAll" type="checkbox" aria-label="show all votable" />
           Show items I've already voted on

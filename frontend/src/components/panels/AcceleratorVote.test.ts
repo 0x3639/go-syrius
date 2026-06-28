@@ -72,6 +72,13 @@ describe('AcceleratorVote', () => {
     expect(w.text()).toContain('AZ-One')
   })
 
+  it('shows the pillar as static text (no dropdown) when the account owns exactly one pillar', () => {
+    setup() // votablePillars = ['MyPillar']
+    const w = mount(AcceleratorVote)
+    expect(w.find('select[aria-label="vote pillar"]').exists()).toBe(false)
+    expect(w.text()).toContain('MyPillar')
+  })
+
   it('forwards a Yes vote with (id, pillar, 0)', async () => {
     const { awaitConfirm } = setup()
     const w = mount(AcceleratorVote)

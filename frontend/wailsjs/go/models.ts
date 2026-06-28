@@ -42,6 +42,7 @@ export namespace app {
 	    data: string;
 	    type: number;
 	    round: number;
+	    currentVoteId: string;
 	    status: number;
 	    executed: boolean;
 	    expired: boolean;
@@ -67,6 +68,7 @@ export namespace app {
 	        this.data = source["data"];
 	        this.type = source["type"];
 	        this.round = source["round"];
+	        this.currentVoteId = source["currentVoteId"];
 	        this.status = source["status"];
 	        this.executed = source["executed"];
 	        this.expired = source["expired"];

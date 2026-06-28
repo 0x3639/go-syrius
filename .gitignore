@@ -16,6 +16,9 @@ wallet*.json
 # Local SDD scratch
 /.superpowers/
 
+# Local scratch assets (not part of the app)
+/animation/
+
 # Go build artifacts
 /bin/
 *.test

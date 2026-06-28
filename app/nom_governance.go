@@ -26,6 +26,7 @@ func actionDTO(a *embedded.Action) ActionDTO {
 		Data:                  a.Data,
 		Type:                  int(a.Type),
 		Round:                 int(a.Round),
+		CurrentVoteId:         a.CurrentVoteId.String(),
 		Status:                int(a.Status),
 		Executed:              a.Executed,
 		Expired:               a.Expired,
@@ -96,11 +97,24 @@ func (s *NomService) PrepareGovernanceVote(id, pillarName string, vote uint8) (C
 	if client == nil {
 		return CallPreview{}, errors.New("not connected")
 	}
-	template := client.GovernanceApi.VoteByName(h, name, vote)
+	// Votes are keyed by the action's CURRENT-round votable hash (CurrentVoteId),
+	// not the action id. They coincide only in round 0 (ActionVoteId(id,0)==id);
+	// after the first ratchet the action id is no longer a registered votable
+	// hash and a vote against it is rejected on-chain. Fetch the live action and
+	// vote on its CurrentVoteId so the vote always targets the open round (also
+	// avoids a stale id if the round advanced since the UI loaded the action).
+	action, err := client.GovernanceApi.GetActionById(h)
+	if err != nil {
+		return CallPreview{}, err
+	}
+	if action.CurrentVoteId.IsZero() {
+		return CallPreview{}, errors.New("action is not open for voting")
+	}
+	template := client.GovernanceApi.VoteByName(action.CurrentVoteId, name, vote)
 	label := map[uint8]string{embedded.VoteYes: "yes", embedded.VoteNo: "no", embedded.VoteAbstain: "abstain"}[vote]
 	return s.tx.prepareCall(template,
 		callExpect{to: types.GovernanceContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Vote %s on governance action %s as %s", label, id, name))
+		fmt.Sprintf("Vote %s on governance action %q (round %d) as %s", label, action.Name, action.Round+1, name))
 }
 
 // PrepareExecuteAction builds an ExecuteAction template. It first fetches the

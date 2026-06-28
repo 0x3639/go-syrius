@@ -11,6 +11,7 @@ func TestActionDTO_MapsFieldsAndVotes(t *testing.T) {
 	id := types.HexToHashPanic("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
 	// The SDK client Action has FLAT fields (it is NOT the go-zenon server
 	// Action that embeds *definition.ActionVariable).
+	voteId := types.HexToHashPanic("aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899")
 	a := &embedded.Action{
 		Id:                    id,
 		Owner:                 types.GovernanceContract,
@@ -21,6 +22,7 @@ func TestActionDTO_MapsFieldsAndVotes(t *testing.T) {
 		Data:                  "AAEC",
 		Type:                  1,
 		Round:                 0,
+		CurrentVoteId:         voteId,
 		Status:                0,
 		Executed:              false,
 		Expired:               false,
@@ -32,6 +34,9 @@ func TestActionDTO_MapsFieldsAndVotes(t *testing.T) {
 	d := actionDTO(a)
 	if d.Id != id.String() || d.Destination != types.SporkContract.String() {
 		t.Fatalf("hash/addr mapping wrong: %+v", d)
+	}
+	if d.CurrentVoteId != voteId.String() {
+		t.Fatalf("currentVoteId mapping wrong: got %q want %q", d.CurrentVoteId, voteId.String())
 	}
 	if d.Type != 1 || d.ActivePillarThreshold != 66 || d.DirectionalThreshold != 50 {
 		t.Fatalf("type/threshold mapping wrong: %+v", d)

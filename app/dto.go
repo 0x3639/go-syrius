@@ -341,6 +341,9 @@ type ActionDTO struct {
 	Data                  string           `json:"data"` // base64 ABI call data
 	Type                  int              `json:"type"` // 1 Spork, 2 Normal
 	Round                 int              `json:"round"`
+	// CurrentVoteId is the votable hash for the action's CURRENT round — the id a
+	// vote must target (it equals Id only in round 0, then ratchets per round).
+	CurrentVoteId         string           `json:"currentVoteId"`
 	Status                int              `json:"status"` // 0 Voting,1 Approved,2 Rejected,3 NoDecision
 	Executed              bool             `json:"executed"`
 	Expired               bool             `json:"expired"`

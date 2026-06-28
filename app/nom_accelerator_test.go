@@ -10,6 +10,9 @@ import (
 	constants "github.com/zenon-network/go-zenon/vm/constants"
 )
 
+// strings32 is 31 zero bytes (hex) so a 1-byte prefix forms a 32-byte hash.
+var strings32 = "00000000000000000000000000000000000000000000000000000000000000"[:62]
+
 func TestProjectDTONilSafe(t *testing.T) {
 	// A project with nil funds/votes/phases must map without panicking.
 	p := &embedded.Project{Name: "Proj", Status: 1}
@@ -202,5 +205,57 @@ func TestProjectWriteTemplateTokenStandards(t *testing.T) {
 	update := api.UpdatePhase(h, "Phase", "desc", "https://zenon.org", big.NewInt(1), big.NewInt(1))
 	if update.ToAddress != types.AcceleratorContract || update.TokenStandard != types.ZnnTokenStandard || update.Amount.Sign() != 0 {
 		t.Fatalf("updatephase template wrong: %+v", update)
+	}
+}
+
+func TestBuildVotableItems(t *testing.T) {
+	now := int64(1_000_000)
+	openProj := &embedded.Project{
+		Id:                types.HexToHashPanic("01" + strings32),
+		Name:              "OpenAZ",
+		Status:            0, // Voting
+		CreationTimestamp: now - 10,
+		ZnnFundsNeeded:    big.NewInt(100), QsrFundsNeeded: big.NewInt(200),
+		Votes: &embedded.VoteBreakdown{Total: 1, Yes: 1, No: 0},
+	}
+	expiredProj := &embedded.Project{
+		Id:                types.HexToHashPanic("02" + strings32),
+		Name:              "ExpiredAZ", Status: 0,
+		CreationTimestamp: now - int64(constants.AcceleratorProjectVotingPeriod) - 1,
+		Votes:             &embedded.VoteBreakdown{},
+	}
+	activeWithOpenPhase := &embedded.Project{
+		Id:   types.HexToHashPanic("03" + strings32),
+		Name: "ActiveAZ", Status: 1, // Active
+		Phases: []*embedded.Phase{{
+			Phase: &embedded.PhaseInfo{
+				Id:   types.HexToHashPanic("04" + strings32),
+				Name: "PhaseOne", Status: 0, // Voting
+				ZnnFundsNeeded: big.NewInt(5), QsrFundsNeeded: big.NewInt(6),
+			},
+			Votes: &embedded.VoteBreakdown{Total: 2, Yes: 1, No: 1},
+		}},
+	}
+	activePaidPhase := &embedded.Project{
+		Id: types.HexToHashPanic("05" + strings32), Name: "DoneAZ", Status: 1,
+		Phases: []*embedded.Phase{{Phase: &embedded.PhaseInfo{Name: "Paid", Status: 2}, Votes: &embedded.VoteBreakdown{}}},
+	}
+
+	items := buildVotableItems([]*embedded.Project{openProj, expiredProj, activeWithOpenPhase, activePaidPhase}, now)
+	if len(items) != 2 {
+		t.Fatalf("expected 2 votable items (open project + open phase), got %d: %+v", len(items), items)
+	}
+	if items[0].Kind != "project" || items[0].Name != "OpenAZ" || items[0].Votes.Yes != 1 {
+		t.Fatalf("project item wrong: %+v", items[0])
+	}
+	if items[1].Kind != "phase" || items[1].Name != "PhaseOne" || items[1].ProjectName != "ActiveAZ" {
+		t.Fatalf("phase item wrong: %+v", items[1])
+	}
+	if items[1].ZnnFundsNeeded != "5" || items[1].Votes.Total != 2 {
+		t.Fatalf("phase funds/votes wrong: %+v", items[1])
+	}
+	// Default annotation: no pillars yet → not flagged needs-vote.
+	if items[0].NeedsMyVote || items[0].MyVotes != nil {
+		t.Fatalf("expected unannotated item: %+v", items[0])
 	}
 }

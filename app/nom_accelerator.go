@@ -12,6 +12,62 @@ import (
 	constants "github.com/zenon-network/go-zenon/vm/constants"
 )
 
+// Accelerator-Z project/phase status values (mirrors go-zenon definition).
+const (
+	statusVoting    = 0
+	statusActive    = 1
+	statusPaid      = 2
+	statusClosed    = 3
+	statusCompleted = 4
+)
+
+// buildVotableItems returns the currently votable projects (Voting + 14-day
+// window open) and the open current phase of each Active project, mapped to
+// VotableItems WITHOUT per-pillar annotation. nowUnix is the reference time for
+// the voting-window check. Pure: no node I/O.
+func buildVotableItems(projects []*embedded.Project, nowUnix int64) []VotableItem {
+	out := make([]VotableItem, 0)
+	for _, p := range projects {
+		if p == nil {
+			continue
+		}
+		switch int(p.Status) {
+		case statusVoting:
+			if p.CreationTimestamp+int64(constants.AcceleratorProjectVotingPeriod) >= nowUnix {
+				out = append(out, VotableItem{
+					Kind:           "project",
+					Id:             p.Id.String(),
+					ProjectId:      p.Id.String(),
+					ProjectName:    p.Name,
+					Name:           p.Name,
+					ZnnFundsNeeded: bigStr(p.ZnnFundsNeeded),
+					QsrFundsNeeded: bigStr(p.QsrFundsNeeded),
+					Votes:          voteBreakdownDTO(p.Votes),
+				})
+			}
+		case statusActive:
+			if len(p.Phases) == 0 {
+				continue
+			}
+			cur := p.Phases[len(p.Phases)-1]
+			if cur == nil || cur.Phase == nil || int(cur.Phase.Status) != statusVoting {
+				continue
+			}
+			out = append(out, VotableItem{
+				Kind:           "phase",
+				Id:             cur.Phase.Id.String(),
+				ProjectId:      p.Id.String(),
+				ProjectName:    p.Name,
+				Name:           cur.Phase.Name,
+				ZnnFundsNeeded: bigStr(cur.Phase.ZnnFundsNeeded),
+				QsrFundsNeeded: bigStr(cur.Phase.QsrFundsNeeded),
+				Votes:          voteBreakdownDTO(cur.Votes),
+			})
+		}
+	}
+	return out
+}
+
 // bigStr renders a possibly-nil *big.Int as a base-10 string ("0" when nil).
 func bigStr(v *big.Int) string {
 	if v == nil {

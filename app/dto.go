@@ -325,3 +325,25 @@ type ProjectListDTO struct {
 	Count int          `json:"count"`
 	List  []ProjectDTO `json:"list"`
 }
+
+// PillarVoteState is one owned pillar's vote on a votable item; Vote == -1 means
+// the pillar has not voted yet.
+type PillarVoteState struct {
+	Pillar string `json:"pillar"`
+	Vote   int    `json:"vote"` // -1 not voted, 0 yes, 1 no, 2 abstain
+}
+
+// VotableItem is a project or phase currently open for pillar voting, annotated
+// with the active address's owned-pillar vote state.
+type VotableItem struct {
+	Kind           string            `json:"kind"` // "project" | "phase"
+	Id             string            `json:"id"`
+	ProjectId      string            `json:"projectId"`
+	ProjectName    string            `json:"projectName"`
+	Name           string            `json:"name"`
+	ZnnFundsNeeded string            `json:"znnFundsNeeded"`
+	QsrFundsNeeded string            `json:"qsrFundsNeeded"`
+	Votes          VoteBreakdownDTO  `json:"votes"`
+	MyVotes        []PillarVoteState `json:"myVotes"`
+	NeedsMyVote    bool              `json:"needsMyVote"`
+}

@@ -2,6 +2,7 @@ package app
 
 import (
 	"math/big"
+	"strings"
 	"testing"
 
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
@@ -187,5 +188,27 @@ func TestProposeKinds_IncludesAllLiquidity(t *testing.T) {
 		if !have[want] {
 			t.Fatalf("missing liquidity kind %q", want)
 		}
+	}
+}
+
+func TestBuildProposalPayload_SporkLengthBounds(t *testing.T) {
+	api := embedded.NewGovernanceApi(nil)
+	// name shorter than 5 → error
+	if _, err := buildProposalPayloadWith(api, "spork.create", map[string]string{"name": "abc", "description": "ok"}); err == nil {
+		t.Fatal("spork name < 5 chars must error")
+	}
+	// name longer than 40 → error
+	long := "thisisaverylongsporknamethatexceedsfortychars!"
+	if _, err := buildProposalPayloadWith(api, "spork.create", map[string]string{"name": long, "description": "ok"}); err == nil {
+		t.Fatal("spork name > 40 chars must error")
+	}
+	// description longer than 400 → error
+	desc := strings.Repeat("x", 401)
+	if _, err := buildProposalPayloadWith(api, "spork.create", map[string]string{"name": "valid name", "description": desc}); err == nil {
+		t.Fatal("spork description > 400 chars must error")
+	}
+	// a name WITH SPACES within bounds → ok
+	if _, err := buildProposalPayloadWith(api, "spork.create", map[string]string{"name": "My Test Spork", "description": "ok"}); err != nil {
+		t.Fatalf("valid spork name with spaces must succeed: %v", err)
 	}
 }

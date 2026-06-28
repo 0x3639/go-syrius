@@ -45,6 +45,14 @@ function inputType(t: string): string {
   return t === 'number' ? 'number' : 'text'
 }
 
+// Inline length hint from the field's catalog min/max byte bounds (0 = unset).
+function lengthHint(f: app.ProposeFieldDTO): string {
+  if (f.min > 0 && f.max > 0) return `${f.min}–${f.max} characters`
+  if (f.max > 0) return `up to ${f.max} characters`
+  if (f.min > 0) return `at least ${f.min} characters`
+  return ''
+}
+
 async function submit() {
   error.value = ''
   if (!currentKind.value) {
@@ -103,8 +111,10 @@ async function submit() {
           :type="inputType(f.type)"
           :aria-label="`field ${f.key}`"
           :placeholder="f.placeholder"
+          :maxlength="f.max > 0 ? f.max : undefined"
           class="mt-1 w-full rounded border border-border bg-muted px-2 py-1 text-foreground outline-none focus:ring-2 focus:ring-primary"
         />
+        <span v-if="lengthHint(f)" class="text-[10px] text-muted-foreground">{{ lengthHint(f) }}</span>
         <span v-if="f.type === 'list'" class="text-[10px] text-muted-foreground">comma-separated</span>
       </label>
     </template>

@@ -170,8 +170,8 @@ func parseBigIntList(p map[string]string, key string) ([]*big.Int, error) {
 func proposeKinds() []ProposeKindDTO {
 	return []ProposeKindDTO{
 		{Kind: "spork.create", Label: "Spork — Create", Group: "Spork", Fields: []ProposeFieldDTO{
-			{Key: "name", Label: "Spork name", Type: "text", Placeholder: "my-spork", Required: true},
-			{Key: "description", Label: "Spork description", Type: "text", Placeholder: "What this spork gates", Required: true},
+			{Key: "name", Label: "Spork name", Type: "text", Placeholder: "my-spork", Required: true, Min: 5, Max: 40},
+			{Key: "description", Label: "Spork description", Type: "text", Placeholder: "What this spork gates", Required: true, Max: 400},
 		}},
 		{Kind: "spork.activate", Label: "Spork — Activate", Group: "Spork", Fields: []ProposeFieldDTO{
 			{Key: "id", Label: "Spork id (hash)", Type: "hash", Placeholder: "0x…", Required: true},
@@ -282,7 +282,37 @@ func proposeKinds() []ProposeKindDTO {
 
 // ---- dispatcher ----
 
+// validateFieldLengths enforces the catalog's Min/Max byte-length bounds for the
+// kind's fields before the per-kind builder runs, so an out-of-range value is
+// rejected client-side instead of costing the 1 ZNN fee and failing on-chain.
+// Empty values are skipped here (required-ness is enforced by the builder's
+// reqParam); byte length matches the node's len() checks.
+func validateFieldLengths(kind string, p map[string]string) error {
+	for _, k := range proposeKinds() {
+		if k.Kind != kind {
+			continue
+		}
+		for _, f := range k.Fields {
+			v := strings.TrimSpace(p[f.Key])
+			if v == "" {
+				continue
+			}
+			if f.Min > 0 && len(v) < f.Min {
+				return fmt.Errorf("%s must be at least %d characters", f.Label, f.Min)
+			}
+			if f.Max > 0 && len(v) > f.Max {
+				return fmt.Errorf("%s must be at most %d characters", f.Label, f.Max)
+			}
+		}
+		break
+	}
+	return nil
+}
+
 func buildProposalPayloadWith(api *embedded.GovernanceApi, kind string, p map[string]string) (embedded.ProposalPayload, error) {
+	if err := validateFieldLengths(kind, p); err != nil {
+		return embedded.ProposalPayload{}, err
+	}
 	switch kind {
 	case "spork.create":
 		name, err := reqParam(p, "name")

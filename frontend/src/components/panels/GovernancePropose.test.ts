@@ -18,8 +18,8 @@ function setup() {
   const gov = useGovernanceStore()
   gov.proposeKinds = [
     { kind: 'spork.create', label: 'Spork — Create', group: 'Spork', fields: [
-      { key: 'name', label: 'Spork name', type: 'text', placeholder: '', required: true },
-      { key: 'description', label: 'Spork description', type: 'text', placeholder: '', required: true },
+      { key: 'name', label: 'Spork name', type: 'text', placeholder: '', required: true, min: 5, max: 40 },
+      { key: 'description', label: 'Spork description', type: 'text', placeholder: '', required: true, max: 400 },
     ] },
     { kind: 'custom', label: 'Custom (advanced)', group: 'Custom', fields: [
       { key: 'destination', label: 'Destination', type: 'address', placeholder: '', required: true },
@@ -41,6 +41,14 @@ describe('GovernancePropose', () => {
     await w.find('select[aria-label="propose kind"]').setValue('custom')
     expect(w.find('input[aria-label="field destination"]').exists()).toBe(true)
     expect(w.find('input[aria-label="field name"]').exists()).toBe(false)
+  })
+
+  it('shows length hints and sets maxlength from the field min/max bounds', () => {
+    setup()
+    const w = mount(GovernancePropose)
+    expect(w.text()).toContain('5–40 characters') // spork name (min 5, max 40)
+    expect(w.text()).toContain('up to 400 characters') // spork description (max only)
+    expect(w.find('input[aria-label="field name"]').attributes('maxlength')).toBe('40')
   })
 
   it('submits PrepareProposeAction with (name, description, url, kind, params)', async () => {

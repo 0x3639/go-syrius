@@ -362,6 +362,11 @@ type ProposeFieldDTO struct {
 	Type        string `json:"type"` // text|number|bool|address|hash|amount|base64|list
 	Placeholder string `json:"placeholder"`
 	Required    bool   `json:"required"`
+	// Min/Max are byte-length bounds (0 = unbounded), matching the on-chain
+	// length checks. Drive the form's inline hint + maxlength and the
+	// server-side validateFieldLengths guard.
+	Min int `json:"min"`
+	Max int `json:"max"`
 }
 
 // ProposeKindDTO is one proposable governance action kind + its input schema.

@@ -478,6 +478,8 @@ export namespace app {
 	    type: string;
 	    placeholder: string;
 	    required: boolean;
+	    min: number;
+	    max: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ProposeFieldDTO(source);
@@ -490,6 +492,8 @@ export namespace app {
 	        this.type = source["type"];
 	        this.placeholder = source["placeholder"];
 	        this.required = source["required"];
+	        this.min = source["min"];
+	        this.max = source["max"];
 	    }
 	}
 	export class ProposeKindDTO {

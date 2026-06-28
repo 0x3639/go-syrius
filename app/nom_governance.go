@@ -3,8 +3,10 @@ package app
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
+	"github.com/zenon-network/go-zenon/common/types"
 )
 
 // actionDTO maps an SDK governance Action (flat client struct: the on-chain
@@ -73,4 +75,54 @@ func (s *NomService) GetAction(id string) (ActionDTO, error) {
 		return ActionDTO{}, err
 	}
 	return actionDTO(a), nil
+}
+
+// PrepareGovernanceVote builds a VoteByName template for one of the active
+// address's Pillars. vote MUST be embedded.VoteYes/VoteNo/VoteAbstain. Field
+// validation runs before any node use; Pillar ownership is enforced on-chain.
+func (s *NomService) PrepareGovernanceVote(id, pillarName string, vote uint8) (CallPreview, error) {
+	h, err := parseHash(id)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid action id: %w", err)
+	}
+	name := strings.TrimSpace(pillarName)
+	if name == "" {
+		return CallPreview{}, errors.New("pillar name is required")
+	}
+	if vote != embedded.VoteYes && vote != embedded.VoteNo && vote != embedded.VoteAbstain {
+		return CallPreview{}, errors.New("vote must be yes, no, or abstain")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	template := client.GovernanceApi.VoteByName(h, name, vote)
+	label := map[uint8]string{embedded.VoteYes: "yes", embedded.VoteNo: "no", embedded.VoteAbstain: "abstain"}[vote]
+	return s.tx.prepareCall(template,
+		callExpect{to: types.GovernanceContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Vote %s on governance action %s as %s", label, id, name))
+}
+
+// PrepareExecuteAction builds an ExecuteAction template. It first fetches the
+// action so the confirm summary names the action and the contract it will call
+// (confirm-what-you-sign: the on-chain ToAddress is the governance contract, so
+// the real effect — the destination call — is surfaced in the summary).
+func (s *NomService) PrepareExecuteAction(id string) (CallPreview, error) {
+	h, err := parseHash(id)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("invalid action id: %w", err)
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return CallPreview{}, errors.New("not connected")
+	}
+	a, err := client.GovernanceApi.GetActionById(h)
+	if err != nil {
+		return CallPreview{}, err
+	}
+	d := actionDTO(a)
+	template := client.GovernanceApi.ExecuteAction(h)
+	return s.tx.prepareCall(template,
+		callExpect{to: types.GovernanceContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Execute governance action %q (calls %s)", d.Name, d.Destination))
 }

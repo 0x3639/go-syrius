@@ -61,3 +61,46 @@ func TestGetAction_BadId(t *testing.T) {
 		t.Fatal("bad id must error")
 	}
 }
+
+func TestPrepareGovernanceVote_Validation(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	if _, err := s.PrepareGovernanceVote("bad-id", "P1", 0); err == nil {
+		t.Fatal("bad id must error")
+	}
+	valid := "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+	if _, err := s.PrepareGovernanceVote(valid, "  ", 0); err == nil {
+		t.Fatal("empty pillar must error")
+	}
+	if _, err := s.PrepareGovernanceVote(valid, "P1", 9); err == nil {
+		t.Fatal("invalid vote value must error")
+	}
+	if _, err := s.PrepareGovernanceVote(valid, "P1", 0); err == nil || err.Error() != "not connected" {
+		t.Fatalf("valid vote should hit not-connected; got %v", err)
+	}
+}
+
+func TestPrepareExecuteAction_Validation(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	if _, err := s.PrepareExecuteAction("bad-id"); err == nil {
+		t.Fatal("bad id must error")
+	}
+	valid := "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+	if _, err := s.PrepareExecuteAction(valid); err == nil || err.Error() != "not connected" {
+		t.Fatalf("valid execute should hit not-connected; got %v", err)
+	}
+}
+
+// Build the SDK templates directly to catch a pack-panic at construction
+// (the lesson from the v0.1.19 UpdatePhase regression).
+func TestGovernanceWriteTemplates_NoPanic(t *testing.T) {
+	api := embedded.NewGovernanceApi(nil)
+	h := types.HexToHashPanic("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
+	vote := api.VoteByName(h, "P1", embedded.VoteYes)
+	if vote.ToAddress != types.GovernanceContract || vote.TokenStandard != types.ZnnTokenStandard || vote.Amount.Sign() != 0 {
+		t.Fatalf("vote template wrong: %+v", vote)
+	}
+	exec := api.ExecuteAction(h)
+	if exec.ToAddress != types.GovernanceContract || exec.Amount.Sign() != 0 {
+		t.Fatalf("execute template wrong: %+v", exec)
+	}
+}

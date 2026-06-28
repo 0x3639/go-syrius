@@ -126,8 +126,19 @@ onMounted(async () => {
 
     <div class="rounded border border-border bg-card">
       <Tabs v-model="active">
-        <TabsList class="w-full justify-start overflow-x-auto">
-          <TabsTrigger v-for="t in TABS" :key="t" :value="t">{{ t }}</TabsTrigger>
+        <!-- justify-evenly + flex-none: distribute tabs by EQUAL GAPS (incl. the
+             ends) rather than equal-width cells, so the whitespace between labels
+             is identical regardless of label length. flex-none sizes each tab to
+             its content; trimmed px keeps the active underline hugging the word.
+             Still respaces automatically when the Governance tab toggles. -->
+        <TabsList variant="underline" class="justify-evenly">
+          <TabsTrigger
+            v-for="t in TABS"
+            :key="t"
+            variant="underline"
+            class="flex-none px-2 sm:px-3"
+            :value="t"
+          >{{ t }}</TabsTrigger>
         </TabsList>
         <TabsContent value="Tokens">
           <TokensPanel />

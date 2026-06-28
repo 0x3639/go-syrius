@@ -1,0 +1,44 @@
+import { mount } from '@vue/test-utils'
+import { describe, it, expect, vi } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
+
+vi.mock('nom-ui', () => ({
+  Button: { props: ['variant'], template: '<button @click="$emit(\'click\')"><slot /></button>' },
+  Input: { props: ['modelValue'], template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
+}))
+vi.mock('../../../wailsjs/go/app/NomService', () => ({
+  PrepareCreateProject: vi.fn(() => Promise.resolve({ kind: 'create' })),
+  PrepareAddPhase: vi.fn(() => Promise.resolve({ kind: 'addPhase' })),
+  PrepareUpdatePhase: vi.fn(() => Promise.resolve({ kind: 'updatePhase' })),
+}))
+
+import AcceleratorCreate from './AcceleratorCreate.vue'
+import * as Nom from '../../../wailsjs/go/app/NomService'
+import { useTxStore } from '../../stores/tx'
+
+describe('AcceleratorCreate', () => {
+  it('forwards create + add-phase calls with the form fields', async () => {
+    setActivePinia(createPinia())
+    const tx = useTxStore()
+    vi.spyOn(tx, 'awaitConfirm').mockImplementation(() => {})
+    const w = mount(AcceleratorCreate)
+    await w.find('input[aria-label="create name"]').setValue('Proj')
+    await w.find('input[aria-label="create url"]').setValue('https://x.io')
+    await w.find('input[aria-label="create znn"]').setValue('100')
+    await w.find('input[aria-label="create qsr"]').setValue('200')
+    await w.find('input[aria-label="create description"]').setValue('desc')
+    await w.find('button[aria-label="create project"]').trigger('click')
+    await new Promise((r) => setTimeout(r))
+    expect(Nom.PrepareCreateProject).toHaveBeenCalledWith('Proj', 'desc', 'https://x.io', '100', '200')
+
+    await w.find('input[aria-label="project id"]').setValue('0xabc')
+    await w.find('input[aria-label="phase name"]').setValue('Ph1')
+    await w.find('input[aria-label="phase url"]').setValue('https://y.io')
+    await w.find('input[aria-label="phase znn"]').setValue('10')
+    await w.find('input[aria-label="phase qsr"]').setValue('20')
+    await w.find('input[aria-label="phase description"]').setValue('pdesc')
+    await w.find('button[aria-label="add phase"]').trigger('click')
+    await new Promise((r) => setTimeout(r))
+    expect(Nom.PrepareAddPhase).toHaveBeenCalledWith('0xabc', 'Ph1', 'pdesc', 'https://y.io', '10', '20')
+  })
+})

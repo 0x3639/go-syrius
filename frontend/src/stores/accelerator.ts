@@ -5,6 +5,8 @@ import type { app } from '../../wailsjs/go/models'
 export const useAcceleratorStore = defineStore('accelerator', {
   state: () => ({
     projects: [] as app.ProjectDTO[],
+    projectCount: 0,
+    projectPage: 0,
     myProjects: [] as app.ProjectDTO[],
     selectedProject: null as app.ProjectDTO | null,
     votablePillars: [] as string[],
@@ -23,6 +25,8 @@ export const useAcceleratorStore = defineStore('accelerator', {
       try {
         const list = await Nom.GetProjects(page, 20)
         this.projects = list.list ?? []
+        this.projectCount = list.count ?? 0
+        this.projectPage = page
       } catch (e: any) {
         this.error = e?.message ?? String(e)
       }

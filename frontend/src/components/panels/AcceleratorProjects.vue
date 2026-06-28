@@ -8,9 +8,18 @@ import { statusLabel, isPassing } from '../../lib/accelerator'
 import type { app } from '../../../wailsjs/go/models'
 
 const acc = useAcceleratorStore()
-const { projects, numActivePillars } = storeToRefs(acc)
+const { projects, numActivePillars, projectCount, projectPage } = storeToRefs(acc)
 
-const FILTERS = ['All', 'Voting', 'Active', 'Awaiting payout', 'Completed', 'Rejected'] as const
+const PAGE_SIZE = 20
+const pageCount = computed(() => Math.max(1, Math.ceil(projectCount.value / PAGE_SIZE)))
+const hasPrev = computed(() => projectPage.value > 0)
+const hasNext = computed(() => projectPage.value + 1 < pageCount.value)
+function goPage(page: number) {
+  expanded.value = null
+  acc.loadProjects(page)
+}
+
+const FILTERS = ['All', 'Voting', 'Active', 'Awaiting payout', 'Completed', 'Closed'] as const
 type Filter = (typeof FILTERS)[number]
 const filter = ref<Filter>('All')
 const expanded = ref<string | null>(null)
@@ -31,7 +40,7 @@ const filtered = computed(() =>
       case 'Voting': return p.status === 0
       case 'Active': return p.status === 1
       case 'Completed': return p.status === 4
-      case 'Rejected': return p.status === 3
+      case 'Closed': return p.status === 3
       case 'Awaiting payout': return awaitingPayout(p)
       default: return true
     }
@@ -87,6 +96,26 @@ function label(f: Filter): string {
         </div>
         <p v-if="!p.phases || p.phases.length === 0" class="ml-3 mt-1 text-xs text-muted-foreground">No phases.</p>
       </template>
+    </div>
+
+    <div v-if="pageCount > 1" class="flex items-center justify-between gap-2 pt-1">
+      <Button
+        variant="outline"
+        class="px-2 py-1 text-xs"
+        :disabled="!hasPrev"
+        aria-label="previous page"
+        @click="goPage(projectPage - 1)"
+      >Prev</Button>
+      <span class="text-xs text-muted-foreground">
+        Page {{ projectPage + 1 }} of {{ pageCount }} · {{ projectCount }} projects
+      </span>
+      <Button
+        variant="outline"
+        class="px-2 py-1 text-xs"
+        :disabled="!hasNext"
+        aria-label="next page"
+        @click="goPage(projectPage + 1)"
+      >Next</Button>
     </div>
   </div>
 </template>

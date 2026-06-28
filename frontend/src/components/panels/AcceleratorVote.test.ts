@@ -50,6 +50,28 @@ describe('AcceleratorVote', () => {
     expect(w.text()).not.toContain('Phase-1') // already voted → hidden by default
   })
 
+  it('scopes the list to the selected pillar, not any owned pillar', async () => {
+    setActivePinia(createPinia())
+    const acc = useAcceleratorStore()
+    const pillar = usePillarStore()
+    vi.spyOn(acc, 'refreshVotable').mockResolvedValue()
+    acc.votablePillars = ['PillarA', 'PillarB']
+    acc.numActivePillars = 10
+    // PillarA already voted; PillarB has not → needsMyVote is globally true.
+    acc.votable = [
+      { kind: 'project', id: '0xp1', projectId: '0xp1', projectName: 'AZ-One', name: 'AZ-One',
+        znnFundsNeeded: '0', qsrFundsNeeded: '0', votes: { yes: 1, no: 0, total: 1 },
+        myVotes: [{ pillar: 'PillarA', vote: 0 }, { pillar: 'PillarB', vote: -1 }], needsMyVote: true },
+    ] as never
+    pillar.myPillar = { name: 'PillarA' } as never
+    const w = mount(AcceleratorVote)
+    // Default pillar (PillarA) voted → hidden despite needsMyVote: true
+    expect(w.text()).not.toContain('AZ-One')
+    // Switch to PillarB (unvoted) → now shown
+    await w.find('select[aria-label="vote pillar"]').setValue('PillarB')
+    expect(w.text()).toContain('AZ-One')
+  })
+
   it('forwards a Yes vote with (id, pillar, 0)', async () => {
     const { awaitConfirm } = setup()
     const w = mount(AcceleratorVote)

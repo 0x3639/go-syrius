@@ -22,7 +22,9 @@ const showAll = ref(false)
 watch(
   votablePillars,
   (list) => {
-    if (list.length && !selectedPillar.value) selectedPillar.value = list[0]
+    // Reset when the current selection is gone (wallet/pillar list changed),
+    // not only when empty — a stale name would silently mis-scope every row.
+    if (!list.includes(selectedPillar.value)) selectedPillar.value = list[0] ?? ''
   },
   { immediate: true },
 )
@@ -31,9 +33,15 @@ function myVote(item: app.VotableItem): number {
   const e = item.myVotes?.find((m) => m.pillar === selectedPillar.value)
   return e ? e.vote : -1
 }
+// Whether the *selected* pillar still owes a vote. item.needsMyVote is true if
+// ANY owned pillar is unvoted, which would wrongly list rows the selected
+// pillar has already voted on.
+function needsVoteForPillar(item: app.VotableItem): boolean {
+  return myVote(item) === -1
+}
 const VOTE_LABELS = ['yes', 'no', 'abstain']
 const items = computed(() =>
-  showAll.value ? votable.value : votable.value.filter((it) => it.needsMyVote),
+  showAll.value ? votable.value : votable.value.filter(needsVoteForPillar),
 )
 
 async function vote(id: string, choice: number) {

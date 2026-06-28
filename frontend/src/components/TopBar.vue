@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useToast } from 'nom-ui'
 import { useWalletStore } from '../stores/wallet'
 import { usePlasmaStore } from '../stores/plasma'
 import { useAutoReceiveStore } from '../stores/autoReceive'
@@ -22,6 +23,21 @@ const autoReceive = useAutoReceiveStore()
 
 const plasmaLvl = computed(() => plasmaLevel(plasma.info?.currentPlasma ?? 0))
 const plasmaColor = computed(() => plasmaColorClass(plasmaLvl.value))
+
+// Surface background auto-receive failures (no Confirm dialog drives them) as a
+// toast. useToast may be unavailable (e.g. no Toaster mounted in tests); guard.
+let toast: ReturnType<typeof useToast> | undefined
+try {
+  toast = useToast()
+} catch {
+  /* no Toaster (tests/offline) */
+}
+watch(
+  () => autoReceive.errorCount,
+  () => {
+    if (autoReceive.lastError) toast?.show(autoReceive.lastError, 'error')
+  },
+)
 </script>
 
 <template>

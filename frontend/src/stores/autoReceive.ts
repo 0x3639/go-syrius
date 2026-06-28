@@ -8,15 +8,30 @@ import { EventsOn } from '../../wailsjs/runtime/runtime'
 // screen, while Home drives init + account-following. `receiving` reflects the
 // backend actively claiming blocks (PoW/plasma generation) for a progress UI.
 export const useAutoReceiveStore = defineStore('autoReceive', {
-  state: () => ({ enabled: false, account: -1, receiving: false, wired: false }),
+  state: () => ({
+    enabled: false,
+    account: -1,
+    receiving: false,
+    wired: false,
+    // Last auto-receive failure message + a counter that bumps on each error, so
+    // the UI can surface every occurrence (even repeats of the same message).
+    lastError: '',
+    errorCount: 0,
+  }),
   actions: {
-    // Wire the backend's receiving:active event (once per store instance).
+    // Wire the backend's auto-receive events (once per store instance).
     wireEvents() {
       if (this.wired) return
       this.wired = true
       try {
         EventsOn('auto-receive:active', (active: boolean) => {
           this.receiving = !!active
+        })
+        // Auto-receive runs in the background with no Confirm dialog, so a
+        // failure is otherwise invisible — record it for the UI to surface.
+        EventsOn('auto-receive:error', (msg: string) => {
+          this.lastError = typeof msg === 'string' && msg ? msg : 'Auto-receive failed'
+          this.errorCount++
         })
       } catch {
         /* runtime unavailable (tests/offline) */

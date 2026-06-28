@@ -63,4 +63,17 @@ describe('autoReceive store', () => {
     entry![1](false)
     expect(s.receiving).toBe(false)
   })
+
+  it('records backend auto-receive:error events (message + bumped counter)', () => {
+    const s = useAutoReceiveStore()
+    s.wireEvents()
+    const entry = onCalls.find(([n]) => n === 'auto-receive:error')
+    expect(entry).toBeTruthy()
+    entry![1]('plasma exhausted')
+    expect(s.lastError).toBe('plasma exhausted')
+    expect(s.errorCount).toBe(1)
+    entry![1]('') // empty/garbled payload falls back to a generic message
+    expect(s.lastError).toBe('Auto-receive failed')
+    expect(s.errorCount).toBe(2)
+  })
 })

@@ -5,6 +5,21 @@
 **Branch:** `governance-module` (off `main`)
 **Scope:** Browse + Vote + Execute (Propose deferred — YAGNI)
 
+## 0. Phasing (IMPORTANT)
+
+This spec is delivered in **two phases** so Phase 1 ships against the **current pinned
+SDK (`v0.1.20`) with zero go-zenon/SDK changes**:
+
+- **Phase 1 (now) — build & testnet:** Browse (Actions: filter + paging + detail +
+  Execute) and a **simple Vote view** (lists open actions, pillar picker, Yes/No/Abstain
+  via `VoteByName`). **No per-pillar "needs my vote" state and no top-bar badge** — those
+  require a vote-state read the node/SDK don't expose yet.
+- **Phase 2 (later) — per-pillar awareness:** add `getPillarVotes` to the go-zenon
+  governance RPC + the SDK client (§6), then upgrade the Vote view to the Accelerator-Z
+  "needs my vote" experience and add the **top-bar governance ballot badge**.
+
+Everything tagged **[P2]** below is deferred to Phase 2. Unmarked items are Phase 1.
+
 ## 1. Goal
 
 Add a **Governance** feature to the wallet so pillar operators can participate in
@@ -12,15 +27,16 @@ on-chain governance (the embedded `governance` contract — actions that call ot
 embedded contracts such as Spork/Bridge). Specifically:
 
 - **Browse** all governance actions (paginated, filterable by status).
-- **Vote** on open actions, pillar-gated, from a consolidated "needs my vote" list —
-  mirroring the Accelerator-Z Vote view exactly.
+- **Vote** on open actions, pillar-gated. *Phase 1:* a flat list of open actions with a
+  pillar picker + Yes/No/Abstain. *[P2]:* a consolidated "needs my vote" list mirroring
+  the Accelerator-Z Vote view, with a per-pillar "you voted" indicator.
 - **Execute** an approved-but-unexecuted action (rare; see §2 note).
-- A **top-bar ballot badge** counting actions the operator's pillar still needs to
-  vote on, deep-linking to the Vote view.
+- **[P2]** A **top-bar ballot badge** counting actions the operator's pillar still needs
+  to vote on, deep-linking to the Vote view.
 
 This mirrors the Accelerator-Z module (`nom_accelerator.go` + `AcceleratorPanel`).
-It is frontend-heavy plus a small set of new read/prepare methods on the Go backend,
-and **depends on two SDK/node additions** (see §6).
+It is frontend-heavy plus a small set of new read/prepare methods on the Go backend.
+**Phase 1 needs no SDK/node changes;** the [P2] additions are in §6.
 
 ## 2. On-chain semantics (authoritative — verified against the 0x3639/go-zenon fork)
 
@@ -74,25 +90,29 @@ nudging a pending action's update). The UI must treat "no executable actions" as
 normal case, not an error.
 
 ### Derived sets the UI uses
-- **Open action** = `Status == Voting` and not `Expired`.
-- **Needs my vote** = an open action where at least one owned pillar has a `nil`
-  `GetPillarVotes` slot for the action's `CurrentVoteId`.
+- **Open action** = `Status == Voting` and not `Expired`. *(Phase 1 Vote list = all open
+  actions.)*
 - **Executable** = `Status == Approved && !Executed` (rare — see note).
 - **Passing (current round)** = `isActionApproved(votes, action, numActivePillars)` using
   the action's own thresholds.
+- **[P2] Needs my vote** = an open action where at least one owned pillar has a `nil`
+  `GetPillarVotes` slot for the action's `CurrentVoteId`.
 
 ## 3. Decisions (from brainstorming)
 
-1. **Scope:** Browse + Vote + Execute. **Propose deferred.**
+1. **Scope:** Browse + Vote + Execute. **Propose deferred.** Per-pillar vote awareness +
+   badge deferred to **Phase 2** (see §0).
 2. **Layout:** `GovernancePanel` with two sub-tabs — **Vote** / **Actions**.
-3. **Vote view:** per-pillar "needs my vote" list with pillar picker + Yes/No/Abstain +
-   "you voted" indicator — a clone of `AcceleratorVote`, scoped to the *selected* pillar
-   (apply the lesson from the AZ review: filter by selected pillar, not global
-   `needsMyVote`; reset selection when it leaves the pillar list).
+3. **Vote view (Phase 1):** flat list of **open** actions (`Status==Voting && !Expired`)
+   with a pillar picker (which owned pillar to vote as, from `GetVotablePillars`) +
+   Yes/No/Abstain via `VoteByName`. No "you voted" indicator (can't read per-pillar vote
+   state yet). **[P2]:** upgrade to a "needs my vote" list scoped to the *selected* pillar
+   (apply the AZ-review lesson: filter by selected pillar, not a global `needsMyVote`;
+   reset selection when it leaves the pillar list).
 4. **Actions view:** paginated browse (Prev/Next + total count) with a status filter;
    each row expands to detail; **Execute** button appears in the expanded detail of an
    `Approved && !Executed` action.
-5. **Top-bar badge:** a governance ballot badge mirroring the accelerator one
+5. **[P2] Top-bar badge:** a governance ballot badge mirroring the accelerator one
    (`needsVoteCount` → deep-link `?tab=Governance&sub=Vote`).
 6. **Confirm-what-you-sign:** both Vote and Execute render the effect from the built
    block, not raw inputs (see §5).
@@ -102,15 +122,20 @@ normal case, not an error.
 ### 4.1 Backend — new methods on `NomService` (`app/nom_governance.go`)
 
 Follow the existing guard pattern (`currentClient()` nil → "not connected";
-`activeAddress()` → `errLocked` where an address is needed). SDK surface used:
-`client.GovernanceApi.GetAllActions / GetActionById / VoteByName / ExecuteAction`, plus
-the **new** `client.GovernanceApi.GetPillarVotes(name, hashes)` (see §6).
+`activeAddress()` → `errLocked` where an address is needed). Phase 1 SDK surface (all
+present in `v0.1.20`): `client.GovernanceApi.GetAllActions / GetActionById / VoteByName /
+ExecuteAction`. **[P2]** adds `client.GovernanceApi.GetPillarVotes(name, hashes)` (§6).
 
 - `GetActions(pageIndex, pageSize uint32) (ActionListDTO, error)` — wraps `GetAllActions`;
-  returns `{count, list}` (retain count for paging, per the AZ pagination fix).
+  returns `{count, list}` (retain count for paging, per the AZ pagination fix). Also the
+  source for the Phase 1 Vote list (frontend filters to open actions).
 - `GetAction(id string) (ActionDTO, error)` — wraps `GetActionById`.
-- `GetVotableActionsForMyPillars() ([]VotableAction, error)` — the aggregating read that
-  powers the Vote view + badge:
+- `PrepareGovernanceVote(id, pillarName string, vote uint8) (CallPreview, error)` —
+  re-validates inputs, builds via `VoteByName`.
+- `PrepareExecuteAction(id string) (CallPreview, error)` — builds via `ExecuteAction`.
+- Reuses existing `GetVotablePillars()` and `GetActivePillarCount()`.
+- **[P2]** `GetVotableActionsForMyPillars() ([]VotableAction, error)` — the aggregating
+  read that will power the upgraded Vote view + badge:
   1. Resolve owned pillar names via `PillarApi.GetByOwner(activeAddress)` (none → empty
      list, no error).
   2. Sweep `GetAllActions` (paging) → keep `Status==Voting && !Expired`.
@@ -118,10 +143,6 @@ the **new** `client.GovernanceApi.GetPillarVotes(name, hashes)` (see §6).
      per-item `MyVotes` (nil slot → not voted this round).
   4. Map to `[]VotableAction`, computing `NeedsMyVote`.
   - Errors propagate (frontend swallows for the badge, like AZ).
-- `PrepareGovernanceVote(id, pillarName string, vote uint8) (CallPreview, error)` —
-  re-validates inputs, builds via `VoteByName`.
-- `PrepareExecuteAction(id string) (CallPreview, error)` — builds via `ExecuteAction`.
-- Reuses existing `GetVotablePillars()` and `GetActivePillarCount()`.
 
 ### 4.2 DTOs (`app/dto.go`)
 
@@ -129,32 +150,35 @@ the **new** `client.GovernanceApi.GetPillarVotes(name, hashes)` (see §6).
   round, status, executed, expired, creationTimestamp, roundStartTimestamp,
   activePillarThreshold, directionalThreshold, votingPeriod, votes{yes,no,total}`.
 - `ActionListDTO{ count int, list []ActionDTO }`.
-- `VotableAction` — the `ActionDTO` fields needed by the Vote view plus
+- **[P2]** `VotableAction` — the `ActionDTO` fields needed by the upgraded Vote view plus
   `myVotes []PillarVoteState` and `needsMyVote bool` (reuse the existing
   `PillarVoteState`).
 
 ### 4.3 Frontend
 
 - **Store** `frontend/src/stores/governance.ts` (Pinia) — mirrors `accelerator.ts`:
-  state `actions, actionCount, actionPage, votablePillars, votable, numActivePillars`;
-  getter `needsVoteCount`; actions `loadActions(page)`, `openAction(id)`,
-  `loadVotablePillars()`, `refreshVotable()`.
+  state `actions, actionCount, actionPage, votablePillars, numActivePillars`; actions
+  `loadActions(page)`, `openAction(id)`, `loadVotablePillars()`. **[P2]** adds
+  `votable` state, `needsVoteCount` getter, and `refreshVotable()`.
 - **Vote math** `frontend/src/lib/governance.ts` — `ACTION_STATUS` labels
   (`Voting/Approved/Rejected/NoDecision`), `actionTypeLabel` (`Spork`/`Normal`),
-  `isActionApproved(votes, action, numPillars)`, `isActionRejected(...)`, and a
-  `quorumProgress` helper for display. Pure + unit-tested.
+  `isActionApproved(votes, action, numPillars)`, `isActionRejected(...)`, an
+  `isOpen(action)` helper (`status==Voting && !expired`), and a `quorumProgress` helper
+  for display. Pure + unit-tested.
 - **Panels** `frontend/src/components/panels/`:
   - `GovernancePanel.vue` — `Tabs` with `Vote` / `Actions`; loads on mount + on
     `wallet.activeIndex` change; accepts `initial-sub` for deep-link.
-  - `GovernanceVote.vue` — clone of `AcceleratorVote` (pillar picker, per-pillar filter,
-    Yes/No/Abstain, "show all", "you voted" line).
+  - `GovernanceVote.vue` — Phase 1: lists `actions` filtered to open, with a pillar picker
+    + Yes/No/Abstain (`PrepareGovernanceVote`). **[P2]:** clone `AcceleratorVote`'s
+    per-pillar "needs my vote" filter + "you voted" line.
   - `GovernanceActions.vue` — clone of `AcceleratorProjects` (status filter chips,
     Prev/Next paging + count, expandable detail with destination/decoded-data/thresholds,
     Execute button on executable actions).
 - **Home.vue** — add `'Governance'` to `TABS` (8th tab) + `<GovernancePanel>`; extend the
   deep-link mirror to accept `tab=Governance`.
-- **TopBar.vue** — add a governance ballot badge alongside the accelerator one, bound to
-  `governance.needsVoteCount`, pushing `{ name:'home', query:{ tab:'Governance', sub:'Vote' }}`.
+- **[P2] TopBar.vue** — add a governance ballot badge alongside the accelerator one, bound
+  to `governance.needsVoteCount`, pushing
+  `{ name:'home', query:{ tab:'Governance', sub:'Vote' }}`.
 
 ## 5. Confirm-what-you-sign (security)
 
@@ -169,10 +193,12 @@ the **new** `client.GovernanceApi.GetPillarVotes(name, hashes)` (see §6).
     decode" note. **Never** hide undecodable data.
 - All `Prepare*` methods re-validate inputs server-side; never trust frontend validation.
 
-## 6. Dependencies (SDK + node) — BLOCKS implementation
+## 6. [P2] Dependencies (SDK + node) — DEFERRED to Phase 2
 
-Both additions mirror the existing **accelerator** `getPillarVotes` exactly; the only
-substantive change is the contract context (`GovernanceContract` vs `AcceleratorContract`).
+**Not needed for Phase 1.** These unlock the per-pillar "needs my vote" Vote view + the
+top-bar badge. Both additions mirror the existing **accelerator** `getPillarVotes`
+exactly; the only substantive change is the contract context (`GovernanceContract` vs
+`AcceleratorContract`).
 
 1. **`0x3639/go-zenon` (RPC server), `rpc/api/embedded/governance.go`** — add
    `func (a *GovernanceApi) GetPillarVotes(name string, hashes []types.Hash)
@@ -187,18 +213,21 @@ substantive change is the contract context (`GovernanceContract` vs `Accelerator
    `g.client.Call(&ans, "embedded.governance.getPillarVotes", name, hashes)`. Tag a new
    SDK version (or re-use the branch) → go-syrius re-pins.
 
-Until both land, `GetVotableActionsForMyPillars` and the Vote view/badge cannot be
-implemented; the Browse + Execute paths can proceed independently.
+When both land: re-pin the SDK + bump the `replace … 0x3639/go-zenon` fork hash in
+go-syrius, then add `GetVotableActionsForMyPillars`, upgrade `GovernanceVote.vue`, and add
+the TopBar badge. Phase 1 (Browse + simple Vote + Execute) ships and is testnet-tested
+before any of this.
 
 ## 7. Testing
 
-- **Backend:** table tests mirroring `nom_accelerator_test.go` for the votable-action
-  builder + `annotateMyVotes` analogue, and the prepare builders (build each template so a
-  pack-panic is caught — lesson from the v0.1.19 UpdatePhase regression).
-- **Frontend:** vitest for `lib/governance.ts` (vote math across Type1/Type2 rounds,
-  abstain-excluded-from-directional), the Vote per-pillar filter (incl. the
-  selected-pillar-voted-but-another-hasn't case), Actions filter/paging, and Execute
-  gating (button only on `Approved && !Executed`).
+- **Backend (Phase 1):** table tests mirroring `nom_accelerator_test.go` for the prepare
+  builders — **build each template** so a pack-panic is caught (lesson from the v0.1.19
+  UpdatePhase regression). **[P2]:** the votable-action builder + `annotateMyVotes` analogue.
+- **Frontend (Phase 1):** vitest for `lib/governance.ts` (vote math across Type1/Type2
+  rounds, abstain-excluded-from-directional, `isOpen`), the Vote open-action list + vote
+  dispatch, Actions filter/paging, and Execute gating (button only on
+  `Approved && !Executed`). **[P2]:** the per-pillar Vote filter (incl. the
+  selected-pillar-voted-but-another-hasn't case).
 - **Gates:** `pnpm typecheck` + `pnpm test` + `vite build`; `go vet ./... && go test ./...`
   (note the pre-existing local `internal/compat` keystore-roundtrip + `app` keystore
   failures are unrelated to this work).

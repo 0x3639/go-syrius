@@ -355,6 +355,23 @@ type ActionListDTO struct {
 	List  []ActionDTO `json:"list"`
 }
 
+// ProposeFieldDTO is one input field the Propose form renders for an action kind.
+type ProposeFieldDTO struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Type        string `json:"type"` // text|number|bool|address|hash|amount|base64|list
+	Placeholder string `json:"placeholder"`
+	Required    bool   `json:"required"`
+}
+
+// ProposeKindDTO is one proposable governance action kind + its input schema.
+type ProposeKindDTO struct {
+	Kind   string            `json:"kind"`  // stable id, e.g. "spork.create"
+	Label  string            `json:"label"`
+	Group  string            `json:"group"` // Spork|Bridge|Liquidity|Custom
+	Fields []ProposeFieldDTO `json:"fields"`
+}
+
 // PillarVoteState is one owned pillar's vote on a votable item; Vote == -1 means
 // the pillar has not voted yet.
 type PillarVoteState struct {

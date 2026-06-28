@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
 vi.mock('nom-ui', () => ({
-  Tabs: { props: ['modelValue'], template: '<div><slot /></div>' },
+  Tabs: { name: 'Tabs', props: ['modelValue'], template: '<div><slot /></div>' },
   TabsList: { template: '<div><slot /></div>' },
   TabsTrigger: { props: ['value'], template: '<button><slot /></button>' },
   TabsContent: { props: ['value'], template: '<div><slot /></div>' },
@@ -40,5 +40,11 @@ describe('AcceleratorPanel container', () => {
     mount(AcceleratorPanel)
     expect(acc.refreshVotable).toHaveBeenCalled()
     expect(acc.loadProjects).toHaveBeenCalled()
+  })
+
+  it('honors the initialSub deep-link prop (Tabs modelValue)', () => {
+    setup()
+    const w = mount(AcceleratorPanel, { props: { initialSub: 'Donate' } })
+    expect(w.findComponent({ name: 'Tabs' }).props('modelValue')).toBe('Donate')
   })
 })

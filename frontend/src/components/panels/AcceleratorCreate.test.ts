@@ -41,4 +41,21 @@ describe('AcceleratorCreate', () => {
     await new Promise((r) => setTimeout(r))
     expect(Nom.PrepareAddPhase).toHaveBeenCalledWith('0xabc', 'Ph1', 'pdesc', 'https://y.io', '10', '20')
   })
+
+  it('forwards update-phase with (projectId, name, description, url, znn, qsr) in order', async () => {
+    setActivePinia(createPinia())
+    const tx = useTxStore()
+    vi.spyOn(tx, 'awaitConfirm').mockImplementation(() => {})
+    const w = mount(AcceleratorCreate)
+    // distinct values so an arg-order swap fails the assertion
+    await w.find('input[aria-label="project id"]').setValue('0xPID')
+    await w.find('input[aria-label="phase name"]').setValue('UpName')
+    await w.find('input[aria-label="phase url"]').setValue('https://upd.io')
+    await w.find('input[aria-label="phase znn"]').setValue('11')
+    await w.find('input[aria-label="phase qsr"]').setValue('22')
+    await w.find('input[aria-label="phase description"]').setValue('UpDesc')
+    await w.find('button[aria-label="update phase"]').trigger('click')
+    await new Promise((r) => setTimeout(r))
+    expect(Nom.PrepareUpdatePhase).toHaveBeenCalledWith('0xPID', 'UpName', 'UpDesc', 'https://upd.io', '11', '22')
+  })
 })

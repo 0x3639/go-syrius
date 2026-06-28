@@ -33,7 +33,7 @@ function myVote(item: app.VotableItem): number {
 }
 const VOTE_LABELS = ['yes', 'no', 'abstain']
 const items = computed(() =>
-  showAll.value ? votable.value : votable.value.filter((it) => myVote(it) === -1),
+  showAll.value ? votable.value : votable.value.filter((it) => it.needsMyVote),
 )
 
 async function vote(id: string, choice: number) {

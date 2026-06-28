@@ -22,6 +22,7 @@ describe('accelerator vote math', () => {
   it('statusLabel maps known statuses', () => {
     expect(statusLabel(0)).toBe('Voting')
     expect(statusLabel(1)).toBe('Active')
+    expect(statusLabel(3)).toBe('Rejected')
     expect(statusLabel(4)).toBe('Completed')
     expect(statusLabel(9)).toBe('#9')
   })

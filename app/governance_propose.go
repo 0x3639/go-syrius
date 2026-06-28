@@ -243,6 +243,36 @@ func proposeKinds() []ProposeKindDTO {
 		{Kind: "bridge.nominateGuardians", Label: "Bridge — Nominate Guardians", Group: "Bridge", Fields: []ProposeFieldDTO{
 			{Key: "guardians", Label: "Guardian addresses", Type: "list", Placeholder: "z1…,z1…", Required: true},
 		}},
+		{Kind: "liquidity.fund", Label: "Liquidity — Fund", Group: "Liquidity", Fields: []ProposeFieldDTO{
+			{Key: "znnReward", Label: "ZNN reward", Type: "amount", Placeholder: "0", Required: true},
+			{Key: "qsrReward", Label: "QSR reward", Type: "amount", Placeholder: "0", Required: true},
+		}},
+		{Kind: "liquidity.burnZnn", Label: "Liquidity — Burn ZNN", Group: "Liquidity", Fields: []ProposeFieldDTO{
+			{Key: "burnAmount", Label: "Burn amount", Type: "amount", Placeholder: "0", Required: true},
+		}},
+		{Kind: "liquidity.setTokenTuple", Label: "Liquidity — Set Token Tuple", Group: "Liquidity", Fields: []ProposeFieldDTO{
+			{Key: "tokenStandards", Label: "Token standards", Type: "list", Placeholder: "zts1…,zts1…", Required: true},
+			{Key: "znnPercentages", Label: "ZNN percentages", Type: "list", Placeholder: "5000,5000", Required: true},
+			{Key: "qsrPercentages", Label: "QSR percentages", Type: "list", Placeholder: "5000,5000", Required: true},
+			{Key: "minAmounts", Label: "Min amounts", Type: "list", Placeholder: "100,100", Required: true},
+		}},
+		{Kind: "liquidity.setIsHalted", Label: "Liquidity — Set Halted", Group: "Liquidity", Fields: []ProposeFieldDTO{
+			{Key: "value", Label: "Halted", Type: "bool", Placeholder: "", Required: true},
+		}},
+		{Kind: "liquidity.unlockStakeEntries", Label: "Liquidity — Unlock Stake Entries", Group: "Liquidity", Fields: []ProposeFieldDTO{
+			{Key: "zts", Label: "Token standard (ZTS)", Type: "text", Placeholder: "zts1…", Required: true},
+		}},
+		{Kind: "liquidity.setAdditionalReward", Label: "Liquidity — Set Additional Reward", Group: "Liquidity", Fields: []ProposeFieldDTO{
+			{Key: "znnReward", Label: "ZNN reward", Type: "amount", Placeholder: "0", Required: true},
+			{Key: "qsrAmount", Label: "QSR amount", Type: "amount", Placeholder: "0", Required: true},
+		}},
+		{Kind: "liquidity.changeAdministrator", Label: "Liquidity — Change Administrator", Group: "Liquidity", Fields: []ProposeFieldDTO{
+			{Key: "administrator", Label: "New administrator", Type: "address", Placeholder: "z1…", Required: true},
+		}},
+		{Kind: "liquidity.nominateGuardians", Label: "Liquidity — Nominate Guardians", Group: "Liquidity", Fields: []ProposeFieldDTO{
+			{Key: "guardians", Label: "Guardian addresses", Type: "list", Placeholder: "z1…,z1…", Required: true},
+		}},
+		{Kind: "liquidity.emergency", Label: "Liquidity — Emergency", Group: "Liquidity", Fields: []ProposeFieldDTO{}},
 		{Kind: "custom", Label: "Custom (advanced)", Group: "Custom", Fields: []ProposeFieldDTO{
 			{Key: "destination", Label: "Destination contract", Type: "address", Placeholder: "z1…", Required: true},
 			{Key: "data", Label: "Call data (base64)", Type: "base64", Placeholder: "base64-encoded ABI call bytes", Required: true},
@@ -461,6 +491,79 @@ func buildProposalPayloadWith(api *embedded.GovernanceApi, kind string, p map[st
 			return embedded.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeNominateGuardians(gs), nil
+	case "liquidity.fund":
+		znn, err := parseBigIntParam(p, "znnReward")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		qsr, err := parseBigIntParam(p, "qsrReward")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadLiquidityFund(znn, qsr), nil
+	case "liquidity.burnZnn":
+		amt, err := parseBigIntParam(p, "burnAmount")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadLiquidityBurnZnn(amt), nil
+	case "liquidity.setTokenTuple":
+		zs, err := parseStrList(p, "tokenStandards")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		zp, err := parseU32List(p, "znnPercentages")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		qp, err := parseU32List(p, "qsrPercentages")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		ma, err := parseBigIntList(p, "minAmounts")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		if len(zs) != len(zp) || len(zs) != len(qp) || len(zs) != len(ma) {
+			return embedded.ProposalPayload{}, errors.New("setTokenTuple lists (tokenStandards, znnPercentages, qsrPercentages, minAmounts) must all have the same length")
+		}
+		return api.PayloadLiquiditySetTokenTuple(zs, zp, qp, ma), nil
+	case "liquidity.setIsHalted":
+		v, err := parseBoolParam(p, "value")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadLiquiditySetIsHalted(v), nil
+	case "liquidity.unlockStakeEntries":
+		z, err := parseZtsParam(p, "zts")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadLiquidityUnlockStakeEntries(z), nil
+	case "liquidity.setAdditionalReward":
+		znn, err := parseBigIntParam(p, "znnReward")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		qsr, err := parseBigIntParam(p, "qsrAmount")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadLiquiditySetAdditionalReward(znn, qsr), nil
+	case "liquidity.changeAdministrator":
+		a, err := parseAddrParam(p, "administrator")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadLiquidityChangeAdministrator(a), nil
+	case "liquidity.nominateGuardians":
+		gs, err := parseAddrList(p, "guardians")
+		if err != nil {
+			return embedded.ProposalPayload{}, err
+		}
+		return api.PayloadLiquidityNominateGuardians(gs), nil
+	case "liquidity.emergency":
+		return api.PayloadLiquidityEmergency(), nil
 	}
 	return embedded.ProposalPayload{}, fmt.Errorf("unknown action kind %q", kind)
 }

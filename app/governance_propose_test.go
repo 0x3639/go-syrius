@@ -132,3 +132,60 @@ func TestProposeKinds_IncludesAllBridge(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildProposalPayload_LiquidityKinds(t *testing.T) {
+	api := embedded.NewGovernanceApi(nil)
+	cases := []struct {
+		kind   string
+		params map[string]string
+		want   embedded.ProposalPayload
+	}{
+		{"liquidity.fund", map[string]string{"znnReward": "10", "qsrReward": "20"}, api.PayloadLiquidityFund(big.NewInt(10), big.NewInt(20))},
+		{"liquidity.burnZnn", map[string]string{"burnAmount": "5"}, api.PayloadLiquidityBurnZnn(big.NewInt(5))},
+		{"liquidity.setIsHalted", map[string]string{"value": "true"}, api.PayloadLiquiditySetIsHalted(true)},
+		{"liquidity.unlockStakeEntries", map[string]string{"zts": "zts1znnxxxxxxxxxxxxx9z4ulx"}, api.PayloadLiquidityUnlockStakeEntries(types.ParseZTSPanic("zts1znnxxxxxxxxxxxxx9z4ulx"))},
+		{"liquidity.setAdditionalReward", map[string]string{"znnReward": "1", "qsrAmount": "2"}, api.PayloadLiquiditySetAdditionalReward(big.NewInt(1), big.NewInt(2))},
+		{"liquidity.changeAdministrator", map[string]string{"administrator": types.SporkContract.String()}, api.PayloadLiquidityChangeAdministrator(types.SporkContract)},
+		{"liquidity.nominateGuardians", map[string]string{"guardians": types.SporkContract.String() + "," + types.PillarContract.String()}, api.PayloadLiquidityNominateGuardians([]types.Address{types.SporkContract, types.PillarContract})},
+		{"liquidity.emergency", map[string]string{}, api.PayloadLiquidityEmergency()},
+		{"liquidity.setTokenTuple", map[string]string{"tokenStandards": "zts1znnxxxxxxxxxxxxx9z4ulx", "znnPercentages": "5000", "qsrPercentages": "5000", "minAmounts": "100"}, api.PayloadLiquiditySetTokenTuple([]string{"zts1znnxxxxxxxxxxxxx9z4ulx"}, []uint32{5000}, []uint32{5000}, []*big.Int{big.NewInt(100)})},
+	}
+	for _, c := range cases {
+		got, err := buildProposalPayloadWith(api, c.kind, c.params)
+		if err != nil {
+			t.Fatalf("%s: unexpected err %v", c.kind, err)
+		}
+		if got.Destination != c.want.Destination || got.Data != c.want.Data {
+			t.Fatalf("%s: payload mismatch got %+v want %+v", c.kind, got, c.want)
+		}
+	}
+	if _, err := buildProposalPayloadWith(api, "liquidity.fund", map[string]string{"znnReward": "-1", "qsrReward": "2"}); err == nil {
+		t.Fatal("negative znnReward must error")
+	}
+}
+
+func TestBuildProposalPayload_SetTokenTuple_LengthMismatch(t *testing.T) {
+	api := embedded.NewGovernanceApi(nil)
+	// 2 token standards but 1 znnPercentage → must error before the SDK call
+	_, err := buildProposalPayloadWith(api, "liquidity.setTokenTuple", map[string]string{
+		"tokenStandards": "zts1znnxxxxxxxxxxxxx9z4ulx,zts1qsrxxxxxxxxxxxxxjv8v62",
+		"znnPercentages": "5000",
+		"qsrPercentages": "5000,5000",
+		"minAmounts":     "100,100",
+	})
+	if err == nil {
+		t.Fatal("mismatched setTokenTuple list lengths must error")
+	}
+}
+
+func TestProposeKinds_IncludesAllLiquidity(t *testing.T) {
+	have := map[string]bool{}
+	for _, k := range proposeKinds() {
+		have[k.Kind] = true
+	}
+	for _, want := range []string{"liquidity.fund", "liquidity.burnZnn", "liquidity.setTokenTuple", "liquidity.setIsHalted", "liquidity.unlockStakeEntries", "liquidity.setAdditionalReward", "liquidity.changeAdministrator", "liquidity.nominateGuardians", "liquidity.emergency"} {
+		if !have[want] {
+			t.Fatalf("missing liquidity kind %q", want)
+		}
+	}
+}

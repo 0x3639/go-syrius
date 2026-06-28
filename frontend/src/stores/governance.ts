@@ -12,6 +12,7 @@ export const useGovernanceStore = defineStore('governance', {
     selectedAction: null as app.ActionDTO | null,
     votablePillars: [] as string[],
     numActivePillars: 0,
+    proposeKinds: [] as app.ProposeKindDTO[],
     error: '',
   }),
   actions: {
@@ -46,6 +47,13 @@ export const useGovernanceStore = defineStore('governance', {
         this.numActivePillars = await Nom.GetActivePillarCount()
       } catch {
         this.numActivePillars = 0
+      }
+    },
+    async loadProposeKinds() {
+      try {
+        this.proposeKinds = await Nom.GetProposeKinds()
+      } catch {
+        this.proposeKinds = [] // not connected / error ⇒ no form options
       }
     },
   },

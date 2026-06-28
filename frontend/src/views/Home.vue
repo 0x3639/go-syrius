@@ -23,6 +23,7 @@ import PillarPanel from '../components/panels/PillarPanel.vue'
 import StakingPanel from '../components/panels/StakingPanel.vue'
 import SentinelsPanel from '../components/panels/SentinelsPanel.vue'
 import AcceleratorPanel from '../components/panels/AcceleratorPanel.vue'
+import GovernancePanel from '../components/panels/GovernancePanel.vue'
 import TxHistory from '../components/TxHistory.vue'
 import SendModal from '../components/SendModal.vue'
 import ReceiveModal from '../components/ReceiveModal.vue'
@@ -40,7 +41,7 @@ const tx = useTxStore()
 const autoReceive = useAutoReceiveStore()
 const route = useRoute()
 
-const TABS = ['Tokens', 'Rewards', 'Plasma', 'Pillar', 'Staking', 'Sentinels', 'Accelerator']
+const TABS = ['Tokens', 'Rewards', 'Plasma', 'Pillar', 'Staking', 'Sentinels', 'Accelerator', 'Governance']
 const active = ref('Tokens')
 const initialSub = ref('')
 const sendOpen = ref(false)
@@ -134,6 +135,7 @@ onMounted(async () => {
         <TabsContent value="Staking"><StakingPanel /></TabsContent>
         <TabsContent value="Sentinels"><SentinelsPanel /></TabsContent>
         <TabsContent value="Accelerator"><AcceleratorPanel :initial-sub="initialSub" /></TabsContent>
+        <TabsContent value="Governance"><GovernancePanel /></TabsContent>
       </Tabs>
     </div>
   </div>

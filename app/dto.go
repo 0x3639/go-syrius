@@ -326,6 +326,35 @@ type ProjectListDTO struct {
 	List  []ProjectDTO `json:"list"`
 }
 
+// ActionDTO is one governance action with its current-round vote tally and the
+// per-round thresholds the node computed for it. Reuses VoteBreakdownDTO.
+type ActionDTO struct {
+	Id                    string           `json:"id"`
+	Owner                 string           `json:"owner"`
+	Name                  string           `json:"name"`
+	Description           string           `json:"description"`
+	Url                   string           `json:"url"`
+	Destination           string           `json:"destination"`
+	Data                  string           `json:"data"` // base64 ABI call data
+	Type                  int              `json:"type"` // 1 Spork, 2 Normal
+	Round                 int              `json:"round"`
+	Status                int              `json:"status"` // 0 Voting,1 Approved,2 Rejected,3 NoDecision
+	Executed              bool             `json:"executed"`
+	Expired               bool             `json:"expired"`
+	CreationTimestamp     int64            `json:"creationTimestamp"`
+	RoundStartTimestamp   int64            `json:"roundStartTimestamp"`
+	ActivePillarThreshold uint32           `json:"activePillarThreshold"`
+	DirectionalThreshold  uint32           `json:"directionalThreshold"`
+	VotingPeriod          int64            `json:"votingPeriod"`
+	Votes                 VoteBreakdownDTO `json:"votes"`
+}
+
+// ActionListDTO is one page of governance actions.
+type ActionListDTO struct {
+	Count int         `json:"count"`
+	List  []ActionDTO `json:"list"`
+}
+
 // PillarVoteState is one owned pillar's vote on a votable item; Vote == -1 means
 // the pillar has not voted yet.
 type PillarVoteState struct {

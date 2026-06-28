@@ -1,0 +1,63 @@
+package app
+
+import (
+	"testing"
+
+	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
+	"github.com/zenon-network/go-zenon/common/types"
+)
+
+func TestActionDTO_MapsFieldsAndVotes(t *testing.T) {
+	id := types.HexToHashPanic("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
+	// The SDK client Action has FLAT fields (it is NOT the go-zenon server
+	// Action that embeds *definition.ActionVariable).
+	a := &embedded.Action{
+		Id:                    id,
+		Owner:                 types.GovernanceContract,
+		Name:                  "Act",
+		Description:           "desc",
+		Url:                   "https://zenon.org",
+		Destination:           types.SporkContract,
+		Data:                  "AAEC",
+		Type:                  1,
+		Round:                 0,
+		Status:                0,
+		Executed:              false,
+		Expired:               false,
+		ActivePillarThreshold: 66,
+		DirectionalThreshold:  50,
+		VotingPeriod:          3888000,
+		Votes:                 &embedded.VoteBreakdown{Total: 3, Yes: 2, No: 1},
+	}
+	d := actionDTO(a)
+	if d.Id != id.String() || d.Destination != types.SporkContract.String() {
+		t.Fatalf("hash/addr mapping wrong: %+v", d)
+	}
+	if d.Type != 1 || d.ActivePillarThreshold != 66 || d.DirectionalThreshold != 50 {
+		t.Fatalf("type/threshold mapping wrong: %+v", d)
+	}
+	if d.Votes.Yes != 2 || d.Votes.No != 1 || d.Votes.Total != 3 {
+		t.Fatalf("votes mapping wrong: %+v", d.Votes)
+	}
+}
+
+func TestActionDTO_NilSafe(t *testing.T) {
+	d := actionDTO(nil)
+	if d.Id != "" || d.Votes.Total != 0 {
+		t.Fatalf("nil action must map to zero DTO: %+v", d)
+	}
+}
+
+func TestGetActions_NotConnected(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	if _, err := s.GetActions(0, 20); err == nil || err.Error() != "not connected" {
+		t.Fatalf("want not connected; got %v", err)
+	}
+}
+
+func TestGetAction_BadId(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	if _, err := s.GetAction("not-a-hash"); err == nil {
+		t.Fatal("bad id must error")
+	}
+}

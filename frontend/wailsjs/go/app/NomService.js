@@ -78,6 +78,10 @@ export function GetProjects(arg1, arg2) {
   return window['go']['app']['NomService']['GetProjects'](arg1, arg2);
 }
 
+export function GetProposeKinds() {
+  return window['go']['app']['NomService']['GetProposeKinds']();
+}
+
 export function GetSentinel() {
   return window['go']['app']['NomService']['GetSentinel']();
 }
@@ -176,6 +180,10 @@ export function PreparePillarDepositQsr(arg1) {
 
 export function PreparePillarWithdrawQsr() {
   return window['go']['app']['NomService']['PreparePillarWithdrawQsr']();
+}
+
+export function PrepareProposeAction(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['app']['NomService']['PrepareProposeAction'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function PrepareRegisterPillar(arg1, arg2, arg3, arg4, arg5) {

@@ -472,6 +472,62 @@ export namespace app {
 		    return a;
 		}
 	}
+	export class ProposeFieldDTO {
+	    key: string;
+	    label: string;
+	    type: string;
+	    placeholder: string;
+	    required: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProposeFieldDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.label = source["label"];
+	        this.type = source["type"];
+	        this.placeholder = source["placeholder"];
+	        this.required = source["required"];
+	    }
+	}
+	export class ProposeKindDTO {
+	    kind: string;
+	    label: string;
+	    group: string;
+	    fields: ProposeFieldDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ProposeKindDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.label = source["label"];
+	        this.group = source["group"];
+	        this.fields = this.convertValues(source["fields"], ProposeFieldDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class RewardInfo {
 	    znn: string;
 	    qsr: string;

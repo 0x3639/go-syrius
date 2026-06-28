@@ -40,6 +40,8 @@ export function GetProject(arg1:string):Promise<app.ProjectDTO>;
 
 export function GetProjects(arg1:number,arg2:number):Promise<app.ProjectListDTO>;
 
+export function GetProposeKinds():Promise<Array<app.ProposeKindDTO>>;
+
 export function GetSentinel():Promise<app.SentinelInfo>;
 
 export function GetSentinelReward():Promise<app.RewardInfo>;
@@ -89,6 +91,8 @@ export function PrepareMint(arg1:string,arg2:string,arg3:string):Promise<app.Cal
 export function PreparePillarDepositQsr(arg1:string):Promise<app.CallPreview>;
 
 export function PreparePillarWithdrawQsr():Promise<app.CallPreview>;
+
+export function PrepareProposeAction(arg1:string,arg2:string,arg3:string,arg4:string,arg5:Record<string, string>):Promise<app.CallPreview>;
 
 export function PrepareRegisterPillar(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<app.CallPreview>;
 

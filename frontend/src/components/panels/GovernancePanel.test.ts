@@ -13,6 +13,7 @@ vi.mock('../../../wailsjs/go/app/NomService', () => ({
   GetActions: vi.fn(() => Promise.resolve({ count: 0, list: [] })),
   GetVotablePillars: vi.fn(() => Promise.resolve([])),
   GetActivePillarCount: vi.fn(() => Promise.resolve(0)),
+  GetProposeKinds: vi.fn(() => Promise.resolve([])),
   PrepareGovernanceVote: vi.fn(),
   PrepareExecuteAction: vi.fn(),
 }))
@@ -30,5 +31,15 @@ describe('GovernancePanel', () => {
     expect(loadActions).toHaveBeenCalled()
     expect(w.find('button[aria-label="sub Vote"]').exists()).toBe(true)
     expect(w.find('button[aria-label="sub Actions"]').exists()).toBe(true)
+  })
+
+  it('renders the Propose sub-tab and loads kinds on mount', async () => {
+    setActivePinia(createPinia())
+    const gov = useGovernanceStore()
+    const loadProposeKinds = vi.spyOn(gov, 'loadProposeKinds')
+    const w = mount(GovernancePanel)
+    await new Promise((r) => setTimeout(r))
+    expect(loadProposeKinds).toHaveBeenCalled()
+    expect(w.find('button[aria-label="sub Propose"]').exists()).toBe(true)
   })
 })

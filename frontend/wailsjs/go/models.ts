@@ -16,6 +16,118 @@ export namespace app {
 	        this.label = source["label"];
 	    }
 	}
+	export class VoteBreakdownDTO {
+	    total: number;
+	    yes: number;
+	    no: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new VoteBreakdownDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.yes = source["yes"];
+	        this.no = source["no"];
+	    }
+	}
+	export class ActionDTO {
+	    id: string;
+	    owner: string;
+	    name: string;
+	    description: string;
+	    url: string;
+	    destination: string;
+	    data: string;
+	    type: number;
+	    round: number;
+	    status: number;
+	    executed: boolean;
+	    expired: boolean;
+	    creationTimestamp: number;
+	    roundStartTimestamp: number;
+	    activePillarThreshold: number;
+	    directionalThreshold: number;
+	    votingPeriod: number;
+	    votes: VoteBreakdownDTO;
+	
+	    static createFrom(source: any = {}) {
+	        return new ActionDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.owner = source["owner"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.url = source["url"];
+	        this.destination = source["destination"];
+	        this.data = source["data"];
+	        this.type = source["type"];
+	        this.round = source["round"];
+	        this.status = source["status"];
+	        this.executed = source["executed"];
+	        this.expired = source["expired"];
+	        this.creationTimestamp = source["creationTimestamp"];
+	        this.roundStartTimestamp = source["roundStartTimestamp"];
+	        this.activePillarThreshold = source["activePillarThreshold"];
+	        this.directionalThreshold = source["directionalThreshold"];
+	        this.votingPeriod = source["votingPeriod"];
+	        this.votes = this.convertValues(source["votes"], VoteBreakdownDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ActionListDTO {
+	    count: number;
+	    list: ActionDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ActionListDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.count = source["count"];
+	        this.list = this.convertValues(source["list"], ActionDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class CallPreview {
 	    toAddress: string;
 	    zts: string;
@@ -176,84 +288,6 @@ export namespace app {
 	        this.revokeCooldown = source["revokeCooldown"];
 	    }
 	}
-	export class PillarVoteState {
-	    pillar: string;
-	    vote: number;
-
-	    static createFrom(source: any = {}) {
-	        return new PillarVoteState(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.pillar = source["pillar"];
-	        this.vote = source["vote"];
-	    }
-	}
-	export class VotableItem {
-	    kind: string;
-	    id: string;
-	    projectId: string;
-	    projectName: string;
-	    name: string;
-	    znnFundsNeeded: string;
-	    qsrFundsNeeded: string;
-	    votes: VoteBreakdownDTO;
-	    myVotes: PillarVoteState[];
-	    needsMyVote: boolean;
-
-	    static createFrom(source: any = {}) {
-	        return new VotableItem(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.kind = source["kind"];
-	        this.id = source["id"];
-	        this.projectId = source["projectId"];
-	        this.projectName = source["projectName"];
-	        this.name = source["name"];
-	        this.znnFundsNeeded = source["znnFundsNeeded"];
-	        this.qsrFundsNeeded = source["qsrFundsNeeded"];
-	        this.votes = this.convertValues(source["votes"], VoteBreakdownDTO);
-	        this.myVotes = this.convertValues(source["myVotes"], PillarVoteState);
-	        this.needsMyVote = source["needsMyVote"];
-	    }
-
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class VoteBreakdownDTO {
-	    total: number;
-	    yes: number;
-	    no: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new VoteBreakdownDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.total = source["total"];
-	        this.yes = source["yes"];
-	        this.no = source["no"];
-	    }
-	}
 	export class PhaseDTO {
 	    id: string;
 	    projectId: string;
@@ -322,6 +356,20 @@ export namespace app {
 	        this.weight = source["weight"];
 	        this.delegateRewardPercent = source["delegateRewardPercent"];
 	        this.producerAddress = source["producerAddress"];
+	    }
+	}
+	export class PillarVoteState {
+	    pillar: string;
+	    vote: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PillarVoteState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pillar = source["pillar"];
+	        this.vote = source["vote"];
 	    }
 	}
 	export class PlasmaInfo {
@@ -742,6 +790,54 @@ export namespace app {
 	        this.amount = source["amount"];
 	        this.decimals = source["decimals"];
 	    }
+	}
+	export class VotableItem {
+	    kind: string;
+	    id: string;
+	    projectId: string;
+	    projectName: string;
+	    name: string;
+	    znnFundsNeeded: string;
+	    qsrFundsNeeded: string;
+	    votes: VoteBreakdownDTO;
+	    myVotes: PillarVoteState[];
+	    needsMyVote: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new VotableItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.id = source["id"];
+	        this.projectId = source["projectId"];
+	        this.projectName = source["projectName"];
+	        this.name = source["name"];
+	        this.znnFundsNeeded = source["znnFundsNeeded"];
+	        this.qsrFundsNeeded = source["qsrFundsNeeded"];
+	        this.votes = this.convertValues(source["votes"], VoteBreakdownDTO);
+	        this.myVotes = this.convertValues(source["myVotes"], PillarVoteState);
+	        this.needsMyVote = source["needsMyVote"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	
 	export class WalletMeta {

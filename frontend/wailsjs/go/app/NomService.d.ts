@@ -6,6 +6,10 @@ export function CheckPillarName(arg1:string):Promise<boolean>;
 
 export function EstimatePlasma(arg1:string):Promise<number>;
 
+export function GetAction(arg1:string):Promise<app.ActionDTO>;
+
+export function GetActions(arg1:number,arg2:number):Promise<app.ActionListDTO>;
+
 export function GetActivePillarCount():Promise<number>;
 
 export function GetDelegation():Promise<app.DelegationInfo>;
@@ -15,6 +19,8 @@ export function GetDepositedQsr():Promise<string>;
 export function GetFusionEntries():Promise<Array<app.FusionEntry>>;
 
 export function GetMyPillar():Promise<app.OwnedPillarInfo>;
+
+export function GetMyProjects():Promise<Array<app.ProjectDTO>>;
 
 export function GetMyTokens():Promise<Array<app.TokenInfo>>;
 
@@ -29,8 +35,6 @@ export function GetPillarQsrCost():Promise<string>;
 export function GetPillarReward():Promise<app.RewardInfo>;
 
 export function GetPlasmaInfo():Promise<app.PlasmaInfo>;
-
-export function GetMyProjects():Promise<Array<app.ProjectDTO>>;
 
 export function GetProject(arg1:string):Promise<app.ProjectDTO>;
 
@@ -72,7 +76,11 @@ export function PrepareDepositQsr(arg1:string):Promise<app.CallPreview>;
 
 export function PrepareDonate(arg1:string,arg2:string):Promise<app.CallPreview>;
 
+export function PrepareExecuteAction(arg1:string):Promise<app.CallPreview>;
+
 export function PrepareFuse(arg1:string,arg2:string):Promise<app.CallPreview>;
+
+export function PrepareGovernanceVote(arg1:string,arg2:string,arg3:number):Promise<app.CallPreview>;
 
 export function PrepareIssueToken(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:number,arg7:boolean,arg8:boolean,arg9:boolean):Promise<app.CallPreview>;
 

@@ -10,6 +10,14 @@ export function EstimatePlasma(arg1) {
   return window['go']['app']['NomService']['EstimatePlasma'](arg1);
 }
 
+export function GetAction(arg1) {
+  return window['go']['app']['NomService']['GetAction'](arg1);
+}
+
+export function GetActions(arg1, arg2) {
+  return window['go']['app']['NomService']['GetActions'](arg1, arg2);
+}
+
 export function GetActivePillarCount() {
   return window['go']['app']['NomService']['GetActivePillarCount']();
 }
@@ -28,6 +36,10 @@ export function GetFusionEntries() {
 
 export function GetMyPillar() {
   return window['go']['app']['NomService']['GetMyPillar']();
+}
+
+export function GetMyProjects() {
+  return window['go']['app']['NomService']['GetMyProjects']();
 }
 
 export function GetMyTokens() {
@@ -56,10 +68,6 @@ export function GetPillarReward() {
 
 export function GetPlasmaInfo() {
   return window['go']['app']['NomService']['GetPlasmaInfo']();
-}
-
-export function GetMyProjects() {
-  return window['go']['app']['NomService']['GetMyProjects']();
 }
 
 export function GetProject(arg1) {
@@ -142,8 +150,16 @@ export function PrepareDonate(arg1, arg2) {
   return window['go']['app']['NomService']['PrepareDonate'](arg1, arg2);
 }
 
+export function PrepareExecuteAction(arg1) {
+  return window['go']['app']['NomService']['PrepareExecuteAction'](arg1);
+}
+
 export function PrepareFuse(arg1, arg2) {
   return window['go']['app']['NomService']['PrepareFuse'](arg1, arg2);
+}
+
+export function PrepareGovernanceVote(arg1, arg2, arg3) {
+  return window['go']['app']['NomService']['PrepareGovernanceVote'](arg1, arg2, arg3);
 }
 
 export function PrepareIssueToken(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {

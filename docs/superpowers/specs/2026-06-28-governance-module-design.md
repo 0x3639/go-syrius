@@ -16,7 +16,13 @@ SDK (`v0.1.20`) with zero go-zenon/SDK changes**:
   require a vote-state read the node/SDK don't expose yet.
 - **Phase 2 (later) — per-pillar awareness:** add `getPillarVotes` to the go-zenon
   governance RPC + the SDK client (§6), then upgrade the Vote view to the Accelerator-Z
-  "needs my vote" experience and add the **top-bar governance ballot badge**.
+  "needs my vote" experience and add the **top-bar governance ballot badge**. This also
+  closes a known Phase-1 Vote UX gap: because the wallet can't read whether the active
+  pillar already voted, the Yes/No/Abstain buttons stay enabled after a vote posts.
+  Phase 2 surfaces the pillar's current vote ("You voted: Yes — you can change it",
+  matching `AcceleratorVote`) and disables/dims the already-cast choice. NB: governance
+  votes are **changeable** on-chain (re-vote overwrites, not duplicates), so this is a
+  "show + allow change" state, **not** a hard lock.
 
 Everything tagged **[P2]** below is deferred to Phase 2. Unmarked items are Phase 1.
 

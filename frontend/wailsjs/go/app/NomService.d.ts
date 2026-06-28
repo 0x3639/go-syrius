@@ -6,6 +6,8 @@ export function CheckPillarName(arg1:string):Promise<boolean>;
 
 export function EstimatePlasma(arg1:string):Promise<number>;
 
+export function GetActivePillarCount():Promise<number>;
+
 export function GetDelegation():Promise<app.DelegationInfo>;
 
 export function GetDepositedQsr():Promise<string>;
@@ -41,6 +43,8 @@ export function GetStakeList():Promise<app.StakeInfo>;
 export function GetTokenByZts(arg1:string):Promise<app.TokenInfo>;
 
 export function GetUncollectedReward():Promise<app.RewardInfo>;
+
+export function GetVotableForMyPillars():Promise<Array<app.VotableItem>>;
 
 export function GetVotablePillars():Promise<Array<string>>;
 

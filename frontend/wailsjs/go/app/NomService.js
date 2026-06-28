@@ -10,6 +10,10 @@ export function EstimatePlasma(arg1) {
   return window['go']['app']['NomService']['EstimatePlasma'](arg1);
 }
 
+export function GetActivePillarCount() {
+  return window['go']['app']['NomService']['GetActivePillarCount']();
+}
+
 export function GetDelegation() {
   return window['go']['app']['NomService']['GetDelegation']();
 }
@@ -80,6 +84,10 @@ export function GetTokenByZts(arg1) {
 
 export function GetUncollectedReward() {
   return window['go']['app']['NomService']['GetUncollectedReward']();
+}
+
+export function GetVotableForMyPillars() {
+  return window['go']['app']['NomService']['GetVotableForMyPillars']();
 }
 
 export function GetVotablePillars() {

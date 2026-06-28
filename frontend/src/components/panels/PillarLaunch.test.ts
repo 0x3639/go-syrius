@@ -124,4 +124,23 @@ describe('PillarLaunch wizard', () => {
     await w.find('input[aria-label="pillar name"]').setValue('bad name!')
     expect(w.find('button[aria-label="register pillar"]').attributes('disabled')).toBeDefined()
   })
+
+  it('resets the form defaults to the new address when the account switches', async () => {
+    setup({ plasma: ENOUGH_PLASMA, deposited: COST, cost: COST })
+    const wallet = useWalletStore()
+    wallet.accounts = [
+      { index: 0, address: 'z1qtest', label: '' },
+      { index: 1, address: 'z1other', label: '' },
+    ] as never
+    const w = mount(PillarLaunch)
+    // Type a custom name + producer on the first account.
+    await w.find('input[aria-label="pillar name"]').setValue('keep-me')
+    await w.find('input[aria-label="producer address"]').setValue('z1custom')
+    // Switch to the second account.
+    wallet.activeIndex = 1
+    await w.vm.$nextTick()
+    expect((w.find('input[aria-label="producer address"]').element as HTMLInputElement).value).toBe('z1other')
+    expect((w.find('input[aria-label="reward address"]').element as HTMLInputElement).value).toBe('z1other')
+    expect((w.find('input[aria-label="pillar name"]').element as HTMLInputElement).value).toBe('')
+  })
 })

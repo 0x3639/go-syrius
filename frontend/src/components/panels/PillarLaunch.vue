@@ -65,6 +65,21 @@ watch(derivedStep, () => {
   viewStep.value = null
 })
 
+// Switching account slot is a context change: reset the wizard form so it can't
+// carry the previous account's address defaults or a half-entered registration.
+watch(
+  () => wallet.activeIndex,
+  () => {
+    producer.value = wallet.activeAddress()
+    reward.value = wallet.activeAddress()
+    name.value = ''
+    nameAvailable.value = null
+    momentumPct.value = '100'
+    delegatePct.value = '100'
+    viewStep.value = null
+  },
+)
+
 const nameValid = computed(() => isValidPillarName(name.value.trim()))
 const pctValid = computed(() => {
   if (momentumPct.value.trim() === '' || delegatePct.value.trim() === '') return false

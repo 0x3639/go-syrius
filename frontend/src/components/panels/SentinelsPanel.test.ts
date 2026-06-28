@@ -12,6 +12,7 @@ vi.mock('./SentinelActive.vue', () => ({
 
 import SentinelsPanel from './SentinelsPanel.vue'
 import { useSentinelStore } from '../../stores/sentinel'
+import { useWalletStore } from '../../stores/wallet'
 
 function setup(sentinel: unknown) {
   setActivePinia(createPinia())
@@ -41,5 +42,18 @@ describe('SentinelsPanel container', () => {
     const stop = vi.spyOn(s, 'stopPolling')
     mount(SentinelsPanel).unmount()
     expect(stop).toHaveBeenCalled()
+  })
+
+  it('re-fetches (and stops polling) when the active account changes', async () => {
+    const s = setup(null)
+    const stop = vi.spyOn(s, 'stopPolling')
+    const wallet = useWalletStore()
+    mount(SentinelsPanel)
+    ;(s.refresh as ReturnType<typeof vi.fn>).mockClear()
+    stop.mockClear()
+    wallet.activeIndex = 1
+    await new Promise((r) => setTimeout(r))
+    expect(stop).toHaveBeenCalled()
+    expect(s.refresh).toHaveBeenCalled()
   })
 })

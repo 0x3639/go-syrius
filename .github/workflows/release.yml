@@ -56,25 +56,27 @@ jobs:
         run: wails build
 
       # --- package each platform's output into one asset, named with the tag ---
+      # Asset names use the repo/product prefix "go-syrius"; the built binary
+      # itself is still "syrius" (wails.json outputfilename) → inputs stay syrius*.
       - name: Package (Linux)
         if: runner.os == 'Linux'
         shell: bash
-        run: tar -C build/bin -czf "syrius-${VERSION}-linux-amd64.tar.gz" syrius
+        run: tar -C build/bin -czf "go-syrius-${VERSION}-linux-amd64.tar.gz" syrius
       - name: Package (macOS)
         if: runner.os == 'macOS'
         shell: bash
         # ditto preserves the .app bundle (perms, symlinks, signature); a plain
         # zip would corrupt it. (No arch suffix: macos-latest is Apple Silicon.)
-        run: ditto -c -k --keepParent build/bin/syrius.app "syrius-${VERSION}-macos.zip"
+        run: ditto -c -k --keepParent build/bin/syrius.app "go-syrius-${VERSION}-macos.zip"
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: cp build/bin/syrius.exe "syrius-${VERSION}-windows-amd64.exe"
+        run: cp build/bin/syrius.exe "go-syrius-${VERSION}-windows-amd64.exe"
 
       - uses: actions/upload-artifact@v4
         with:
           name: syrius-${{ runner.os }}
-          path: syrius-*
+          path: go-syrius-*
           if-no-files-found: error
 
   release:
@@ -90,7 +92,7 @@ jobs:
         shell: bash
         run: |
           cd artifacts
-          sha256sum syrius-* > SHA256SUMS
+          sha256sum go-syrius-* > SHA256SUMS
           cat SHA256SUMS
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -113,5 +115,5 @@ jobs:
 
             Verify your download against `SHA256SUMS` before running.
           files: |
-            artifacts/syrius-*
+            artifacts/go-syrius-*
             artifacts/SHA256SUMS

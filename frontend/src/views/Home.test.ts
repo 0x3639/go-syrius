@@ -59,6 +59,7 @@ vi.mock('nom-ui', () => ({
 
 import Home from './Home.vue'
 import * as Cfg from '../../wailsjs/go/app/ConfigService'
+import { useNodeStore } from '../stores/node'
 
 const STUBS = { TopBar: true, StatusStrip: true, TxHistory: true, SendModal: true, ReceiveModal: true }
 const flush = () => new Promise((r) => setTimeout(r))
@@ -110,5 +111,14 @@ describe('Home.vue', () => {
     await flush()
     await w.vm.$nextTick()
     expect(w.text()).toContain('Governance')
+  })
+
+  it('hides the Governance tab on mainnet (chain id 1) even when enabled', async () => {
+    vi.mocked(Cfg.GetSettings).mockResolvedValue({ showGovernance: true } as never)
+    useNodeStore().chainId = 1 // connected to mainnet → testnet-only tab hidden
+    const w = mount(Home, { global: { stubs: { ...STUBS, GovernancePanel: true } } })
+    await flush()
+    await w.vm.$nextTick()
+    expect(w.text()).not.toContain('Governance')
   })
 })

@@ -39,6 +39,21 @@ func actionDTO(a *embedded.Action) ActionDTO {
 	}
 }
 
+// errGovernanceMainnet is returned by the governance WRITE paths when connected
+// to mainnet — governance is testnet-only in this release.
+var errGovernanceMainnet = errors.New("governance is testnet-only in this release and is disabled on mainnet")
+
+// requireTestnet hard-blocks governance writes on mainnet (independent of the
+// AllowMainnetSend opt-in). chainID is non-zero only when connected and equals
+// mainnetChainID only on mainnet, so this passes when disconnected or on any
+// non-mainnet chain. The Governance UI tab is also hidden on mainnet.
+func (s *NomService) requireTestnet() error {
+	if s.node.currentChainID() == mainnetChainID {
+		return errGovernanceMainnet
+	}
+	return nil
+}
+
 // GetActions returns one page of governance actions (node ordering). pageSize is
 // clamped to [1,50]. This is also the source the frontend Vote view filters to
 // open actions in Phase 1.
@@ -82,6 +97,9 @@ func (s *NomService) GetAction(id string) (ActionDTO, error) {
 // address's Pillars. vote MUST be embedded.VoteYes/VoteNo/VoteAbstain. Field
 // validation runs before any node use; Pillar ownership is enforced on-chain.
 func (s *NomService) PrepareGovernanceVote(id, pillarName string, vote uint8) (CallPreview, error) {
+	if err := s.requireTestnet(); err != nil {
+		return CallPreview{}, err
+	}
 	h, err := parseHash(id)
 	if err != nil {
 		return CallPreview{}, fmt.Errorf("invalid action id: %w", err)
@@ -122,6 +140,9 @@ func (s *NomService) PrepareGovernanceVote(id, pillarName string, vote uint8) (C
 // (confirm-what-you-sign: the on-chain ToAddress is the governance contract, so
 // the real effect — the destination call — is surfaced in the summary).
 func (s *NomService) PrepareExecuteAction(id string) (CallPreview, error) {
+	if err := s.requireTestnet(); err != nil {
+		return CallPreview{}, err
+	}
 	h, err := parseHash(id)
 	if err != nil {
 		return CallPreview{}, fmt.Errorf("invalid action id: %w", err)

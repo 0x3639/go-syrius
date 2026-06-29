@@ -9,7 +9,7 @@ import (
 	"github.com/zenon-network/go-zenon/common/types"
 )
 
-func TestGetProposeKinds_HasSporkAndCustom(t *testing.T) {
+func TestGetProposeKinds_HasSporkNotCustom(t *testing.T) {
 	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
 	kinds, err := s.GetProposeKinds()
 	if err != nil {
@@ -19,7 +19,7 @@ func TestGetProposeKinds_HasSporkAndCustom(t *testing.T) {
 	for _, k := range kinds {
 		byId[k.Kind] = k
 	}
-	for _, want := range []string{"spork.create", "spork.activate", "custom"} {
+	for _, want := range []string{"spork.create", "spork.activate"} {
 		if _, ok := byId[want]; !ok {
 			t.Fatalf("missing kind %q", want)
 		}
@@ -27,8 +27,9 @@ func TestGetProposeKinds_HasSporkAndCustom(t *testing.T) {
 	if byId["spork.create"].Group != "Spork" || len(byId["spork.create"].Fields) != 2 {
 		t.Fatalf("spork.create schema wrong: %+v", byId["spork.create"])
 	}
-	if byId["custom"].Group != "Custom" {
-		t.Fatalf("custom group wrong: %+v", byId["custom"])
+	// custom was dropped for the testnet release.
+	if _, ok := byId["custom"]; ok {
+		t.Fatal("custom kind must not be present (dropped for release)")
 	}
 }
 
@@ -45,21 +46,11 @@ func TestBuildProposalPayload_SporkCreate(t *testing.T) {
 	}
 }
 
-func TestBuildProposalPayload_Custom(t *testing.T) {
+func TestBuildProposalPayload_CustomRemoved(t *testing.T) {
 	api := embedded.NewGovernanceApi(nil)
-	dest := types.SporkContract.String()
-	got, err := buildProposalPayloadWith(api, "custom", map[string]string{"destination": dest, "data": "AAEC"})
-	if err != nil {
-		t.Fatalf("custom err: %v", err)
-	}
-	if got.Destination != types.SporkContract || got.Data != "AAEC" {
-		t.Fatalf("custom payload wrong: %+v", got)
-	}
-	if _, err := buildProposalPayloadWith(api, "custom", map[string]string{"destination": dest, "data": "not base64!!"}); err == nil {
-		t.Fatal("invalid base64 data must error")
-	}
-	if _, err := buildProposalPayloadWith(api, "custom", map[string]string{"destination": "nope", "data": "AAEC"}); err == nil {
-		t.Fatal("invalid destination must error")
+	// custom was dropped for the testnet release → now an unknown kind.
+	if _, err := buildProposalPayloadWith(api, "custom", map[string]string{"destination": types.SporkContract.String(), "data": "AAEC"}); err == nil {
+		t.Fatal("custom kind must be rejected (dropped for release)")
 	}
 }
 

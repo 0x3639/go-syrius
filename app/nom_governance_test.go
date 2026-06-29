@@ -46,6 +46,21 @@ func TestActionDTO_MapsFieldsAndVotes(t *testing.T) {
 	}
 }
 
+func TestGovernancePrepares_BlockedOnMainnet(t *testing.T) {
+	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
+	s.node.chainID = mainnetChainID // simulate being connected to mainnet
+	valid := "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+	if _, err := s.PrepareGovernanceVote(valid, "P1", 0); err != errGovernanceMainnet {
+		t.Fatalf("vote must be blocked on mainnet; got %v", err)
+	}
+	if _, err := s.PrepareExecuteAction(valid); err != errGovernanceMainnet {
+		t.Fatalf("execute must be blocked on mainnet; got %v", err)
+	}
+	if _, err := s.PrepareProposeAction("Act", "d", "https://zenon.org", "spork.create", map[string]string{"name": "MySpork", "description": "d"}); err != errGovernanceMainnet {
+		t.Fatalf("propose must be blocked on mainnet; got %v", err)
+	}
+}
+
 func TestActionDTO_NilSafe(t *testing.T) {
 	d := actionDTO(nil)
 	if d.Id != "" || d.Votes.Total != 0 {

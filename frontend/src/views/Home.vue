@@ -43,11 +43,14 @@ const autoReceive = useAutoReceiveStore()
 const ui = useUiStore()
 const route = useRoute()
 
-// Governance is an experimental, testnet-only tab revealed via Settings; the
-// other NoM tabs are always present.
+// Governance is an experimental, TESTNET-ONLY tab: revealed via the Settings
+// toggle AND hidden whenever connected to mainnet (chain id 1). The backend
+// governance write paths also hard-block mainnet. The other NoM tabs are always
+// present.
+const showGovernanceTab = computed(() => ui.showGovernance && node.chainId !== 1)
 const TABS = computed(() => {
   const base = ['Tokens', 'Rewards', 'Plasma', 'Pillar', 'Staking', 'Sentinels', 'Accelerator']
-  return ui.showGovernance ? [...base, 'Governance'] : base
+  return showGovernanceTab.value ? [...base, 'Governance'] : base
 })
 const active = ref('Tokens')
 const initialSub = ref('')
@@ -154,7 +157,7 @@ onMounted(async () => {
         <TabsContent value="Staking"><StakingPanel /></TabsContent>
         <TabsContent value="Sentinels"><SentinelsPanel /></TabsContent>
         <TabsContent value="Accelerator"><AcceleratorPanel :initial-sub="initialSub" /></TabsContent>
-        <TabsContent v-if="ui.showGovernance" value="Governance"><GovernancePanel /></TabsContent>
+        <TabsContent v-if="showGovernanceTab" value="Governance"><GovernancePanel /></TabsContent>
       </Tabs>
     </div>
   </div>

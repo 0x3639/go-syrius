@@ -1,7 +1,6 @@
 package app
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"math/big"
@@ -273,10 +272,11 @@ func proposeKinds() []ProposeKindDTO {
 			{Key: "guardians", Label: "Guardian addresses", Type: "list", Placeholder: "z1…,z1…", Required: true},
 		}},
 		{Kind: "liquidity.emergency", Label: "Liquidity — Emergency", Group: "Liquidity", Fields: []ProposeFieldDTO{}},
-		{Kind: "custom", Label: "Custom (advanced)", Group: "Custom", Fields: []ProposeFieldDTO{
-			{Key: "destination", Label: "Destination contract", Type: "address", Placeholder: "z1…", Required: true},
-			{Key: "data", Label: "Call data (base64)", Type: "base64", Placeholder: "base64-encoded ABI call bytes", Required: true},
-		}},
+		// NOTE: the "custom" (raw destination + base64 data) kind was dropped for
+		// the testnet release — it could target destinations/methods outside
+		// go-zenon's governance allowlist, which the node rejects on execution
+		// (wasting the 1 ZNN fee). Re-add with client-side allowlist mirroring if
+		// arbitrary actions are needed later.
 	}
 }
 
@@ -330,19 +330,6 @@ func buildProposalPayloadWith(api *embedded.GovernanceApi, kind string, p map[st
 			return embedded.ProposalPayload{}, err
 		}
 		return api.PayloadSporkActivate(id), nil
-	case "custom":
-		dest, err := parseAddrParam(p, "destination")
-		if err != nil {
-			return embedded.ProposalPayload{}, err
-		}
-		data, err := reqParam(p, "data")
-		if err != nil {
-			return embedded.ProposalPayload{}, err
-		}
-		if _, err := base64.StdEncoding.DecodeString(data); err != nil {
-			return embedded.ProposalPayload{}, errors.New("data must be valid standard base64")
-		}
-		return embedded.ProposalPayload{Destination: dest, Data: data}, nil
 	case "bridge.addNetwork":
 		nc, err := parseU32Param(p, "networkClass")
 		if err != nil {
@@ -614,6 +601,9 @@ func (s *NomService) GetProposeKinds() ([]ProposeKindDTO, error) {
 // builds destination+data via the SDK Payload helper, and wraps ProposeAction
 // (1 ZNN fee, read from the template). Confirm-what-you-sign via prepareCall.
 func (s *NomService) PrepareProposeAction(name, description, url, kind string, params map[string]string) (CallPreview, error) {
+	if err := s.requireTestnet(); err != nil {
+		return CallPreview{}, err
+	}
 	name = strings.TrimSpace(name)
 	description = strings.TrimSpace(description)
 	url = strings.TrimSpace(url)

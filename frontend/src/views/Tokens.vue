@@ -60,7 +60,7 @@ async function update(t: app.TokenInfo) {
   <div class="mx-auto mt-8 w-[44rem] space-y-4">
     <div class="flex items-center justify-between">
       <h1 class="text-xl">Tokens</h1>
-      <button class="rounded border border-muted-foreground/40 px-2 py-1 text-xs text-muted-foreground" @click="router.push('/home')">Back</button>
+      <button class="rounded border border-muted-foreground/40 px-2 py-1 text-xs text-muted-foreground" @click="router.push('/dashboard')">Back</button>
     </div>
 
     <section class="rounded bg-card p-4 space-y-2">

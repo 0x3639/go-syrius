@@ -123,11 +123,11 @@ describe('Tokens.vue', () => {
     expect(awaitConfirm).toHaveBeenCalledWith({ summary: 'mint' })
   })
 
-  it('back navigates to /home', async () => {
+  it('back navigates to /dashboard', async () => {
     const w = mount(Tokens)
     await flush()
     const back = w.findAll('button').find((b) => b.text() === 'Back')!
     await back.trigger('click')
-    expect(push).toHaveBeenCalledWith('/home')
+    expect(push).toHaveBeenCalledWith('/dashboard')
   })
 })

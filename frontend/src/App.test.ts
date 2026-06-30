@@ -4,7 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 
 const push = vi.fn()
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push, currentRoute: { value: { name: 'home' } } }),
+  useRouter: () => ({ push, currentRoute: { value: { name: 'dashboard' } } }),
   RouterView: { template: '<div />' },
 }))
 vi.mock('nom-ui', () => ({
@@ -29,7 +29,7 @@ beforeEach(() => {
 describe('App — lock leaves the protected UI', () => {
   it('redirects to /unlock when the wallet locks while on a gated route', async () => {
     const wallet = useWalletStore()
-    wallet.locked = false // unlocked, on /home
+    wallet.locked = false // unlocked, on /dashboard
     const w = mount(App)
     wallet.locked = true // lock (e.g. the Lock button)
     await w.vm.$nextTick()

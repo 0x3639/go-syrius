@@ -60,7 +60,7 @@ describe('Create.vue', () => {
     // Passes the display name without `.dat`; unlocks by the backend-assigned id.
     expect(ImportMnemonic).toHaveBeenCalledWith('New', 'pw', 'alpha bravo charlie')
     expect(Unlock).toHaveBeenCalledWith('abc.dat', 'pw')
-    expect(push).toHaveBeenCalledWith('/home')
+    expect(push).toHaveBeenCalledWith('/dashboard')
     // A new wallet forces auto-receive off (it was globally on).
     expect(SetSettings).toHaveBeenCalledWith(expect.objectContaining({ autoReceive: false }))
   })

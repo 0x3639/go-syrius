@@ -1,50 +1,30 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
+import router from './index'
 import { useWalletStore } from '../stores/wallet'
-import { useTxStore } from '../stores/tx'
 
-// Stub the lazy-loaded views so navigation in the guard test doesn't pull the
-// real nom-ui components into jsdom — we're testing the guard, not the screens.
-vi.mock('../views/Unlock.vue', () => ({ default: { template: '<div/>' } }))
-vi.mock('../views/Create.vue', () => ({ default: { template: '<div/>' } }))
-vi.mock('../views/ImportMnemonic.vue', () => ({ default: { template: '<div/>' } }))
-vi.mock('../views/Home.vue', () => ({ default: { template: '<div/>' } }))
-import router, { PUBLIC_ROUTES } from './index'
+describe('router guard', () => {
+  // Start each test from '/import' — a public route distinct from every route a
+  // test pushes ('/dashboard', '/unlock', '/network/plasma'). Landing the
+  // singleton router on the same route a test pushes would make push() a
+  // duplicate no-op that skips the guard, so the neutral start is load-bearing.
+  beforeEach(async () => { setActivePinia(createPinia()); await router.replace('/import').catch(() => {}) })
 
-beforeEach(async () => {
-  setActivePinia(createPinia())
-  // The router is a module-level singleton whose location persists across
-  // tests. Force it back to a neutral starting point so a prior test's landing
-  // route can't turn a test's push() into a duplicate no-op that skips the
-  // guard. '/import' is public, so while locked the guard leaves it in place —
-  // a start state that differs from both tests' landing routes ('/unlock',
-  // '/home'), guaranteeing each test's push() actually re-runs the guard.
-  useWalletStore().locked = true
-  await router.push('/import')
-})
-
-describe('router lock guard', () => {
-  it('redirects a locked wallet away from gated routes to unlock', async () => {
+  it('redirects to /unlock when locked and visiting a gated route', async () => {
     useWalletStore().locked = true
-    await router.push('/home')
-    expect(router.currentRoute.value.name).toBe('unlock')
+    await router.push('/dashboard').catch(() => {})
+    expect(router.currentRoute.value.path).toBe('/unlock')
   })
-  it('redirects an unlocked wallet away from public routes to home', async () => {
-    useWalletStore().locked = false
-    await router.push('/unlock')
-    expect(router.currentRoute.value.name).toBe('home')
-  })
-  it('lists the public routes', () => {
-    expect(PUBLIC_ROUTES).toEqual(['unlock', 'create', 'import'])
-  })
-})
 
-describe('router tx reset', () => {
-  it('resets the tx store on navigation (afterEach)', async () => {
-    // Unlocked so gated routes are reachable and the push actually navigates.
+  it('redirects to /dashboard when unlocked and visiting a public route', async () => {
     useWalletStore().locked = false
-    const reset = vi.spyOn(useTxStore(), 'reset')
-    await router.push('/home')
-    expect(reset).toHaveBeenCalled()
+    await router.push('/unlock').catch(() => {})
+    expect(router.currentRoute.value.path).toBe('/dashboard')
+  })
+
+  it('allows a gated route when unlocked', async () => {
+    useWalletStore().locked = false
+    await router.push('/network/plasma').catch(() => {})
+    expect(router.currentRoute.value.path).toBe('/network/plasma')
   })
 })

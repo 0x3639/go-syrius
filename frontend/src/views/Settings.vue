@@ -132,7 +132,7 @@ function hide() { revealed.value = '' }
   <div class="mx-auto mt-8 w-[32rem] space-y-6">
     <div class="flex items-center justify-between">
       <h1 class="text-xl text-foreground">Settings</h1>
-      <button class="text-xs text-muted-foreground" @click="router.push('/home')">Back</button>
+      <button class="text-xs text-muted-foreground" @click="router.push('/dashboard')">Back</button>
     </div>
 
     <section class="rounded bg-card p-4 space-y-2">

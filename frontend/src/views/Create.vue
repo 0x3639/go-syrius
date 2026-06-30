@@ -78,7 +78,7 @@ async function finish() {
       /* best-effort */
     }
     await wallet.unlock(meta.id, password.value)
-    router.push('/home')
+    router.push('/dashboard')
   } catch (e: any) {
     error.value = e?.message ?? String(e)
   } finally {

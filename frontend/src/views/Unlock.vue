@@ -25,7 +25,7 @@ async function doUnlock() {
   busy.value = true
   try {
     await wallet.unlock(selected.value, password.value)
-    router.push('/home')
+    router.push('/dashboard')
   } catch (e: any) {
     error.value = e?.message ?? String(e)
   } finally {

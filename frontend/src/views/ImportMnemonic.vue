@@ -25,7 +25,7 @@ async function doImport() {
     // Capture the returned meta and unlock by its real id.
     const meta = await wallet.importMnemonic(name.value.trim(), password.value, mnemonic.value.trim())
     await wallet.unlock(meta.id, password.value)
-    router.push('/home')
+    router.push('/dashboard')
   } catch (e: any) {
     error.value = e?.message ?? String(e)
   } finally {

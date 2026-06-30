@@ -40,7 +40,7 @@ describe('Unlock.vue', () => {
     await w.find('button[aria-label="Unlock"]').trigger('click')
     await new Promise((r) => setTimeout(r))
     expect(unlock).toHaveBeenCalledWith('Main.dat', 'pw')
-    expect(push).toHaveBeenCalledWith('/home')
+    expect(push).toHaveBeenCalledWith('/dashboard')
   })
 
   it('warns when an imported keystore has an already-present address', async () => {

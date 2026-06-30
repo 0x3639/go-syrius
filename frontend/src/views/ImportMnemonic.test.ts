@@ -38,6 +38,6 @@ describe('ImportMnemonic.vue', () => {
     // Passes the display name without `.dat`; unlocks by the backend-assigned id.
     expect(ImportMnemonic).toHaveBeenCalledWith('Imp', 'pw', twelve)
     expect(Unlock).toHaveBeenCalledWith('abc.dat', 'pw')
-    expect(push).toHaveBeenCalledWith('/home')
+    expect(push).toHaveBeenCalledWith('/dashboard')
   })
 })

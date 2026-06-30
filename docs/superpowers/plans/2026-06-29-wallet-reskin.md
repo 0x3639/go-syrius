@@ -1235,11 +1235,30 @@ router.afterEach(() => {
 export default router
 ```
 
-- [ ] **Step 4: Delete the obsolete Home view + test**
+- [ ] **Step 4: Delete the obsolete Home view + the components it alone consumed**
+
+`Home.vue` is the *only* importer of `SendModal`/`ReceiveModal` (superseded by
+the Transfer/Receive pages), `BalanceCard`/`ActionCard` (superseded by the
+Dashboard hero + balance cards), and `StatusStrip` (dropped from the Dashboard).
+Remove them and their tests so no dead code remains:
 
 ```bash
-git rm frontend/src/views/Home.vue frontend/src/views/Home.test.ts
+git rm frontend/src/views/Home.vue frontend/src/views/Home.test.ts \
+  frontend/src/components/SendModal.vue frontend/src/components/SendModal.test.ts \
+  frontend/src/components/ReceiveModal.vue \
+  frontend/src/components/BalanceCard.vue \
+  frontend/src/components/ActionCard.vue frontend/src/components/ActionCard.test.ts \
+  frontend/src/components/StatusStrip.vue frontend/src/components/StatusStrip.test.ts
 ```
+
+Then confirm nothing else referenced them (comment-only mentions in
+`lib/format.ts` / `lib/plasma.ts` are fine — they're not imports):
+
+```bash
+cd frontend && grep -rn "SendModal\|ReceiveModal\|BalanceCard\|ActionCard\|StatusStrip" src --include="*.vue" --include="*.ts" | grep -iE "import|from '"
+```
+Expected: no import hits remain. (If `pnpm test` later fails on a missing test
+file the grep missed, delete that stray test too.)
 
 - [ ] **Step 5: Update redirects elsewhere (`/home` → `/dashboard`)**
 

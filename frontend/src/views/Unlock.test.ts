@@ -17,8 +17,6 @@ vi.mock('../../wailsjs/go/app/WalletService', () => ({
 const push = vi.fn()
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 vi.mock('nom-ui', () => ({
-  Card: { template: '<div><slot/></div>' },
-  CardContent: { template: '<div><slot/></div>' },
   Button: { template: '<button @click="$emit(\'click\')"><slot/></button>' },
   Input: {
     props: ['modelValue', 'type'],
@@ -33,8 +31,14 @@ beforeEach(() => {
 })
 
 describe('Unlock.vue', () => {
-  it('unlocks the selected wallet and routes home', async () => {
-    const w = mount(Unlock)
+  it('renders the "Welcome back" heading', async () => {
+    const w = mount(Unlock, { global: { stubs: { WalletPicker: true } } })
+    await new Promise((r) => setTimeout(r)) // loadWallets
+    expect(w.text()).toContain('Welcome back')
+  })
+
+  it('unlocks the selected wallet and routes to /dashboard', async () => {
+    const w = mount(Unlock, { global: { stubs: { WalletPicker: true } } })
     await new Promise((r) => setTimeout(r)) // loadWallets
     await w.find('input[aria-label="password"]').setValue('pw')
     await w.find('button[aria-label="Unlock"]').trigger('click')
@@ -43,12 +47,31 @@ describe('Unlock.vue', () => {
     expect(push).toHaveBeenCalledWith('/dashboard')
   })
 
+  it('disables Unlock until a wallet is selected', async () => {
+    const w = mount(Unlock, {
+      global: {
+        stubs: {
+          WalletPicker: {
+            props: ['modelValue'],
+            template:
+              '<select aria-label="picker" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option value="">none</option><option value="Main.dat">Main</option></select>',
+          },
+        },
+      },
+    })
+    await new Promise((r) => setTimeout(r)) // loadWallets -> auto-selects Main.dat
+    const btn = () => w.find('button[aria-label="Unlock"]')
+    expect(btn().attributes('disabled')).toBeUndefined()
+    await w.find('select[aria-label="picker"]').setValue('') // deselect
+    expect(btn().attributes('disabled')).toBeDefined()
+  })
+
   it('warns when an imported keystore has an already-present address', async () => {
     const WS: any = await import('../../wailsjs/go/app/WalletService')
     WS.PickKeystoreFile.mockResolvedValueOnce('/k.dat')
     // Same baseAddress as the existing "Main" wallet, different id.
     WS.ImportKeystore.mockResolvedValueOnce({ id: 'dup.dat', name: 'Copy', baseAddress: 'z1qmain' })
-    const w = mount(Unlock)
+    const w = mount(Unlock, { global: { stubs: { WalletPicker: true } } })
     await new Promise((r) => setTimeout(r)) // loadWallets -> [Main z1qmain]
     const importBtn = w.findAll('button').find((b) => b.text().includes('Import keystore'))!
     await importBtn.trigger('click')

@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Card, CardContent, Input, Button } from 'nom-ui'
+import { Input, Button } from 'nom-ui'
 import { useWalletStore } from '../stores/wallet'
 import WalletPicker from '../components/WalletPicker.vue'
-import TopBar from '../components/TopBar.vue'
 import logoUrl from '../assets/images/syrius-logo.png'
 
 const wallet = useWalletStore()
@@ -54,32 +53,33 @@ async function doImport() {
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col bg-background">
-    <!-- Locked chrome so the window matches the in-app shell instead of a bare
-         centered card (mirrors how syrius keeps its top bar on first load). -->
-    <TopBar locked />
-    <main class="grid flex-1 place-items-center p-8">
-    <div class="flex flex-col items-center gap-6">
-      <img :src="logoUrl" alt="syrius" class="h-20 w-20 rounded-2xl" />
-      <Card class="w-96">
-      <CardContent class="space-y-4 p-6">
-        <h1 class="text-xl text-foreground">Unlock wallet</h1>
-        <p v-if="wallet.wallets.length === 0" class="text-muted-foreground">
-          No wallets yet. Import a keystore to begin.
-        </p>
-        <template v-else>
-          <WalletPicker v-model="selected" :wallets="wallet.wallets" />
-          <Input v-model="password" type="password" placeholder="Password" aria-label="password" @keyup.enter="doUnlock" />
-          <Button class="w-full" :disabled="busy || !selected" aria-label="Unlock" @click="doUnlock">Unlock</Button>
-        </template>
+  <!-- Shell-less lock screen with a soft radial plasma halo. -->
+  <div
+    class="grid min-h-screen place-items-center bg-background p-8"
+    style="background-image: radial-gradient(circle at 50% 30%, rgba(0,213,87,.10), transparent 60%);"
+  >
+    <div class="flex w-[21rem] flex-col items-center gap-5">
+      <img :src="logoUrl" alt="syrius" class="h-16 w-16 rounded-2xl" />
+      <div class="text-center">
+        <div class="text-xl font-bold tracking-tight text-foreground">Welcome back</div>
+        <div class="mt-1 text-sm text-muted-foreground">Unlock your Syrius wallet</div>
+      </div>
+
+      <template v-if="wallet.wallets.length > 0">
+        <WalletPicker v-model="selected" :wallets="wallet.wallets" class="w-full" />
+        <Input v-model="password" type="password" placeholder="Password" aria-label="password" class="w-full" @keyup.enter="doUnlock" />
+        <Button class="w-full" size="lg" :disabled="busy || !selected" aria-label="Unlock" @click="doUnlock">Unlock</Button>
+      </template>
+      <p v-else class="text-sm text-muted-foreground">No wallets yet. Import a keystore to begin.</p>
+
+      <div class="flex w-full flex-col gap-2">
         <Button variant="outline" class="w-full" @click="doImport">Import keystore…</Button>
         <Button variant="outline" class="w-full" @click="router.push('/create')">Create new wallet</Button>
         <Button variant="outline" class="w-full" @click="router.push('/import')">Import mnemonic</Button>
-        <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>
-        <p v-if="notice" class="text-sm text-muted-foreground">{{ notice }}</p>
-      </CardContent>
-      </Card>
+      </div>
+
+      <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>
+      <p v-if="notice" class="text-sm text-muted-foreground">{{ notice }}</p>
     </div>
-    </main>
   </div>
 </template>

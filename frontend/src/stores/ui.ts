@@ -6,9 +6,20 @@ import * as Cfg from '../../wailsjs/go/app/ConfigService'
 export const useUiStore = defineStore('ui', {
   state: () => ({
     showGovernance: false,
+    theme: 'dark' as 'dark' | 'light',
   }),
   actions: {
+    applyTheme() {
+      document.documentElement.classList.toggle('dark', this.theme === 'dark')
+    },
+    toggleTheme() {
+      this.theme = this.theme === 'dark' ? 'light' : 'dark'
+      this.applyTheme()
+      try { localStorage.setItem('syrius.theme', this.theme) } catch { /* ignore */ }
+    },
     async init() {
+      try { const t = localStorage.getItem('syrius.theme'); if (t === 'light' || t === 'dark') this.theme = t } catch { /* ignore */ }
+      this.applyTheme()
       try {
         this.showGovernance = (await Cfg.GetSettings()).showGovernance ?? false
       } catch {

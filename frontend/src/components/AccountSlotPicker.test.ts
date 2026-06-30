@@ -60,6 +60,17 @@ describe('AccountSlotPicker', () => {
     expect(addAccount).toHaveBeenCalled()
   })
 
+  it('renders avatars without a gradient and without arbitrary radii or off-scale text', async () => {
+    seed()
+    const w = mount(AccountSlotPicker)
+    await w.find('button[aria-label="Select account"]').trigger('click')
+    const html = w.html()
+    expect(html).not.toContain('from-primary')
+    expect(html).not.toContain('rounded-[7px]')
+    expect(html).not.toContain('rounded-[10px]')
+    expect(html).not.toContain('text-[15px]')
+  })
+
   it('renames a slot via setLabel', async () => {
     const wallet = seed()
     const setLabel = vi.spyOn(wallet, 'setLabel').mockResolvedValue(undefined as never)

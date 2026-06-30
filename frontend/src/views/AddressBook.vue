@@ -6,6 +6,7 @@ import { Input, Button } from 'nom-ui'
 import { shortAddress } from '../lib/format'
 import { useContactsStore, type Contact } from '../stores/contacts'
 import TopBar from '../components/TopBar.vue'
+import { ArrowLeftIcon, CheckIcon, XIcon, PencilIcon } from '@lucide/vue'
 
 const router = useRouter()
 const contacts = useContactsStore()
@@ -77,7 +78,7 @@ onMounted(() => contacts.load())
         aria-label="back to wallet"
         @click="router.push('/dashboard')"
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        <ArrowLeftIcon :size="20" />
       </button>
       <h1 class="text-xl text-foreground">Address book</h1>
     </div>
@@ -104,16 +105,16 @@ onMounted(() => contacts.load())
           <div v-for="c in filtered" :key="c.address" class="group flex items-center gap-3 px-4 py-3">
             <template v-if="renamingAddr === c.address">
               <Input v-model="renameDraft" :aria-label="`rename ${c.name}`" class="flex-1" @keyup.enter="saveRename(c)" @keyup.esc="cancelRename" />
-              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-primary/40 text-primary" :aria-label="`save rename ${c.name}`" @click="saveRename(c)">✓</button>
-              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-border text-muted-foreground" aria-label="cancel rename" @click="cancelRename">✕</button>
+              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-primary/40 text-primary" :aria-label="`save rename ${c.name}`" @click="saveRename(c)"><CheckIcon :size="16" /></button>
+              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-border text-muted-foreground" aria-label="cancel rename" @click="cancelRename"><XIcon :size="16" /></button>
             </template>
             <template v-else>
               <div class="min-w-0 flex-1">
                 <div class="truncate font-semibold text-foreground">{{ c.name }}</div>
                 <div class="truncate font-mono text-xs text-muted-foreground">{{ shortAddress(c.address) }}</div>
               </div>
-              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-transparent text-muted-foreground group-hover:border-border group-hover:text-foreground" title="Rename" :aria-label="`rename ${c.name}`" @click="startRename(c)">✎</button>
-              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-transparent text-muted-foreground hover:text-destructive group-hover:border-border" title="Delete" :aria-label="`delete ${c.name}`" @click="remove(c.address)">✕</button>
+              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-transparent text-muted-foreground group-hover:border-border group-hover:text-foreground" title="Rename" :aria-label="`rename ${c.name}`" @click="startRename(c)"><PencilIcon :size="16" /></button>
+              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-transparent text-muted-foreground hover:text-destructive group-hover:border-border" title="Delete" :aria-label="`delete ${c.name}`" @click="remove(c.address)"><XIcon :size="16" /></button>
             </template>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { shortAddress } from '../lib/format'
 import { useContactsStore } from '../stores/contacts'
+import { XIcon } from '@lucide/vue'
 
 // Inline address-book panel for Send: SEARCH + SELECT only. Adding/editing lives
 // on the dedicated /address-book screen so this stays compact as the book grows.
@@ -44,7 +45,7 @@ function manage() {
   <div v-if="open" class="overflow-hidden rounded-lg border border-border bg-card">
     <div class="flex items-center justify-between border-b border-border px-3 py-2">
       <span class="text-xs font-medium text-muted-foreground">Address book</span>
-      <button type="button" aria-label="close address book" class="text-muted-foreground transition-colors hover:text-foreground" @click="emit('close')">✕</button>
+      <button type="button" aria-label="close address book" class="text-muted-foreground transition-colors hover:text-foreground" @click="emit('close')"><XIcon :size="16" /></button>
     </div>
 
     <div class="p-2">

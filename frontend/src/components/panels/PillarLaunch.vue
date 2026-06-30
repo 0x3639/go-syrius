@@ -9,6 +9,7 @@ import { useWalletStore } from '../../stores/wallet'
 import { formatAmount, toBase, isValidPillarName } from '../../lib/format'
 import StepHeader from './StepHeader.vue'
 import Field from '../Field.vue'
+import { CheckIcon, LoaderCircleIcon, TriangleAlertIcon } from '@lucide/vue'
 
 const SLOW_AFTER_POLLS = 6
 const PILLAR_STEPS = [
@@ -192,7 +193,7 @@ watch(
     <!-- Clearing (transient): waiting for the contract / fusion to settle. -->
     <div v-if="clearing" class="space-y-2">
       <div class="flex items-center gap-2 text-sm font-medium text-info">
-        <svg class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        <LoaderCircleIcon class="animate-spin" :size="16" />
         <span>{{
           pendingStep === 'plasma'
             ? 'Fusing plasma — waiting for it to land on-chain…'
@@ -230,7 +231,7 @@ watch(
 
     <!-- Step 1: ensure enough fused plasma. -->
     <template v-else-if="displayStep === 1">
-      <p v-if="plasmaCleared" class="text-sm text-foreground">✓ Plasma is sufficient.</p>
+      <p v-if="plasmaCleared" class="flex items-center gap-1.5 text-sm text-foreground"><CheckIcon :size="15" class="text-success" /> Plasma is sufficient.</p>
       <p v-else class="text-xs text-muted-foreground">
         Registering a pillar needs fused plasma. We recommend fusing 500 QSR (you can cancel the
         fusion later from the Plasma tab to reclaim it). If this address already has enough fused
@@ -252,9 +253,10 @@ watch(
          withdraw escape hatch stays available even after the deposit clears, so
          the user can navigate back here and reclaim it before registering. -->
     <template v-else-if="displayStep === 2">
-      <p class="rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
-        ⚠ Deposited QSR is <strong>burned and unrecoverable</strong> once the pillar is registered.
-        You can withdraw it before registering if you change your mind.
+      <p class="flex items-start gap-1.5 rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+        <TriangleAlertIcon :size="15" class="mt-0.5 shrink-0" />
+        <span>Deposited QSR is <strong>burned and unrecoverable</strong> once the pillar is registered.
+        You can withdraw it before registering if you change your mind.</span>
       </p>
       <p class="text-sm text-muted-foreground">
         Deposited
@@ -262,7 +264,7 @@ watch(
           >{{ formatAmount(depositedQsr, 8) }} / {{ formatAmount(qsrCost, 8) }} QSR</span
         >
       </p>
-      <p v-if="qsrCleared" class="text-sm text-foreground">✓ Enough deposited. Use the steps above to continue to registration.</p>
+      <p v-if="qsrCleared" class="flex items-center gap-1.5 text-sm text-foreground"><CheckIcon :size="15" class="text-success" /> Enough deposited. Use the steps above to continue to registration.</p>
       <Button
         v-else
         class="w-full"
@@ -278,7 +280,7 @@ watch(
 
     <!-- Step 3: configure + register (sends the 15,000 ZNN collateral). -->
     <template v-else>
-      <p class="text-sm text-foreground">✓ QSR cleared. Configure and register your pillar.</p>
+      <p class="flex items-center gap-1.5 text-sm text-foreground"><CheckIcon :size="15" class="text-success" /> QSR cleared. Configure and register your pillar.</p>
       <Field
         label="Pillar name"
         :error="name.length > 0 && !nameValid ? 'Letters, digits, and single - . _ between them (max 40).' : ''"

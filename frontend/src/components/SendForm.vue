@@ -6,6 +6,7 @@ import { useBalancesStore } from '../stores/balances'
 import { formatAmount, formatAmountExact } from '../lib/format'
 import AmountInput from './AmountInput.vue'
 import ContactPicker from './ContactPicker.vue'
+import { BookIcon } from '@lucide/vue'
 
 // SendForm collects the send INTENT only (recipient/token/amount) and emits it.
 // It does NOT build/PoW/sign — the tx store (Task 8) owns that. The backend
@@ -81,7 +82,7 @@ function onSend() {
           :class="bookOpen ? 'text-foreground' : 'text-muted-foreground'"
           @click="bookOpen = !bookOpen"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <BookIcon :size="16" />
         </button>
       </div>
       <ContactPicker class="mt-2" :open="bookOpen" @select="onPickContact" @close="bookOpen = false" />

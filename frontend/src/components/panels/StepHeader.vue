@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CheckIcon } from '@lucide/vue'
 const props = withDefaults(
   defineProps<{
     current: 1 | 2 | 3
@@ -53,7 +54,7 @@ function onSelect(n: number) {
               ? 'border-primary text-primary'
               : 'border-border text-muted-foreground'"
         >
-          <svg v-if="s.n < current" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          <CheckIcon v-if="s.n < current" :size="12" />
           <template v-else>{{ s.n }}</template>
         </span>
         <span

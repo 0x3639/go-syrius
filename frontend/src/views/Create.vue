@@ -5,6 +5,7 @@ import { Card, CardContent, Input, Button } from 'nom-ui'
 import { useWalletStore } from '../stores/wallet'
 import * as Cfg from '../../wailsjs/go/app/ConfigService'
 import { ClipboardSetText, ClipboardGetText } from '../../wailsjs/runtime/runtime'
+import { XIcon, TriangleAlertIcon, CopyIcon, CheckIcon } from '@lucide/vue'
 
 const wallet = useWalletStore()
 const router = useRouter()
@@ -95,14 +96,14 @@ async function finish() {
         class="absolute right-4 top-4 text-muted-foreground transition-colors hover:text-foreground"
         aria-label="close"
         @click="router.push('/unlock')">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        <XIcon :size="20" />
       </button>
       <CardContent class="space-y-4 p-6">
         <h1 class="text-xl text-foreground">Create wallet</h1>
 
         <template v-if="step === 1">
           <div class="flex gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-            <svg class="mt-0.5 shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <TriangleAlertIcon class="mt-0.5 shrink-0" :size="20" />
             <div>
               <p class="font-semibold">Important: save your recovery phrase</p>
               <p class="mt-0.5">Write these {{ words.length }} words down in order and store them safely. This is the only way to recover your wallet — anyone with them controls your funds. They are shown only once.</p>
@@ -115,8 +116,9 @@ async function finish() {
           </div>
           <Button variant="outline" class="w-full" aria-label="copy recovery phrase" @click="copySeed">
             <span class="inline-flex items-center justify-center gap-2">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              {{ copied ? 'Copied ✓' : 'Copy recovery phrase' }}
+              <CheckIcon v-if="copied" :size="15" />
+              <CopyIcon v-else :size="15" />
+              {{ copied ? 'Copied' : 'Copy recovery phrase' }}
             </span>
           </Button>
           <p v-if="everCopied" class="text-xs text-muted-foreground">

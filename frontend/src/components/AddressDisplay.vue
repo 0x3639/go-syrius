@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue'
 import QRCode from 'qrcode'
 import logoUrl from '../assets/images/syrius-logo.png'
+import { CheckIcon, CopyIcon } from '@lucide/vue'
 
 const props = defineProps<{ address: string }>()
 
@@ -93,8 +94,8 @@ watch(
         class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
         @click="copy"
       >
-        <svg v-if="copied" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-        <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <CheckIcon v-if="copied" :size="14" />
+        <CopyIcon v-else :size="14" />
       </button>
     </div>
   </div>

@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Card, CardContent, Input, Button } from 'nom-ui'
 import { useWalletStore } from '../stores/wallet'
+import { XIcon } from '@lucide/vue'
 
 const wallet = useWalletStore()
 const router = useRouter()
@@ -42,7 +43,7 @@ async function doImport() {
         class="absolute right-4 top-4 text-muted-foreground transition-colors hover:text-foreground"
         aria-label="close"
         @click="router.push('/unlock')">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        <XIcon :size="20" />
       </button>
       <CardContent class="space-y-4 p-6">
         <h1 class="text-xl text-foreground">Import from mnemonic</h1>

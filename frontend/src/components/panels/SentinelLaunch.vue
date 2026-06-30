@@ -7,6 +7,7 @@ import { useSentinelStore, QSR_REQUIRED } from '../../stores/sentinel'
 import { useTxStore } from '../../stores/tx'
 import { formatAmount } from '../../lib/format'
 import StepHeader from './StepHeader.vue'
+import { CheckIcon, LoaderCircleIcon } from '@lucide/vue'
 
 const SLOW_AFTER_POLLS = 6
 
@@ -88,7 +89,7 @@ watch(
     <!-- Clearing (transient): waiting for the contract to credit/activate. -->
     <div v-if="clearing" class="space-y-2">
       <div class="flex items-center gap-2 text-sm font-medium text-info">
-        <svg class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        <LoaderCircleIcon class="animate-spin" :size="16" />
         <span>{{
           pendingStep === 'deposit'
             ? 'Your QSR deposit is on-chain. Waiting for the Sentinel contract to credit it…'
@@ -132,7 +133,7 @@ watch(
 
     <!-- Step 2: register (sends 5,000 ZNN), with a withdraw escape hatch. -->
     <template v-else>
-      <p class="text-sm text-foreground">✓ 50,000 QSR cleared. Ready to launch.</p>
+      <p class="flex items-center gap-1.5 text-sm text-foreground"><CheckIcon :size="15" class="text-success" /> 50,000 QSR cleared. Ready to launch.</p>
       <Button class="w-full" aria-label="register sentinel" @click="register"
         >Deposit 5,000 ZNN &amp; Launch Sentinel</Button
       >

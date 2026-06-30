@@ -34,7 +34,7 @@ async function renderQR(addr: string) {
       errorCorrectionLevel: 'H',
       margin: 1,
       width: 240,
-      color: { dark: '#00d659', light: '#0d0d0d' },
+      color: { dark: '#00d557', light: '#0d0d0d' },
     })
     const ctx = canvas.getContext('2d')
     if (ctx) {

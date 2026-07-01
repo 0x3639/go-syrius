@@ -8,13 +8,13 @@ import AppShell from '../components/AppShell.vue'
 export const PUBLIC_ROUTES = ['unlock', 'create', 'import']
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', redirect: '/dashboard' },
   { path: '/unlock', name: 'unlock', component: () => import('../views/Unlock.vue') },
   { path: '/create', name: 'create', component: () => import('../views/Create.vue') },
   { path: '/import', name: 'import', component: () => import('../views/ImportMnemonic.vue') },
   {
     path: '/',
     component: AppShell,
+    redirect: '/dashboard',
     children: [
       { path: 'dashboard', name: 'dashboard', meta: { title: 'Dashboard' }, component: () => import('../views/Dashboard.vue') },
       { path: 'transfer', name: 'transfer', meta: { title: 'Transfer' }, component: () => import('../views/Transfer.vue') },

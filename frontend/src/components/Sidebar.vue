@@ -7,6 +7,7 @@ import {
 } from '@lucide/vue'
 import { useNodeStore } from '../stores/node'
 import { useUiStore } from '../stores/ui'
+import SidebarLink from './SidebarLink.vue'
 
 const node = useNodeStore()
 const ui = useUiStore()
@@ -50,58 +51,18 @@ const synced = computed(() => node.connected && !node.syncing)
 
     <!-- Primary nav -->
     <nav class="flex flex-col gap-0.5">
-      <RouterLink
-        v-for="item in topNav" :key="item.to" :to="item.to" v-slot="{ isActive }" custom
-      >
-        <a
-          :href="item.to"
-          class="group flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors"
-          :class="isActive
-            ? 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground'
-            : 'font-medium text-muted-foreground hover:bg-sidebar-accent/60'"
-          @click.prevent="$router.push(item.to)"
-        >
-          <component :is="item.icon" :size="18" :class="isActive ? 'text-primary' : ''" />
-          {{ item.label }}
-        </a>
-      </RouterLink>
+      <SidebarLink v-for="item in topNav" :key="item.to" v-bind="item" />
     </nav>
 
     <!-- Network section -->
     <div class="text-ledger mt-5 px-3 pb-1 text-muted-foreground">Network of Momentum</div>
     <nav class="flex flex-col gap-0.5">
-      <RouterLink
-        v-for="item in networkNav" :key="item.to" :to="item.to" v-slot="{ isActive }" custom
-      >
-        <a
-          :href="item.to"
-          class="group flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors"
-          :class="isActive
-            ? 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground'
-            : 'font-medium text-muted-foreground hover:bg-sidebar-accent/60'"
-          @click.prevent="$router.push(item.to)"
-        >
-          <component :is="item.icon" :size="18" :class="isActive ? 'text-primary' : ''" />
-          {{ item.label }}
-        </a>
-      </RouterLink>
+      <SidebarLink v-for="item in networkNav" :key="item.to" v-bind="item" />
     </nav>
 
     <!-- Bottom: settings, address book, node-sync pill -->
     <div class="mt-auto flex flex-col gap-0.5 pt-4">
-      <RouterLink
-        v-for="item in bottomNav" :key="item.to" :to="item.to" v-slot="{ isActive }" custom
-      >
-        <a
-          :href="item.to"
-          class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors"
-          :class="isActive ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-muted-foreground hover:bg-sidebar-accent/60'"
-          @click.prevent="$router.push(item.to)"
-        >
-          <component :is="item.icon" :size="18" />
-          {{ item.label }}
-        </a>
-      </RouterLink>
+      <SidebarLink v-for="item in bottomNav" :key="item.to" v-bind="item" />
       <div class="mt-1.5 flex items-center gap-2 rounded-md bg-sidebar-accent px-3 py-2.5">
         <ShieldIcon :size="16" :class="synced ? 'text-success' : 'text-warning'" />
         <span class="text-xs text-muted-foreground">{{ synced ? 'Node synced' : 'Syncing…' }}</span>

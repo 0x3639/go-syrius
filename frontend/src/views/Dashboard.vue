@@ -15,20 +15,17 @@ const price = usePriceStore()
 const znn = computed(() => balances.items.find((b) => b.symbol === 'ZNN'))
 const qsr = computed(() => balances.items.find((b) => b.symbol === 'QSR'))
 
-const totalUsd = computed(() => price.portfolioUsd(balances.items as any))
+const totalUsd = computed(() => price.portfolioUsd(balances.items))
 
-// Per-token fiat line (≈ $X) — only when a price is available.
-function fiatFor(symbol: string, amount: string, decimals: number): string | null {
-  if (!price.available) return null
-  const unit = symbol === 'ZNN' ? price.znnUsd : symbol === 'QSR' ? price.qsrUsd : null
-  if (unit == null) return null
-  return '≈ ' + formatFiat(parseFloat((Number(BigInt(amount)) / 10 ** decimals).toString()) * unit)
-}
-
-const cards = computed(() => [
-  { name: 'Zenon', symbol: 'ZNN', amount: znn.value?.amount ?? '0', decimals: znn.value?.decimals ?? 8 },
-  { name: 'Quasar', symbol: 'QSR', amount: qsr.value?.amount ?? '0', decimals: qsr.value?.decimals ?? 8 },
-])
+const cards = computed(() =>
+  [
+    { name: 'Zenon', symbol: 'ZNN', amount: znn.value?.amount ?? '0', decimals: znn.value?.decimals ?? 8 },
+    { name: 'Quasar', symbol: 'QSR', amount: qsr.value?.amount ?? '0', decimals: qsr.value?.decimals ?? 8 },
+  ].map((c) => {
+    const usd = price.usdFor(c.symbol, c.amount, c.decimals)
+    return { ...c, fiat: usd == null ? null : '≈ ' + formatFiat(usd) }
+  }),
+)
 </script>
 
 <template>
@@ -61,8 +58,8 @@ const cards = computed(() => [
           <div class="font-mono text-xl tabular-nums text-foreground" :aria-label="`${c.symbol} balance`">
             {{ formatAmount(c.amount, c.decimals) }}
           </div>
-          <div v-if="fiatFor(c.symbol, c.amount, c.decimals)" class="font-mono text-xs text-muted-foreground">
-            {{ fiatFor(c.symbol, c.amount, c.decimals) }}
+          <div v-if="c.fiat" class="font-mono text-xs text-muted-foreground">
+            {{ c.fiat }}
           </div>
         </div>
       </div>

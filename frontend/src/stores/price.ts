@@ -38,16 +38,20 @@ export const usePriceStore = defineStore('price', {
         this._inFlight = false
       }
     },
+    // USD value of a single balance line; null when unpriced (ZTS tokens) or
+    // no price feed is available. Fiat is display-only — see lib/fiat.ts.
+    usdFor(symbol: string, amount: string, decimals: number): number | null {
+      if (!this.available) return null
+      const price = symbol === 'ZNN' ? this.znnUsd : symbol === 'QSR' ? this.qsrUsd : null
+      if (price == null) return null
+      return parseFloat(formatAmountExact(amount, decimals)) * price
+    },
     // portfolioUsd sums fiat across balances. Returns null when no price is
     // available so the Dashboard can fall back to a ZNN headline.
     portfolioUsd(balances: { symbol: string; amount: string; decimals: number }[]): number | null {
       if (!this.available) return null
       let total = 0
-      for (const b of balances) {
-        const price = b.symbol === 'ZNN' ? this.znnUsd : b.symbol === 'QSR' ? this.qsrUsd : null
-        if (price == null) continue
-        total += parseFloat(formatAmountExact(b.amount, b.decimals)) * price
-      }
+      for (const b of balances) total += this.usdFor(b.symbol, b.amount, b.decimals) ?? 0
       return total
     },
     start() {

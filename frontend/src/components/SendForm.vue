@@ -95,7 +95,7 @@ function onSend() {
       >Token
       <select
         v-model="zts"
-        class="mt-1 w-full rounded bg-card px-3 py-2 text-foreground"
+        class="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 text-foreground"
       >
         <option v-for="b in items" :key="b.zts" :value="b.zts">
           {{ b.symbol || b.zts }}

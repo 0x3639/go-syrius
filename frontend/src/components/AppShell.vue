@@ -3,6 +3,7 @@ import { computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from './Sidebar.vue'
 import TopBar from './TopBar.vue'
+import NomConfirm from './NomConfirm.vue'
 import { usePriceStore } from '../stores/price'
 import { useNodeStore } from '../stores/node'
 import { useBalancesStore } from '../stores/balances'
@@ -76,5 +77,13 @@ onBeforeUnmount(() => price.stop())
         <router-view />
       </main>
     </div>
+
+    <!-- Global confirm-what-you-sign dialog. Every NoM panel (Rewards, Pillars,
+         Sentinels, Staking, Plasma, Accelerator, Governance, Tokens) prepares a
+         call and hands the built-block preview to tx.awaitConfirm, then relies on
+         this dialog to confirm + publish. Rendered app-wide EXCEPT on the Transfer
+         route, which drives its own inline TxModal/TxResult (avoids a double
+         dialog on the same tx status). -->
+    <NomConfirm v-if="route.name !== 'transfer'" />
   </div>
 </template>

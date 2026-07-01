@@ -119,15 +119,17 @@ describe('TxHistory', () => {
     expect(badges(w)).not.toContain('Transfer')
   })
 
-  it('shows a truncated tx hash that copies the full value', async () => {
+  it('shows the full tx hash and copies it', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     const w = mount(TxHistory)
-    seed([{ ...tx, hash: 'abcdef0123456789ff' }])
+    // A realistic 64-char block hash → shown in full (no truncation); copies the value.
+    const fullHash = 'abcdef0123456789' + '0'.repeat(40) + 'fedcba87'
+    seed([{ ...tx, hash: fullHash }])
     await w.vm.$nextTick()
-    expect(w.text()).toContain('abcdef…89ff') // 6…4 truncation
-    await w.find('button[aria-label="copy hash abcdef0123456789ff"]').trigger('click')
-    expect(writeText).toHaveBeenCalledWith('abcdef0123456789ff')
+    expect(w.text()).toContain(fullHash) // full hash, untruncated
+    await w.find(`button[aria-label="copy hash ${fullHash}"]`).trigger('click')
+    expect(writeText).toHaveBeenCalledWith(fullHash)
   })
 
   it('renders — for zero-amount contract calls (Delegate/Undelegate), like Pair', async () => {

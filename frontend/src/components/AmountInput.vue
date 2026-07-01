@@ -33,7 +33,7 @@ function setMax() {
         inputmode="decimal"
         :value="modelValue"
         :aria-label="label"
-        class="w-full rounded bg-card px-3 py-2 pr-16 font-mono text-foreground outline-none focus:ring-2 focus:ring-primary"
+        class="w-full rounded-md border border-input bg-transparent px-3 py-2 pr-16 font-mono text-foreground outline-none focus:ring-2 focus:ring-primary"
         @input="onInput"
       />
       <button

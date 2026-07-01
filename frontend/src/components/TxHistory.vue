@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import {
-  Address,
   Table,
   TableBody,
   TableCell,
@@ -10,6 +9,7 @@ import {
   TxDirection,
   TxStatus,
 } from 'nom-ui'
+import MonoTruncate from './MonoTruncate.vue'
 import { useTxsStore } from '../stores/txs'
 import { useUnreceivedStore } from '../stores/unreceived'
 import { usePlasmaStore } from '../stores/plasma'
@@ -43,11 +43,6 @@ const emptyMessage = computed(() =>
 // Our store carries `confirmed: boolean`; nom-ui TxStatus takes a 4-state enum.
 function status(confirmed: boolean): 'success' | 'pending' {
   return confirmed ? 'success' : 'pending'
-}
-
-// Truncate a 64-char block hash for the row; the full value is copyable.
-function shortHash(h: string): string {
-  return h && h.length > 12 ? `${h.slice(0, 6)}…${h.slice(-4)}` : h
 }
 
 // Show an amount only when value actually moved. Contract calls like
@@ -84,6 +79,10 @@ async function copyHash(h: string) {
 
 <template>
   <div class="rounded border border-border bg-card px-4 py-3">
+    <!-- The table shows full addresses + hashes, so it has a fixed natural
+         width. Cap it there and center it: on ultra-wide screens the surrounding
+         card stays full-width and the slack becomes equal left/right margins. -->
+    <div class="mx-auto max-w-[90rem]">
     <div class="mb-2 flex items-center justify-between">
       <h2 class="text-sm text-muted-foreground">Recent transactions</h2>
       <div class="flex items-center gap-0.5 rounded-md border border-border p-0.5 text-xs">
@@ -103,15 +102,17 @@ async function copyHash(h: string) {
         >All</button>
       </div>
     </div>
-    <!-- Fixed layout + explicit column widths so the columns never reflow when
-         the visible method badges change (Transfers↔All, paging). Address takes
-         the remaining space; the rest are pinned. -->
-    <Table class="table-fixed">
+    <!-- table-fixed with the small columns pinned and the two data columns
+         (counterparty, hash) left flexible: flexible columns shrink with the
+         table width, so MonoTruncate resizes the address/hash to fit (start…tail,
+         both ends kept) as the window narrows — no horizontal scroll, no smaller
+         font. Pinned columns can't reflow when method badges change. -->
+    <Table class="w-full table-fixed">
       <colgroup>
         <col class="w-20" />
         <col class="w-32" />
         <col />
-        <col class="w-36" />
+        <col />
         <col class="w-28" />
         <col class="w-40" />
       </colgroup>
@@ -125,7 +126,7 @@ async function copyHash(h: string) {
           <TableCell><TxDirection direction="in" /></TableCell>
           <TableCell></TableCell>
           <TableCell>
-            <Address :address="u.fromAddress" :copy="false" :tooltip="false" />
+            <MonoTruncate :value="u.fromAddress" />
           </TableCell>
           <TableCell>
             <button
@@ -133,12 +134,12 @@ async function copyHash(h: string) {
               type="button"
               :aria-label="`copy hash ${u.fromHash}`"
               title="Copy hash"
-              class="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"
+              class="flex w-full min-w-0 items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
               @click="copyHash(u.fromHash)"
             >
-              <span>{{ shortHash(u.fromHash) }}</span>
-              <CheckIcon v-if="copied === u.fromHash" :size="13" />
-              <CopyIcon v-else :size="13" />
+              <MonoTruncate :value="u.fromHash" class="min-w-0 flex-1" />
+              <CheckIcon v-if="copied === u.fromHash" :size="13" class="flex-none" />
+              <CopyIcon v-else :size="13" class="flex-none" />
             </button>
           </TableCell>
           <TableCell class="text-right font-mono text-foreground">
@@ -173,7 +174,7 @@ async function copyHash(h: string) {
             <span v-if="typeBadge(t)" class="rounded bg-foreground/10 px-2 py-0.5 text-xs text-muted-foreground">{{ typeBadge(t) }}</span>
           </TableCell>
           <TableCell>
-            <Address :address="t.counterparty" :copy="false" :tooltip="false" />
+            <MonoTruncate :value="t.counterparty" />
           </TableCell>
           <TableCell>
             <button
@@ -181,12 +182,12 @@ async function copyHash(h: string) {
               type="button"
               :aria-label="`copy hash ${t.hash}`"
               title="Copy hash"
-              class="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"
+              class="flex w-full min-w-0 items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
               @click="copyHash(t.hash)"
             >
-              <span>{{ shortHash(t.hash) }}</span>
-              <CheckIcon v-if="copied === t.hash" :size="13" />
-              <CopyIcon v-else :size="13" />
+              <MonoTruncate :value="t.hash" class="min-w-0 flex-1" />
+              <CheckIcon v-if="copied === t.hash" :size="13" class="flex-none" />
+              <CopyIcon v-else :size="13" class="flex-none" />
             </button>
           </TableCell>
           <TableCell class="text-right font-mono text-foreground">
@@ -220,6 +221,7 @@ async function copyHash(h: string) {
       >
         <ChevronRightIcon :size="14" />
       </button>
+    </div>
     </div>
   </div>
 </template>

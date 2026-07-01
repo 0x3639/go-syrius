@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { Input, Button } from 'nom-ui'
 import Field from '../components/Field.vue'
 import { useNodeStore } from '../stores/node'
@@ -11,7 +10,6 @@ import * as Cfg from '../../wailsjs/go/app/ConfigService'
 const node = useNodeStore()
 const wallet = useWalletStore()
 const ui = useUiStore()
-const router = useRouter()
 
 const nodeMode = ref('remote')
 const remoteUrl = ref('')
@@ -129,50 +127,61 @@ function hide() { revealed.value = '' }
 </script>
 
 <template>
-  <div class="mx-auto mt-8 w-[32rem] space-y-6">
-    <div class="flex items-center justify-between">
-      <h1 class="text-xl text-foreground">Settings</h1>
-      <button class="text-xs text-muted-foreground" @click="router.push('/dashboard')">Back</button>
-    </div>
+  <div class="mx-auto max-w-[48rem] space-y-6">
+    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+      <h2 class="text-sm text-muted-foreground">Appearance</h2>
+      <label class="flex items-center gap-2 text-foreground">
+        <input
+          type="checkbox"
+          aria-label="show startup animation"
+          :checked="ui.splashEnabled"
+          @change="ui.setSplashEnabled(($event.target as HTMLInputElement).checked)"
+        />
+        Show startup animation
+      </label>
+      <p class="text-xs text-muted-foreground">
+        Plays the go-syrius logo intro each time the wallet opens. Takes effect on the next launch.
+      </p>
+    </section>
 
-    <section class="rounded bg-card p-4 space-y-2">
+    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
       <h2 class="text-sm text-muted-foreground">Wallet name</h2>
-      <input class="w-full rounded bg-background px-3 py-2 text-foreground" placeholder="Wallet name" v-model="walletName" aria-label="wallet name" />
-      <button class="rounded bg-primary px-3 py-1 text-background disabled:opacity-50" :disabled="!canRename" @click="doRename">Rename</button>
+      <input class="w-full rounded-md border border-input bg-transparent px-3 py-2 text-foreground" placeholder="Wallet name" v-model="walletName" aria-label="wallet name" />
+      <Button :disabled="!canRename" @click="doRename">Rename</Button>
       <p v-if="renameMsg" class="text-primary text-sm">{{ renameMsg }}</p>
       <p v-if="renameErr" class="text-destructive text-sm" role="alert">{{ renameErr }}</p>
     </section>
 
-    <section class="rounded bg-card p-4 space-y-2">
+    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
       <h2 class="text-sm text-muted-foreground">Change password</h2>
-      <input type="password" class="w-full rounded bg-background px-3 py-2 text-foreground" placeholder="Current password" v-model="oldP" aria-label="current password" />
-      <input type="password" class="w-full rounded bg-background px-3 py-2 text-foreground" placeholder="New password" v-model="newP" aria-label="new password" />
-      <input type="password" class="w-full rounded bg-background px-3 py-2 text-foreground" placeholder="Confirm new password" v-model="confirmP" aria-label="confirm new password" />
-      <button class="rounded bg-primary px-3 py-1 text-background disabled:opacity-50" :disabled="!canChange" @click="doChange">Change</button>
+      <input type="password" class="w-full rounded-md border border-input bg-transparent px-3 py-2 text-foreground" placeholder="Current password" v-model="oldP" aria-label="current password" />
+      <input type="password" class="w-full rounded-md border border-input bg-transparent px-3 py-2 text-foreground" placeholder="New password" v-model="newP" aria-label="new password" />
+      <input type="password" class="w-full rounded-md border border-input bg-transparent px-3 py-2 text-foreground" placeholder="Confirm new password" v-model="confirmP" aria-label="confirm new password" />
+      <Button :disabled="!canChange" @click="doChange">Change</Button>
       <p v-if="cpMsg" class="text-primary text-sm">{{ cpMsg }}</p>
       <p v-if="cpErr" class="text-destructive text-sm" role="alert">{{ cpErr }}</p>
     </section>
 
-    <section class="rounded bg-card p-4 space-y-2">
+    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
       <h2 class="text-sm text-muted-foreground">Reveal mnemonic</h2>
       <p class="text-destructive text-xs">Anyone who sees these words controls your funds. Reveal only in private.</p>
       <template v-if="revealed">
         <div class="rounded bg-background p-3 font-mono text-sm break-words text-foreground">{{ revealed }}</div>
-        <button class="rounded border border-muted-foreground/40 px-3 py-1 text-muted-foreground" @click="hide">Hide</button>
+        <Button variant="outline" @click="hide">Hide</Button>
       </template>
       <template v-else>
-        <input type="password" class="w-full rounded bg-background px-3 py-2 text-foreground" placeholder="Password" v-model="revealP" aria-label="reveal password" />
-        <button class="rounded bg-primary px-3 py-1 text-background" @click="doReveal">Reveal</button>
+        <input type="password" class="w-full rounded-md border border-input bg-transparent px-3 py-2 text-foreground" placeholder="Password" v-model="revealP" aria-label="reveal password" />
+        <Button @click="doReveal">Reveal</Button>
       </template>
       <p v-if="revErr" class="text-destructive text-sm" role="alert">{{ revErr }}</p>
     </section>
 
-    <section class="rounded bg-card p-4 space-y-2">
+    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
       <h2 class="text-sm text-muted-foreground">Node</h2>
       <label class="flex items-center gap-2 text-foreground"><input type="radio" v-model="nodeMode" value="remote" @change="modeDirty = true" /> Remote</label>
-      <input class="w-full rounded bg-background px-3 py-2 font-mono text-sm text-foreground" v-model="remoteUrl" @input="remoteDirty = true" aria-label="wss endpoint url" />
+      <input class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm text-foreground" v-model="remoteUrl" @input="remoteDirty = true" aria-label="wss endpoint url" />
       <label class="flex items-center gap-2 text-foreground"><input type="radio" v-model="nodeMode" value="local" @change="modeDirty = true" /> Local</label>
-      <input class="w-full rounded bg-background px-3 py-2 font-mono text-sm text-foreground" v-model="localUrl" @input="localDirty = true" aria-label="ws endpoint url" />
+      <input class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm text-foreground" v-model="localUrl" @input="localDirty = true" aria-label="ws endpoint url" />
       <label class="flex items-center gap-2 text-foreground"><input type="radio" v-model="nodeMode" value="embedded" @change="modeDirty = true" /> Embedded</label>
       <p class="text-xs text-muted-foreground">Runs a full node in-app at ws://127.0.0.1:35998</p>
 
@@ -187,26 +196,26 @@ function hide() { revealed.value = '' }
         <p class="text-muted-foreground">{{ node.sync.peers }} peers · {{ (embeddedSize / 1e9).toFixed(2) }} GB on disk</p>
       </div>
 
-      <button v-if="node.mode !== 'embedded'" class="rounded border border-muted-foreground/40 px-3 py-1 text-muted-foreground" @click="doDeleteEmbedded">Delete embedded data ({{ (embeddedSize / 1e9).toFixed(2) }} GB)</button>
+      <Button v-if="node.mode !== 'embedded'" variant="outline" @click="doDeleteEmbedded">Delete embedded data ({{ (embeddedSize / 1e9).toFixed(2) }} GB)</Button>
 
       <div v-if="showEmbeddedConfirm" class="rounded border border-destructive/40 bg-background p-3 space-y-2">
         <p class="text-destructive text-sm">Embedded mode runs a full Zenon node in-app: it needs several GB of disk and can take hours to fully sync. Continue?</p>
         <div class="flex gap-2">
-          <button class="rounded bg-primary px-3 py-1 text-background" @click="confirmStartEmbedded">Start embedded</button>
-          <button class="rounded border border-muted-foreground/40 px-3 py-1 text-muted-foreground" @click="showEmbeddedConfirm = false">Cancel</button>
+          <Button @click="confirmStartEmbedded">Start embedded</Button>
+          <Button variant="outline" @click="showEmbeddedConfirm = false">Cancel</Button>
         </div>
       </div>
 
       <div class="flex items-center gap-3">
-        <button class="rounded bg-primary px-3 py-1 text-background" @click="applyNode" aria-label="Apply node">Apply node</button>
-        <button v-if="!node.connected" class="rounded border border-muted-foreground/40 px-3 py-1 text-muted-foreground" @click="retryNode">Retry</button>
+        <Button @click="applyNode" aria-label="Apply node">Apply node</Button>
+        <Button v-if="!node.connected" variant="outline" @click="retryNode">Retry</Button>
       </div>
       <p class="text-xs text-muted-foreground">{{ node.connected ? `Connected (${node.mode}) · height ${node.height}` : `Disconnected (${node.mode})` }}</p>
       <p v-if="nodeMsg" class="text-primary text-sm">{{ nodeMsg }}</p>
       <p v-if="nodeErr" class="text-destructive text-sm" role="alert">{{ nodeErr }}</p>
     </section>
 
-    <section class="rounded bg-card p-4 space-y-2">
+    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
       <h2 class="text-sm text-muted-foreground">Network Configuration</h2>
       <p class="text-xs text-muted-foreground">The chain the wallet builds transactions for (1 = mainnet, 73404 = testnet).</p>
       <Field label="Chain ID">
@@ -223,7 +232,7 @@ function hide() { revealed.value = '' }
       <p v-if="chainErr" class="text-destructive text-sm" role="alert">{{ chainErr }}</p>
     </section>
 
-    <section class="rounded bg-card p-4 space-y-2">
+    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
       <h2 class="text-sm text-muted-foreground">Testnet features</h2>
       <label class="flex items-center gap-2 text-foreground">
         <input

@@ -32,7 +32,7 @@ const cards = computed(() => [
 </script>
 
 <template>
-  <div class="mx-auto flex max-w-[60rem] flex-col gap-5">
+  <div class="flex flex-col gap-5">
     <!-- Plasma hero -->
     <div class="overflow-hidden rounded-xl bg-plasma p-7 text-[#0c1f12] shadow-md">
       <p class="text-ledger opacity-70">TOTAL PORTFOLIO VALUE</p>

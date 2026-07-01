@@ -29,5 +29,9 @@ watch(panelKey, () => tx.reset())
 </script>
 
 <template>
-  <component :is="panel" v-bind="panelKey === 'accelerator' ? { initialSub } : {}" />
+  <!-- Cap every NoM page to the same centered width as the Tokens page so the
+       section reads consistently instead of sprawling full-width. -->
+  <div class="mx-auto max-w-[48rem]">
+    <component :is="panel" v-bind="panelKey === 'accelerator' ? { initialSub } : {}" />
+  </div>
 </template>

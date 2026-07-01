@@ -5,6 +5,7 @@ import { Button } from 'nom-ui'
 import { useTxStore } from '../stores/tx'
 import { ClipboardSetText } from '../../wailsjs/runtime/runtime'
 import { CheckIcon, CopyIcon } from '@lucide/vue'
+import MonoTruncate from './MonoTruncate.vue'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -20,12 +21,12 @@ async function copy() {
 </script>
 
 <template>
-  <div class="space-y-3 rounded border border-success/40 bg-card p-4">
+  <div class="space-y-3 rounded-xl border border-success/40 bg-card p-5">
     <p class="font-medium text-success">Transaction published</p>
     <div>
       <span class="text-xs text-muted-foreground">Hash</span>
-      <div class="mt-1 flex items-start gap-2">
-        <div class="min-w-0 flex-1 break-all font-mono text-xs text-foreground">{{ hash }}</div>
+      <div class="mt-1 flex items-center gap-2">
+        <MonoTruncate :value="hash" class="flex-1 text-xs text-foreground" />
         <button
           type="button"
           :aria-label="copied ? 'hash copied' : 'copy hash'"

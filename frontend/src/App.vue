@@ -11,12 +11,12 @@ const { setTheme } = useTheme()
 const router = useRouter()
 const wallet = useWalletStore()
 
-// Show the logo intro only on the very first launch on this machine. The flag
-// lives in localStorage; lottie-web + the asset are dynamically imported by
-// IntroSplash, so later launches never load them.
-const showIntro = ref(localStorage.getItem('zn:introSeen') !== '1')
+// Show the logo intro on every launch, unless the user disabled it in Settings
+// (persisted in localStorage; read directly here since this runs at root mount,
+// before any store init). lottie-web + the asset are dynamically imported by
+// IntroSplash, so they only load while the splash is on screen.
+const showIntro = ref(localStorage.getItem('syrius.splash') !== '0')
 function dismissIntro() {
-  localStorage.setItem('zn:introSeen', '1')
   showIntro.value = false
 }
 

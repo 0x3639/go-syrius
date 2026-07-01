@@ -59,10 +59,10 @@ async function doImport() {
     style="background-image: radial-gradient(circle at 50% 30%, rgba(0,213,87,.10), transparent 60%);"
   >
     <div class="flex w-[21rem] flex-col items-center gap-5">
-      <img :src="logoUrl" alt="syrius" class="h-16 w-16 rounded-2xl" />
+      <img :src="logoUrl" alt="go-syrius" class="h-16 w-16 rounded-2xl" />
       <div class="text-center">
         <div class="text-xl font-bold tracking-tight text-foreground">Welcome back</div>
-        <div class="mt-1 text-sm text-muted-foreground">Unlock your Syrius wallet</div>
+        <div class="mt-1 text-sm text-muted-foreground">Unlock your go-syrius wallet</div>
       </div>
 
       <template v-if="wallet.wallets.length > 0">

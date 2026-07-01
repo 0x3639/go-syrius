@@ -4,8 +4,9 @@ import { storeToRefs } from 'pinia'
 import { Button } from 'nom-ui'
 import { useUnreceivedStore } from '../stores/unreceived'
 import { usePlasmaStore } from '../stores/plasma'
-import { formatAmount, shortAddress } from '../lib/format'
+import { formatAmount } from '../lib/format'
 import { plasmaLevel } from '../lib/plasma'
+import MonoTruncate from './MonoTruncate.vue'
 
 const unreceived = useUnreceivedStore()
 const { items, busy, busyAll, error } = storeToRefs(unreceived)
@@ -32,12 +33,13 @@ const receivingLabel = computed(() =>
     <div
       v-for="u in items"
       :key="u.fromHash"
-      class="flex items-center gap-3 border-b border-border/60 py-2 text-sm last:border-b-0"
+      class="flex items-center gap-4 border-b border-border/60 py-2 text-sm last:border-b-0"
     >
-      <span class="flex-1 truncate font-mono text-muted-foreground">{{ shortAddress(u.fromAddress) }}</span>
-      <span class="font-mono text-foreground">{{ formatAmount(u.amount, u.decimals ?? 8) }} {{ u.token }}</span>
-      <!-- Fixed-width status cell so the columns don't shift as the label changes. -->
-      <div class="flex w-40 flex-none justify-end">
+      <!-- Address takes the full remaining width (truncates only if it must); the
+           amount sits with the Receive action on the right. -->
+      <MonoTruncate :value="u.fromAddress" class="min-w-0 flex-1 text-muted-foreground" />
+      <div class="flex flex-none items-center gap-3">
+        <span class="whitespace-nowrap font-mono text-foreground">{{ formatAmount(u.amount, u.decimals ?? 8) }} {{ u.token }}</span>
         <span
           v-if="busy[u.fromHash]"
           class="inline-flex animate-pulse items-center rounded-full bg-info/15 px-2.5 py-1 text-xs font-medium text-info"

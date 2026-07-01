@@ -10,6 +10,7 @@ import { usePlasmaStore } from '../stores/plasma'
 import { usePillarStore } from '../stores/pillar'
 import { useAcceleratorStore } from '../stores/accelerator'
 import { useAutoReceiveStore } from '../stores/autoReceive'
+import { useUnreceivedStore } from '../stores/unreceived'
 import { useUiStore } from '../stores/ui'
 import { plasmaLevel, plasmaColorClass } from '../lib/plasma'
 import AccountSlotPicker from './AccountSlotPicker.vue'
@@ -22,6 +23,7 @@ const plasma = usePlasmaStore()
 const pillar = usePillarStore()
 const accelerator = useAcceleratorStore()
 const autoReceive = useAutoReceiveStore()
+const unreceived = useUnreceivedStore()
 const ui = useUiStore()
 
 const plasmaLvl = computed(() => plasmaLevel(plasma.info?.currentPlasma ?? 0))
@@ -67,11 +69,18 @@ watch(
 
       <button type="button" :disabled="locked"
         :aria-label="autoReceive.enabled ? 'Auto-receive on' : 'Auto-receive off'"
+        :title="!locked && unreceived.items.length > 0
+          ? `${unreceived.items.length} transaction(s) to receive`
+          : autoReceive.enabled ? 'Auto-receive: on' : 'Auto-receive: off'"
         :aria-pressed="locked ? undefined : autoReceive.enabled"
-        class="grid h-8.5 w-8.5 place-items-center rounded-md transition-colors"
+        class="relative grid h-8.5 w-8.5 place-items-center rounded-md transition-colors"
         :class="locked ? 'cursor-not-allowed text-muted-foreground/40' : `hover:bg-foreground/[0.06] ${autoReceive.enabled ? 'text-primary' : 'text-muted-foreground'}`"
         @click="autoReceive.toggle(wallet.activeIndex)">
         <ArrowDownCircleIcon :size="16" />
+        <span v-if="!locked && unreceived.items.length > 0"
+          class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.625rem] font-semibold text-primary-foreground">
+          {{ unreceived.items.length }}
+        </span>
       </button>
 
       <button v-if="!locked && pillar.ownsPillar" type="button" aria-label="Accelerator votes"

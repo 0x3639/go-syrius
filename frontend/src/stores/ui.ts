@@ -7,6 +7,10 @@ export const useUiStore = defineStore('ui', {
   state: () => ({
     showGovernance: false,
     theme: 'dark' as 'dark' | 'light',
+    // Whether the logo intro animation plays on launch. On by default; users can
+    // turn it off in Settings. Frontend-only preference, persisted to localStorage
+    // (App.vue reads the key directly at startup, before any store init runs).
+    splashEnabled: true,
   }),
   actions: {
     applyTheme() {
@@ -17,8 +21,13 @@ export const useUiStore = defineStore('ui', {
       this.applyTheme()
       try { localStorage.setItem('syrius.theme', this.theme) } catch { /* ignore */ }
     },
+    setSplashEnabled(v: boolean) {
+      this.splashEnabled = v
+      try { localStorage.setItem('syrius.splash', v ? '1' : '0') } catch { /* ignore */ }
+    },
     async init() {
       try { const t = localStorage.getItem('syrius.theme'); if (t === 'light' || t === 'dark') this.theme = t } catch { /* ignore */ }
+      try { this.splashEnabled = localStorage.getItem('syrius.splash') !== '0' } catch { /* ignore */ }
       this.applyTheme()
       try {
         this.showGovernance = (await Cfg.GetSettings()).showGovernance ?? false

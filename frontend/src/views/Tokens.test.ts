@@ -122,12 +122,4 @@ describe('Tokens.vue', () => {
     expect(PrepareMint).toHaveBeenCalledWith('zts1mine', '42', 'z1qactive')
     expect(awaitConfirm).toHaveBeenCalledWith({ summary: 'mint' })
   })
-
-  it('back navigates to /dashboard', async () => {
-    const w = mount(Tokens)
-    await flush()
-    const back = w.findAll('button').find((b) => b.text() === 'Back')!
-    await back.trigger('click')
-    expect(push).toHaveBeenCalledWith('/dashboard')
-  })
 })

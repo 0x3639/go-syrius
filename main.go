@@ -15,7 +15,7 @@ var assets embed.FS
 func main() {
 	a := app.New()
 	if err := wails.Run(&options.App{
-		Title:       "syrius",
+		Title:       "go-syrius",
 		Width:       1100,
 		Height:      720,
 		AssetServer: &assetserver.Options{Assets: assets},

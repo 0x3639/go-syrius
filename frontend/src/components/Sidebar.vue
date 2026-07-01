@@ -17,9 +17,9 @@ const topNav = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboardIcon },
   { to: '/transfer', label: 'Transfer', icon: SendIcon },
   { to: '/receive', label: 'Receive', icon: DownloadIcon },
-  { to: '/tokens', label: 'Tokens', icon: CoinsIcon },
 ]
 const networkNav = computed(() => [
+  { to: '/tokens', label: 'Tokens', icon: CoinsIcon },
   { to: '/network/plasma', label: 'Plasma', icon: ZapIcon },
   { to: '/network/staking', label: 'Staking', icon: LayersIcon },
   { to: '/network/pillars', label: 'Pillars', icon: Building2Icon },
@@ -43,7 +43,7 @@ const synced = computed(() => node.connected && !node.syncing)
     <div class="flex items-center gap-2.5 px-2 pb-5">
       <img src="../assets/images/syrius-logo.png" alt="" class="h-7 w-7 rounded-md" />
       <div class="flex flex-col leading-tight">
-        <span class="text-base font-bold tracking-tight text-sidebar-foreground">syrius</span>
+        <span class="text-base font-bold tracking-tight text-sidebar-foreground">go-syrius</span>
         <span class="text-ledger text-muted-foreground">Network of Momentum</span>
       </div>
     </div>

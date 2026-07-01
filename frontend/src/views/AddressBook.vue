@@ -1,14 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { Input, Button } from 'nom-ui'
 import { shortAddress } from '../lib/format'
 import { useContactsStore, type Contact } from '../stores/contacts'
-import TopBar from '../components/TopBar.vue'
-import { ArrowLeftIcon, CheckIcon, XIcon, PencilIcon } from '@lucide/vue'
+import { CheckIcon, XIcon, PencilIcon } from '@lucide/vue'
 
-const router = useRouter()
 const contacts = useContactsStore()
 const { items } = storeToRefs(contacts)
 
@@ -70,19 +67,7 @@ onMounted(() => contacts.load())
 </script>
 
 <template>
-  <TopBar />
-  <div class="mx-auto mt-6 w-[42rem] max-w-full space-y-4 px-4 pb-10">
-    <div class="flex items-center gap-2">
-      <button
-        class="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
-        aria-label="back to wallet"
-        @click="router.push('/dashboard')"
-      >
-        <ArrowLeftIcon :size="20" />
-      </button>
-      <h1 class="text-xl text-foreground">Address book</h1>
-    </div>
-
+  <div class="mx-auto max-w-[48rem] space-y-6">
         <!-- Add -->
         <div class="space-y-2 rounded-lg border border-border bg-background/40 p-3">
           <p class="text-xs font-medium text-muted-foreground">Add address</p>

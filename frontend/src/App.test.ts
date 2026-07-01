@@ -38,25 +38,24 @@ describe('App — lock leaves the protected UI', () => {
 })
 
 describe('App — intro splash', () => {
-  it('shows the intro splash when the seen flag is absent', () => {
+  it('shows the intro splash on launch', () => {
     useWalletStore().locked = true
     const w = mount(App)
     expect(w.find('[data-test="intro"]').exists()).toBe(true)
   })
 
-  it('hides the intro splash when the seen flag is set', () => {
-    localStorage.setItem('zn:introSeen', '1')
+  it('shows the intro splash on every launch, even if the old seen flag is set', () => {
+    localStorage.setItem('zn:introSeen', '1') // legacy flag must no longer suppress it
     useWalletStore().locked = true
     const w = mount(App)
-    expect(w.find('[data-test="intro"]').exists()).toBe(false)
+    expect(w.find('[data-test="intro"]').exists()).toBe(true)
   })
 
-  it('sets the seen flag and removes the splash on done', async () => {
+  it('removes the splash on done', async () => {
     useWalletStore().locked = true
     const w = mount(App)
     w.findComponent({ name: 'IntroSplash' }).vm.$emit('done')
     await w.vm.$nextTick()
-    expect(localStorage.getItem('zn:introSeen')).toBe('1')
     expect(w.find('[data-test="intro"]').exists()).toBe(false)
   })
 })

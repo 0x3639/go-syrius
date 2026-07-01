@@ -52,6 +52,13 @@ vi.mock('nom-ui', () => ({
     template: '<input :type="type" :aria-label="$attrs[\'aria-label\']" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
   },
   Button: { props: ['disabled'], template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot/></button>' },
+  Table: { template: '<table><slot/></table>' },
+  TableHeader: { template: '<thead><slot/></thead>' },
+  TableBody: { template: '<tbody><slot/></tbody>' },
+  TableRow: { template: '<tr><slot/></tr>' },
+  TableHead: { template: '<th><slot/></th>' },
+  TableCell: { props: ['colspan'], template: '<td :colspan="colspan"><slot/></td>' },
+  TableEmpty: { props: ['colspan'], template: '<tr><td :colspan="colspan"><slot/></td></tr>' },
 }))
 
 import Tokens from './Tokens.vue'

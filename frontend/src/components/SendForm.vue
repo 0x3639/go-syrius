@@ -27,10 +27,21 @@ function onPickContact(addr: string) {
   bookOpen.value = false
 }
 
-// Default to the first token's zts once balances load (verbatim from the Svelte
-// reactive `$: if (!zts && $balances[0]) zts = $balances[0].zts`).
+// Token order for the picker: ZNN first, QSR second, then the rest alphabetically
+// by symbol. So the default selection (first entry) is ZNN.
+const TOKEN_RANK: Record<string, number> = { ZNN: 0, QSR: 1 }
+const orderedItems = computed(() =>
+  [...items.value].sort((a, b) => {
+    const ra = TOKEN_RANK[a.symbol] ?? 2
+    const rb = TOKEN_RANK[b.symbol] ?? 2
+    if (ra !== rb) return ra - rb
+    return (a.symbol || a.zts).localeCompare(b.symbol || b.zts)
+  }),
+)
+
+// Default to the first token (ZNN when present) once balances load.
 watch(
-  items,
+  orderedItems,
   (list) => {
     if (!zts.value && list[0]) zts.value = list[0].zts
   },
@@ -97,7 +108,7 @@ function onSend() {
         v-model="zts"
         class="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 text-foreground"
       >
-        <option v-for="b in items" :key="b.zts" :value="b.zts">
+        <option v-for="b in orderedItems" :key="b.zts" :value="b.zts">
           {{ b.symbol || b.zts }}
         </option>
       </select>

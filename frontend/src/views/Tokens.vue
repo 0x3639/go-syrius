@@ -1,16 +1,28 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { Button } from 'nom-ui'
+import { Button, Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from 'nom-ui'
 import * as Nom from '../../wailsjs/go/app/NomService'
 import type { app } from '../../wailsjs/go/models'
 import { useTokenStore } from '../stores/token'
 import { useTxStore } from '../stores/tx'
 import { useWalletStore } from '../stores/wallet'
 import { formatAmount } from '../lib/format'
+import { ChevronLeftIcon, ChevronRightIcon } from '@lucide/vue'
+import MonoTruncate from '../components/MonoTruncate.vue'
 
 const token = useTokenStore()
 const tx = useTxStore()
 const wallet = useWalletStore()
+
+// Paginate the owned-token list at 10 per page.
+const PAGE_SIZE = 10
+const myTokensPage = ref(0)
+const myTokensPageCount = computed(() => Math.max(1, Math.ceil(token.myTokens.length / PAGE_SIZE)))
+const pagedMyTokens = computed(() =>
+  token.myTokens.slice(myTokensPage.value * PAGE_SIZE, myTokensPage.value * PAGE_SIZE + PAGE_SIZE),
+)
+// Keep the page in range if the list shrinks (e.g. after a refresh).
+watch(myTokensPageCount, (n) => { if (myTokensPage.value >= n) myTokensPage.value = Math.max(0, n - 1) })
 
 const error = ref('')
 const lookupZts = ref('')
@@ -57,30 +69,6 @@ async function update(t: app.TokenInfo) {
 <template>
   <div class="mx-auto max-w-[48rem] space-y-6">
     <section class="rounded-xl border border-border bg-card p-5 space-y-2">
-      <h2 class="text-sm text-muted-foreground">My tokens</h2>
-      <div v-for="t in token.myTokens" :key="t.tokenStandard" class="border-b border-muted-foreground/20 py-2 text-sm space-y-1">
-        <p class="font-mono">{{ t.symbol }} · {{ t.name }} · {{ formatAmount(t.totalSupply, t.decimals) }}/{{ formatAmount(t.maxSupply, t.decimals) }} · dec {{ t.decimals }}<template v-if="!t.isMintable"> · fixed</template></p>
-        <p class="text-xs text-muted-foreground">{{ t.tokenStandard }}</p>
-        <div class="flex flex-wrap gap-2 items-center">
-          <Button v-if="t.isMintable" variant="outline" size="sm" @click="startMint(t.tokenStandard)" :aria-label="`mint ${t.symbol}`">Mint</Button>
-          <Button variant="outline" size="sm" @click="startUpdate(t.tokenStandard, t.owner)" :aria-label="`update ${t.symbol}`">Update</Button>
-        </div>
-        <div v-if="mintZts === t.tokenStandard" class="flex flex-wrap gap-2 items-center pt-1">
-          <input class="rounded-md border border-input bg-transparent px-2 py-1 text-xs" placeholder="amount (base units)" v-model="mintAmount" aria-label="mint amount" />
-          <input class="rounded-md border border-input bg-transparent px-2 py-1 text-xs w-72" placeholder="receiver" v-model="mintReceiver" aria-label="mint receiver" />
-          <Button @click="mint">Confirm mint</Button>
-        </div>
-        <div v-if="updZts === t.tokenStandard" class="flex flex-wrap gap-2 items-center pt-1">
-          <input class="rounded-md border border-input bg-transparent px-2 py-1 text-xs w-72" placeholder="new owner" v-model="updOwner" aria-label="update owner" />
-          <label v-if="t.isMintable" class="text-xs"><input type="checkbox" v-model="updDisableMint" /> disable minting</label>
-          <label v-if="t.isBurnable" class="text-xs"><input type="checkbox" v-model="updDisableBurn" /> disable burning</label>
-          <Button @click="update(t)">Confirm update</Button>
-        </div>
-      </div>
-      <p v-if="token.myTokens.length === 0" class="text-xs text-muted-foreground">No tokens owned.</p>
-    </section>
-
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
       <h2 class="text-sm text-muted-foreground">Look up / burn</h2>
       <div class="flex gap-2">
         <input class="flex-1 rounded-md border border-input bg-transparent px-3 py-2" placeholder="zts1…" v-model="lookupZts" aria-label="lookup zts" />
@@ -112,6 +100,79 @@ async function update(t: app.TokenInfo) {
         <label><input type="checkbox" v-model="iUtility" /> utility</label>
       </div>
       <Button @click="issue" aria-label="issue token">Issue token</Button>
+    </section>
+
+    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+      <h2 class="text-sm text-muted-foreground">My tokens</h2>
+      <Table class="w-full table-fixed text-xs">
+        <colgroup>
+          <col class="w-20" />
+          <col class="w-28" />
+          <col class="w-28" />
+          <col class="w-12" />
+          <col />
+          <col class="w-36" />
+        </colgroup>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Symbol</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead>Supply</TableHead>
+            <TableHead>Dec</TableHead>
+            <TableHead>Standard</TableHead>
+            <TableHead class="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableEmpty v-if="token.myTokens.length === 0" :colspan="6">No tokens owned.</TableEmpty>
+          <template v-for="t in pagedMyTokens" :key="t.tokenStandard">
+            <TableRow>
+              <TableCell class="truncate font-mono text-foreground">{{ t.symbol }}</TableCell>
+              <TableCell class="truncate">{{ t.name }}</TableCell>
+              <TableCell class="whitespace-nowrap font-mono text-xs">
+                {{ formatAmount(t.totalSupply, t.decimals) }} / {{ formatAmount(t.maxSupply, t.decimals) }}
+                <span v-if="!t.isMintable" class="text-muted-foreground"> · fixed</span>
+              </TableCell>
+              <TableCell class="font-mono text-xs">{{ t.decimals }}</TableCell>
+              <TableCell><MonoTruncate :value="t.tokenStandard" class="text-xs text-muted-foreground" /></TableCell>
+              <TableCell>
+                <div class="flex justify-end gap-2">
+                  <Button v-if="t.isMintable" variant="outline" size="sm" @click="startMint(t.tokenStandard)" :aria-label="`mint ${t.symbol}`">Mint</Button>
+                  <Button variant="outline" size="sm" @click="startUpdate(t.tokenStandard, t.owner)" :aria-label="`update ${t.symbol}`">Update</Button>
+                </div>
+              </TableCell>
+            </TableRow>
+            <TableRow v-if="mintZts === t.tokenStandard || updZts === t.tokenStandard">
+              <TableCell :colspan="6">
+                <div v-if="mintZts === t.tokenStandard" class="flex flex-wrap items-center gap-2">
+                  <input class="rounded-md border border-input bg-transparent px-2 py-1 text-xs" placeholder="amount (base units)" v-model="mintAmount" aria-label="mint amount" />
+                  <input class="w-72 rounded-md border border-input bg-transparent px-2 py-1 text-xs" placeholder="receiver" v-model="mintReceiver" aria-label="mint receiver" />
+                  <Button size="sm" @click="mint">Confirm mint</Button>
+                </div>
+                <div v-if="updZts === t.tokenStandard" class="flex flex-wrap items-center gap-2">
+                  <input class="w-72 rounded-md border border-input bg-transparent px-2 py-1 text-xs" placeholder="new owner" v-model="updOwner" aria-label="update owner" />
+                  <label v-if="t.isMintable" class="text-xs"><input type="checkbox" v-model="updDisableMint" /> disable minting</label>
+                  <label v-if="t.isBurnable" class="text-xs"><input type="checkbox" v-model="updDisableBurn" /> disable burning</label>
+                  <Button size="sm" @click="update(t)">Confirm update</Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          </template>
+        </TableBody>
+      </Table>
+      <div v-if="myTokensPageCount > 1" class="flex items-center justify-end gap-3 pt-1 text-xs text-muted-foreground">
+        <span>Page {{ myTokensPage + 1 }} / {{ myTokensPageCount }}</span>
+        <button
+          type="button" aria-label="previous token page" :disabled="myTokensPage === 0"
+          class="grid h-7 w-7 place-items-center rounded border border-border transition-colors hover:bg-foreground/[0.06] disabled:opacity-40"
+          @click="myTokensPage--"
+        ><ChevronLeftIcon :size="14" /></button>
+        <button
+          type="button" aria-label="next token page" :disabled="myTokensPage >= myTokensPageCount - 1"
+          class="grid h-7 w-7 place-items-center rounded border border-border transition-colors hover:bg-foreground/[0.06] disabled:opacity-40"
+          @click="myTokensPage++"
+        ><ChevronRightIcon :size="14" /></button>
+      </div>
     </section>
 
     <p v-if="error" class="text-destructive text-sm" role="alert">{{ error }}</p>

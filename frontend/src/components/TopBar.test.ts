@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
-// Stub the router so TopBar's useRouter() resolves without a real router being
-// installed (otherwise Vue logs an "injection Symbol(router) not found" warn).
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+// Stub the router so TopBar's useRouter()/useRoute() resolve without a real
+// router being installed (otherwise Vue logs an "injection Symbol(router) not
+// found" warn). useRoute drives the on-Pillars-page title suffix.
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }), useRoute: () => ({ name: 'dashboard', query: {} }) }))
 import TopBar from './TopBar.vue'
 import { useWalletStore } from '../stores/wallet'
 import { useAutoReceiveStore } from '../stores/autoReceive'

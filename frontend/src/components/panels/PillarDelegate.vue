@@ -109,12 +109,12 @@ watch(
             <span
               v-if="p.name === mine"
               class="shrink-0 rounded bg-success/20 px-1.5 py-0.5 text-[10px] font-medium text-success"
-              >yours</span
+              >pillar</span
             >
             <span
               v-if="p.name === delegation?.name"
               class="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary"
-              >current</span
+              >delegated</span
             >
           </div>
           <div class="flex shrink-0 items-center gap-4">

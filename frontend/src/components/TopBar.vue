@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'nom-ui'
 import {
   WalletIcon, SunIcon, MoonIcon, ZapIcon, ArrowDownCircleIcon, RocketIcon, LockIcon,
@@ -19,6 +19,7 @@ import AccountSlotPicker from './AccountSlotPicker.vue'
 defineProps<{ title?: string; locked?: boolean }>()
 
 const router = useRouter()
+const route = useRoute()
 const wallet = useWalletStore()
 const plasma = usePlasmaStore()
 const pillar = usePillarStore()
@@ -44,7 +45,9 @@ watch(
 
 <template>
   <header class="flex h-15 flex-none items-center gap-4 border-b border-border px-7">
-    <h1 class="text-lg font-semibold tracking-tight text-foreground">{{ title }}</h1>
+    <h1 class="text-lg font-semibold tracking-tight text-foreground">
+      {{ title }}<template v-if="!locked && route.name === 'net-pillars' && pillar.ownsPillar"> — <span class="text-success">{{ pillar.myPillar?.name }}</span></template>
+    </h1>
 
     <div class="ml-auto flex items-center gap-2">
       <!-- Account/address pill: opens the account picker dropdown -->

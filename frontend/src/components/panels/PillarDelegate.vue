@@ -19,6 +19,9 @@ const rewardZero = computed(
   () => !pillarReward.value || (pillarReward.value.znn === '0' && pillarReward.value.qsr === '0'),
 )
 const delegated = computed(() => !!delegation.value && delegation.value.name !== '')
+// The pillar this wallet slot operates (empty when the slot owns none), so its
+// row can be highlighted distinctly from the delegated ("current") pillar.
+const mine = computed(() => (pillar.ownsPillar ? pillar.myPillar?.name ?? '' : ''))
 const filtered = computed(() =>
   (pillars.value ?? [])
     .filter((p) => p.name.toLowerCase().includes(search.value.trim().toLowerCase()))
@@ -95,11 +98,19 @@ watch(
         <div
           v-for="p in filtered"
           :key="p.name"
-          class="flex items-center justify-between gap-3 rounded-md border border-transparent px-2 py-2 hover:border-border hover:bg-muted"
+          class="flex items-center justify-between gap-3 rounded-md border px-2 py-2 transition-colors"
+          :class="p.name === mine
+            ? 'border-success/50 bg-success/10'
+            : 'border-transparent hover:border-border hover:bg-muted'"
         >
           <div class="flex min-w-0 items-baseline gap-3">
             <span class="shrink-0 font-mono text-xs text-muted-foreground">#{{ p.rank }}</span>
             <span class="truncate text-sm text-foreground">{{ p.name }}</span>
+            <span
+              v-if="p.name === mine"
+              class="shrink-0 rounded bg-success/20 px-1.5 py-0.5 text-[10px] font-medium text-success"
+              >yours</span
+            >
             <span
               v-if="p.name === delegation?.name"
               class="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary"

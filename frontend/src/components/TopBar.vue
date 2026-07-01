@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useToast } from 'nom-ui'
 import {
   WalletIcon, SunIcon, MoonIcon, ZapIcon, ArrowDownCircleIcon, RocketIcon, LockIcon,
+  Building2Icon,
 } from '@lucide/vue'
 import { useWalletStore } from '../stores/wallet'
 import { usePlasmaStore } from '../stores/plasma'
@@ -81,6 +82,13 @@ watch(
           class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.625rem] font-semibold text-primary-foreground">
           {{ unreceived.items.length }}
         </span>
+      </button>
+
+      <button v-if="!locked && pillar.ownsPillar" type="button" aria-label="Your pillar"
+        :title="`Operating pillar: ${pillar.myPillar?.name ?? ''}`"
+        class="grid h-8.5 w-8.5 place-items-center rounded-md text-success transition-colors hover:bg-foreground/[0.06]"
+        @click="router.push('/network/pillars')">
+        <Building2Icon :size="16" />
       </button>
 
       <button v-if="!locked && pillar.ownsPillar" type="button" aria-label="Accelerator votes"

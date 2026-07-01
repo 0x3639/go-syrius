@@ -2,6 +2,8 @@
 
 A start-to-finish plan to reimplement the Zenon `syrius` wallet (currently Flutter/Dart) as a Go + Wails desktop application.
 
+> **Status (2026-07-01):** Phases 0–5 and 7a are shipped and merged to `main`; Phase 6 (Ledger) is deferred; 7b–7f remain. Per-phase acceptance records live in `docs/phase*-acceptance.md` — the phase checklists below are the original spec, kept as written rather than re-ticked. The frontend was migrated from the Svelte scaffold to **Vue 3 + Pinia + nom-ui** (merged `a9c2880`, 2026-06-25); stack references below have been updated, and CLAUDE.md "Working order" tracks current status.
+
 ---
 
 ## 0. Executive summary
@@ -26,9 +28,9 @@ This is one of the cases where Wails is a genuinely strong fit, not merely a pos
 |---|---|---|
 | Shell | **Wails v2** (stable) | v3 is alpha; a wallet handling real funds should not sit on an alpha framework |
 | Backend | Go 1.22+, `znn-sdk-go`, `go-zenon` | Already-built, tested SDK + native node |
-| Frontend | **Svelte + TypeScript + Vite** | Light, reactive, small bundle; good for a data-dense wallet UI. (React is a fine alternative if you prefer it.) |
-| Styling | Tailwind CSS | Fast iteration; matches a modern wallet aesthetic |
-| State | Svelte stores (or Zustand if React) | Simple reactive state synced to Go events |
+| Frontend | **Vue 3 + TypeScript + Vite** (originally scaffolded in Svelte; migrated 2026-06-25) | Light, reactive; pairs with the nom-ui Vue component library for blockchain primitives |
+| Styling | Tailwind CSS 4 | Fast iteration; matches a modern wallet aesthetic |
+| State | Pinia | Simple reactive stores synced to Go events |
 | Build/CI | Wails CLI + GitHub Actions matrix | Mirrors syrius's existing release pipeline |
 
 ---
@@ -43,7 +45,7 @@ This is one of the cases where Wails is a genuinely strong fit, not merely a pos
 │                                                            │
 │  ┌──────────────────┐         ┌───────────────────────┐  │
 │  │  Frontend (WebView)│  bind  │  Go Backend            │  │
-│  │  Svelte + TS       │◄──────►│  app/ (Wails-bound)    │  │
+│  │  Vue 3 + TS        │◄──────►│  app/ (Wails-bound)    │  │
 │  │  - routes/screens  │ events │   ├── WalletService    │  │
 │  │  - stores          │        │   ├── NodeService      │  │
 │  │  - components       │        │   ├── TxService        │  │
@@ -117,12 +119,12 @@ Each phase is independently shippable/testable and ordered by risk. Don't start 
 
 **Goal:** a real window that opens an existing wallet and shows balances/history. No sending yet.
 
-- [ ] `wails init` (Svelte-TS template). Establish repo layout (§4).
+- [ ] `wails init`. Establish repo layout (§4). *(Scaffolded Svelte-TS; later migrated to Vue 3 — see status note above.)*
 - [ ] `ConfigService`: app data dir, settings persistence (node mode, selected node URL, theme).
 - [ ] `WalletService`: list wallets in data dir, unlock by password, lock, current address(es), switch account index.
 - [ ] `NodeService`: Remote-node mode only for now; connection lifecycle + status events to frontend.
 - [ ] Frontend: unlock screen → dashboard. Dashboard shows ZNN/QSR/ZTS balances, address w/ copy + QR, recent transactions, sync/connection status.
-- [ ] Wire SDK subscriptions → Wails events → Svelte stores (live momentum height, connection state).
+- [ ] Wire SDK subscriptions → Wails events → frontend stores (live momentum height, connection state).
 
 **Exit criteria:** unlock a real wallet, see correct balances and history, live-updating connection status. Read-only, safe.
 
@@ -310,7 +312,7 @@ ListProjects / Donate / …
 ## 6. Key technical decisions to lock early
 
 1. **Wallet-file compatibility: yes.** Read & write syrius-compatible keystores so users migrate seamlessly and can run both wallets. (Phase 0 proves it.)
-2. **Frontend framework: Svelte-TS** for a lean, reactive, data-dense UI. Switch to React only if your team's familiarity outweighs bundle size.
+2. **Frontend framework: Vue 3 + TS** (revised — originally Svelte-TS; migrated 2026-06-25 to adopt the nom-ui Vue component library for blockchain UI primitives).
 3. **Wails v2, not v3.** Stability over features for a funds-handling app.
 4. **SDK as a vendored dependency you control.** Since `znn-sdk-go` is yours, pin it and evolve it alongside the app; fixes flow both ways.
 5. **Ledger: defer to post-v1** unless hardware support is a launch requirement. It's the single biggest schedule risk and cleanly separable.

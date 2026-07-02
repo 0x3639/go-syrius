@@ -7,32 +7,35 @@ import { useTokenStore } from '../stores/token'
 import { useTxStore } from '../stores/tx'
 import { useWalletStore } from '../stores/wallet'
 import { formatAmount } from '../lib/format'
-import { ChevronLeftIcon, ChevronRightIcon } from '@lucide/vue'
+import { ChevronLeftIcon, ChevronRightIcon, XIcon } from '@lucide/vue'
 import MonoTruncate from '../components/MonoTruncate.vue'
 
 const token = useTokenStore()
 const tx = useTxStore()
 const wallet = useWalletStore()
 
-// Paginate the owned-token list at 10 per page.
+// One table shows either the owned tokens (default) or, after a search, the
+// matching on-chain tokens. Paginated at 10 per page either way.
 const PAGE_SIZE = 10
+const showingSearch = ref(false)
+const tableTokens = computed(() => (showingSearch.value ? token.searchResults : token.myTokens))
 const myTokensPage = ref(0)
-const myTokensPageCount = computed(() => Math.max(1, Math.ceil(token.myTokens.length / PAGE_SIZE)))
+const myTokensPageCount = computed(() => Math.max(1, Math.ceil(tableTokens.value.length / PAGE_SIZE)))
 const pagedMyTokens = computed(() =>
-  token.myTokens.slice(myTokensPage.value * PAGE_SIZE, myTokensPage.value * PAGE_SIZE + PAGE_SIZE),
+  tableTokens.value.slice(myTokensPage.value * PAGE_SIZE, myTokensPage.value * PAGE_SIZE + PAGE_SIZE),
 )
 // Keep the page in range if the list shrinks (e.g. after a refresh).
 watch(myTokensPageCount, (n) => { if (myTokensPage.value >= n) myTokensPage.value = Math.max(0, n - 1) })
 
 const error = ref('')
-const lookupZts = ref('')
+const searchQuery = ref('')
 // issue form
 const iName = ref(''), iSymbol = ref(''), iDomain = ref(''), iTotal = ref(''), iMax = ref('')
 const iDecimals = ref(8), iMintable = ref(true), iBurnable = ref(true), iUtility = ref(false)
 // mint form (per token, keyed by zts)
 const mintZts = ref(''), mintAmount = ref(''), mintReceiver = ref('')
-// burn form
-const burnAmount = ref('')
+// burn form (per-row)
+const burnZts = ref(''), rowBurnAmount = ref('')
 // update form
 const updZts = ref(''), updOwner = ref(''), updDisableMint = ref(false), updDisableBurn = ref(false)
 
@@ -47,17 +50,49 @@ async function issue() {
   error.value = ''
   try { tx.awaitConfirm(await Nom.PrepareIssueToken(iName.value, iSymbol.value, iDomain.value, iTotal.value, iMax.value, iDecimals.value, iMintable.value, iBurnable.value, iUtility.value)) } catch (e) { fail(e) }
 }
-function startMint(zts: string) { mintZts.value = zts; mintAmount.value = ''; mintReceiver.value = activeAddress.value }
+// Mint/Update expand one shared inline row per token: opening one closes the
+// other, clicking the same action again collapses it.
+function startMint(zts: string) {
+  updZts.value = ''; burnZts.value = ''
+  if (mintZts.value === zts) { mintZts.value = ''; return }
+  mintZts.value = zts; mintAmount.value = ''; mintReceiver.value = activeAddress.value
+}
 async function mint() {
   error.value = ''
   try { tx.awaitConfirm(await Nom.PrepareMint(mintZts.value, mintAmount.value, mintReceiver.value)) } catch (e) { fail(e) }
 }
-async function doLookup() { error.value = ''; try { await token.lookup(lookupZts.value) } catch (e) { fail(e) } }
-async function burn(zts: string) {
+async function doSearch() {
   error.value = ''
-  try { tx.awaitConfirm(await Nom.PrepareBurn(zts, burnAmount.value)) } catch (e) { fail(e) }
+  if (!searchQuery.value.trim()) { clearSearch(); return }
+  try {
+    await token.search(searchQuery.value)
+    showingSearch.value = true
+    myTokensPage.value = 0
+    closeActionRow()
+  } catch (e) { fail(e) }
 }
-function startUpdate(zts: string, owner: string) { updZts.value = zts; updOwner.value = owner; updDisableMint.value = false; updDisableBurn.value = false }
+function clearSearch() {
+  searchQuery.value = ''
+  showingSearch.value = false
+  token.clearSearch()
+  myTokensPage.value = 0
+  closeActionRow()
+}
+async function burn(zts: string, amount: string) {
+  error.value = ''
+  try { tx.awaitConfirm(await Nom.PrepareBurn(zts, amount)) } catch (e) { fail(e) }
+}
+function startUpdate(zts: string, owner: string) {
+  mintZts.value = ''; burnZts.value = ''
+  if (updZts.value === zts) { updZts.value = ''; return }
+  updZts.value = zts; updOwner.value = owner; updDisableMint.value = false; updDisableBurn.value = false
+}
+function startBurn(zts: string) {
+  mintZts.value = ''; updZts.value = ''
+  if (burnZts.value === zts) { burnZts.value = ''; return }
+  burnZts.value = zts; rowBurnAmount.value = ''
+}
+function closeActionRow() { mintZts.value = ''; updZts.value = ''; burnZts.value = '' }
 async function update(t: app.TokenInfo) {
   error.value = ''
   try {
@@ -68,22 +103,6 @@ async function update(t: app.TokenInfo) {
 
 <template>
   <div class="mx-auto max-w-[48rem] space-y-6">
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
-      <h2 class="text-sm text-muted-foreground">Look up / burn</h2>
-      <div class="flex gap-2">
-        <input class="flex-1 rounded-md border border-input bg-transparent px-3 py-2" placeholder="zts1…" v-model="lookupZts" aria-label="lookup zts" />
-        <Button variant="outline" size="sm" @click="doLookup">Look up</Button>
-      </div>
-      <template v-if="token.lookedUp">
-        <p class="text-sm font-mono">{{ token.lookedUp.symbol }} · {{ token.lookedUp.name }} · {{ token.lookedUp.tokenStandard }}</p>
-        <div v-if="token.lookedUp.isBurnable" class="flex gap-2 items-center">
-          <input class="rounded-md border border-input bg-transparent px-2 py-1 text-xs" placeholder="amount (base units)" v-model="burnAmount" aria-label="burn amount" />
-          <Button @click="burn(token.lookedUp.tokenStandard)">Burn</Button>
-        </div>
-        <p v-else class="text-xs text-muted-foreground">Token is not burnable.</p>
-      </template>
-    </section>
-
     <section class="rounded-xl border border-border bg-card p-5 space-y-2">
       <h2 class="text-sm text-muted-foreground">Issue a token (1 ZNN fee)</h2>
       <div class="grid grid-cols-2 gap-2">
@@ -103,28 +122,46 @@ async function update(t: app.TokenInfo) {
     </section>
 
     <section class="rounded-xl border border-border bg-card p-5 space-y-2">
-      <h2 class="text-sm text-muted-foreground">My tokens</h2>
+      <div class="flex flex-wrap items-center gap-2 pb-1">
+        <h2 class="text-sm text-muted-foreground">
+          {{ showingSearch ? `Search results (${tableTokens.length})` : 'My tokens' }}
+        </h2>
+        <div class="ml-auto flex items-center gap-2">
+          <input
+            class="w-64 rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
+            placeholder="zts1…, name, or symbol" v-model="searchQuery" aria-label="token search"
+            @keydown.enter="doSearch"
+          />
+          <Button variant="outline" size="sm" @click="doSearch">Search</Button>
+          <Button v-if="showingSearch" variant="outline" size="sm" aria-label="clear search" @click="clearSearch">Clear</Button>
+        </div>
+      </div>
       <Table class="w-full table-fixed text-xs">
         <colgroup>
           <col class="w-20" />
-          <col class="w-28" />
+          <col class="w-24" />
           <col class="w-28" />
           <col class="w-12" />
           <col />
-          <col class="w-36" />
+          <col class="w-48" />
         </colgroup>
         <TableHeader>
           <TableRow>
             <TableHead>Symbol</TableHead>
             <TableHead>Name</TableHead>
-            <TableHead>Supply</TableHead>
+            <TableHead title="Circulating supply already minted / maximum that can ever exist. 'fixed' = minting disabled.">
+              <span class="block leading-tight">Supply</span>
+              <span class="block font-normal leading-tight text-muted-foreground">(minted / max)</span>
+            </TableHead>
             <TableHead>Dec</TableHead>
             <TableHead>Standard</TableHead>
             <TableHead class="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableEmpty v-if="token.myTokens.length === 0" :colspan="6">No tokens owned.</TableEmpty>
+          <TableEmpty v-if="tableTokens.length === 0" :colspan="6">
+            {{ showingSearch ? 'No tokens match.' : 'No tokens owned.' }}
+          </TableEmpty>
           <template v-for="t in pagedMyTokens" :key="t.tokenStandard">
             <TableRow>
               <TableCell class="truncate font-mono text-foreground">{{ t.symbol }}</TableCell>
@@ -134,26 +171,41 @@ async function update(t: app.TokenInfo) {
                 <span v-if="!t.isMintable" class="text-muted-foreground"> · fixed</span>
               </TableCell>
               <TableCell class="font-mono text-xs">{{ t.decimals }}</TableCell>
-              <TableCell><MonoTruncate :value="t.tokenStandard" class="text-xs text-muted-foreground" /></TableCell>
+              <TableCell class="pr-4"><MonoTruncate :value="t.tokenStandard" class="text-xs text-muted-foreground" /></TableCell>
               <TableCell>
+                <!-- Mint/Update are owner-only (matters for search results);
+                     Burn works for any held burnable token. -->
                 <div class="flex justify-end gap-2">
-                  <Button v-if="t.isMintable" variant="outline" size="sm" @click="startMint(t.tokenStandard)" :aria-label="`mint ${t.symbol}`">Mint</Button>
-                  <Button variant="outline" size="sm" @click="startUpdate(t.tokenStandard, t.owner)" :aria-label="`update ${t.symbol}`">Update</Button>
+                  <Button v-if="t.isMintable && t.owner === activeAddress" variant="outline" size="sm" @click="startMint(t.tokenStandard)" :aria-label="`mint ${t.symbol}`">Mint</Button>
+                  <Button v-if="t.owner === activeAddress" variant="outline" size="sm" @click="startUpdate(t.tokenStandard, t.owner)" :aria-label="`update ${t.symbol}`">Update</Button>
+                  <Button v-if="t.isBurnable" variant="outline" size="sm" @click="startBurn(t.tokenStandard)" :aria-label="`burn ${t.symbol}`">Burn</Button>
                 </div>
               </TableCell>
             </TableRow>
-            <TableRow v-if="mintZts === t.tokenStandard || updZts === t.tokenStandard">
+            <TableRow v-if="mintZts === t.tokenStandard || updZts === t.tokenStandard || burnZts === t.tokenStandard">
               <TableCell :colspan="6">
-                <div v-if="mintZts === t.tokenStandard" class="flex flex-wrap items-center gap-2">
-                  <input class="rounded-md border border-input bg-transparent px-2 py-1 text-xs" placeholder="amount (base units)" v-model="mintAmount" aria-label="mint amount" />
-                  <input class="w-72 rounded-md border border-input bg-transparent px-2 py-1 text-xs" placeholder="receiver" v-model="mintReceiver" aria-label="mint receiver" />
-                  <Button size="sm" @click="mint">Confirm mint</Button>
-                </div>
-                <div v-if="updZts === t.tokenStandard" class="flex flex-wrap items-center gap-2">
-                  <input class="w-72 rounded-md border border-input bg-transparent px-2 py-1 text-xs" placeholder="new owner" v-model="updOwner" aria-label="update owner" />
-                  <label v-if="t.isMintable" class="text-xs"><input type="checkbox" v-model="updDisableMint" /> disable minting</label>
-                  <label v-if="t.isBurnable" class="text-xs"><input type="checkbox" v-model="updDisableBurn" /> disable burning</label>
-                  <Button size="sm" @click="update(t)">Confirm update</Button>
+                <div class="flex items-center gap-2">
+                  <div v-if="mintZts === t.tokenStandard" class="flex flex-1 flex-wrap items-center gap-2">
+                    <input class="rounded-md border border-input bg-transparent px-2 py-1 text-xs" placeholder="amount (base units)" v-model="mintAmount" aria-label="mint amount" />
+                    <input class="w-72 rounded-md border border-input bg-transparent px-2 py-1 text-xs" placeholder="receiver" v-model="mintReceiver" aria-label="mint receiver" />
+                    <Button size="sm" @click="mint">Confirm mint</Button>
+                  </div>
+                  <div v-if="updZts === t.tokenStandard" class="flex flex-1 flex-wrap items-center gap-2">
+                    <input class="w-72 rounded-md border border-input bg-transparent px-2 py-1 text-xs" placeholder="new owner" v-model="updOwner" aria-label="update owner" />
+                    <label v-if="t.isMintable" class="text-xs"><input type="checkbox" v-model="updDisableMint" /> disable minting</label>
+                    <label v-if="t.isBurnable" class="text-xs"><input type="checkbox" v-model="updDisableBurn" /> disable burning</label>
+                    <Button size="sm" @click="update(t)">Confirm update</Button>
+                  </div>
+                  <div v-if="burnZts === t.tokenStandard" class="flex flex-1 flex-wrap items-center gap-2">
+                    <input class="rounded-md border border-input bg-transparent px-2 py-1 text-xs" placeholder="amount (base units)" v-model="rowBurnAmount" aria-label="row burn amount" />
+                    <span class="text-xs text-muted-foreground">burns from your held balance — irreversible</span>
+                    <Button size="sm" @click="burn(t.tokenStandard, rowBurnAmount)">Confirm burn</Button>
+                  </div>
+                  <button
+                    type="button" :aria-label="`close ${t.symbol} actions`" title="Close"
+                    class="ml-auto grid h-7 w-7 shrink-0 place-items-center rounded border border-border text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+                    @click="closeActionRow"
+                  ><XIcon :size="14" /></button>
                 </div>
               </TableCell>
             </TableRow>

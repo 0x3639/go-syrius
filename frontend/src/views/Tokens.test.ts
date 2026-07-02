@@ -13,21 +13,24 @@ vi.mock('../../wailsjs/go/app/NomService', () => ({
   PrepareUpdateToken,
   GetMyTokens: vi.fn().mockResolvedValue([]),
   GetTokenByZts: vi.fn().mockResolvedValue(null),
+  SearchTokens: vi.fn().mockResolvedValue([]),
 }))
 
-// token store: stubbed so we can assert lookup and seed myTokens
+// token store: stubbed so we can assert search and seed myTokens/results
 const refresh = vi.hoisted(() => vi.fn())
-const lookup = vi.hoisted(() => vi.fn())
+const search = vi.hoisted(() => vi.fn())
+const clearSearch = vi.hoisted(() => vi.fn())
 const tokenState = vi.hoisted(() => ({
   myTokens: [] as any[],
-  lookedUp: null as any,
+  searchResults: [] as any[],
 }))
 vi.mock('../stores/token', () => ({
   useTokenStore: () => ({
     get myTokens() { return tokenState.myTokens },
-    get lookedUp() { return tokenState.lookedUp },
+    get searchResults() { return tokenState.searchResults },
     refresh,
-    lookup,
+    search,
+    clearSearch,
   }),
 }))
 
@@ -51,7 +54,10 @@ vi.mock('nom-ui', () => ({
     props: ['modelValue', 'type'],
     template: '<input :type="type" :aria-label="$attrs[\'aria-label\']" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
   },
-  Button: { props: ['disabled'], template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot/></button>' },
+  // Like the real nom-ui Button, do NOT $emit('click') — the parent's @click
+  // falls through to the native <button>. Emitting AND falling through would
+  // double-fire handlers (which broke the mint/update toggle behavior).
+  Button: { props: ['disabled'], template: '<button :disabled="disabled"><slot/></button>' },
   Table: { template: '<table><slot/></table>' },
   TableHeader: { template: '<thead><slot/></thead>' },
   TableBody: { template: '<tbody><slot/></tbody>' },
@@ -73,10 +79,11 @@ beforeEach(() => {
   PrepareBurn.mockClear()
   PrepareUpdateToken.mockClear()
   refresh.mockClear()
-  lookup.mockClear()
+  search.mockClear()
+  clearSearch.mockClear()
   awaitConfirm.mockClear()
   tokenState.myTokens = []
-  tokenState.lookedUp = null
+  tokenState.searchResults = []
 })
 
 describe('Tokens.vue', () => {
@@ -100,19 +107,51 @@ describe('Tokens.vue', () => {
     expect(awaitConfirm).toHaveBeenCalledWith({ summary: 'issue' })
   })
 
-  it('lookup calls token.lookup(zts)', async () => {
+  it('search calls token.search(query)', async () => {
     const w = mount(Tokens)
     await flush()
-    await w.find('input[aria-label="lookup zts"]').setValue('zts1abc')
-    const lookupBtn = w.findAll('button').find((b) => b.text() === 'Look up')!
-    await lookupBtn.trigger('click')
+    await w.find('input[aria-label="token search"]').setValue('zts1abc')
+    const searchBtn = w.findAll('button').find((b) => b.text() === 'Search')!
+    await searchBtn.trigger('click')
     await flush()
-    expect(lookup).toHaveBeenCalledWith('zts1abc')
+    expect(search).toHaveBeenCalledWith('zts1abc')
+  })
+
+  it('search results replace the table; non-owned tokens get Burn but not Mint/Update', async () => {
+    tokenState.myTokens = [{
+      name: 'Mine', symbol: 'MINE', domain: '', tokenStandard: 'zts1mine', owner: 'z1qactive',
+      totalSupply: '100', maxSupply: '200', decimals: 8, isMintable: true, isBurnable: true, isUtility: false,
+    }]
+    tokenState.searchResults = [{
+      name: 'Alpine', symbol: 'ALPN', domain: '', tokenStandard: 'zts1alpine', owner: 'z1qsomeoneelse',
+      totalSupply: '5', maxSupply: '9', decimals: 8, isMintable: true, isBurnable: true, isUtility: false,
+    }]
+    const w = mount(Tokens)
+    await flush()
+    expect(w.text()).toContain('MINE')
+
+    await w.find('input[aria-label="token search"]').setValue('alp')
+    const searchBtn = w.findAll('button').find((b) => b.text() === 'Search')!
+    await searchBtn.trigger('click')
+    await flush()
+
+    // table now shows the search results, not the owned list
+    expect(w.text()).toContain('ALPN')
+    expect(w.text()).not.toContain('MINE')
+    // not the owner → no Mint/Update; burnable → Burn present
+    expect(w.find('button[aria-label="mint ALPN"]').exists()).toBe(false)
+    expect(w.find('button[aria-label="update ALPN"]').exists()).toBe(false)
+    expect(w.find('button[aria-label="burn ALPN"]').exists()).toBe(true)
+
+    // Clear returns to the owned list
+    await w.find('button[aria-label="clear search"]').trigger('click')
+    expect(clearSearch).toHaveBeenCalled()
+    expect(w.text()).toContain('MINE')
   })
 
   it('mint after startMint calls PrepareMint(zts, amount, receiver) then awaitConfirm', async () => {
     tokenState.myTokens = [{
-      name: 'My Token', symbol: 'MYT', domain: '', tokenStandard: 'zts1mine', owner: 'z1qowner',
+      name: 'My Token', symbol: 'MYT', domain: '', tokenStandard: 'zts1mine', owner: 'z1qactive',
       totalSupply: '100', maxSupply: '200', decimals: 8, isMintable: true, isBurnable: true, isUtility: false,
     }]
     const w = mount(Tokens)
@@ -128,5 +167,52 @@ describe('Tokens.vue', () => {
 
     expect(PrepareMint).toHaveBeenCalledWith('zts1mine', '42', 'z1qactive')
     expect(awaitConfirm).toHaveBeenCalledWith({ summary: 'mint' })
+  })
+
+  it('row Burn opens the inline form and calls PrepareBurn with the row token', async () => {
+    tokenState.myTokens = [{
+      name: 'My Token', symbol: 'MYT', domain: '', tokenStandard: 'zts1mine', owner: 'z1qactive',
+      totalSupply: '100', maxSupply: '200', decimals: 8, isMintable: true, isBurnable: true, isUtility: false,
+    }]
+    const w = mount(Tokens)
+    await flush()
+
+    await w.find('button[aria-label="burn MYT"]').trigger('click')
+    await w.find('input[aria-label="row burn amount"]').setValue('7')
+    const confirmBurn = w.findAll('button').find((b) => b.text() === 'Confirm burn')!
+    await confirmBurn.trigger('click')
+    await flush()
+    expect(PrepareBurn).toHaveBeenCalledWith('zts1mine', '7')
+    expect(awaitConfirm).toHaveBeenCalledWith({ summary: 'burn' })
+
+    // opening Mint closes the burn form (mutual exclusion covers all three)
+    await w.find('button[aria-label="mint MYT"]').trigger('click')
+    expect(w.find('input[aria-label="row burn amount"]').exists()).toBe(false)
+  })
+
+  it('mint and update forms are mutually exclusive, toggle closed, and close via X', async () => {
+    tokenState.myTokens = [{
+      name: 'My Token', symbol: 'MYT', domain: '', tokenStandard: 'zts1mine', owner: 'z1qactive',
+      totalSupply: '100', maxSupply: '200', decimals: 8, isMintable: true, isBurnable: true, isUtility: false,
+    }]
+    const w = mount(Tokens)
+    await flush()
+
+    // open mint, then update — mint must close
+    await w.find('button[aria-label="mint MYT"]').trigger('click')
+    expect(w.find('input[aria-label="mint amount"]').exists()).toBe(true)
+    await w.find('button[aria-label="update MYT"]').trigger('click')
+    expect(w.find('input[aria-label="mint amount"]').exists()).toBe(false)
+    expect(w.find('input[aria-label="update owner"]').exists()).toBe(true)
+
+    // clicking Update again collapses the row
+    await w.find('button[aria-label="update MYT"]').trigger('click')
+    expect(w.find('input[aria-label="update owner"]').exists()).toBe(false)
+
+    // the X button closes an open row
+    await w.find('button[aria-label="mint MYT"]').trigger('click')
+    expect(w.find('input[aria-label="mint amount"]').exists()).toBe(true)
+    await w.find('button[aria-label="close MYT actions"]').trigger('click')
+    expect(w.find('input[aria-label="mint amount"]').exists()).toBe(false)
   })
 })

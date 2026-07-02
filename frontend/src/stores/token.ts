@@ -5,7 +5,7 @@ import type { app } from '../../wailsjs/go/models'
 export const useTokenStore = defineStore('token', {
   state: () => ({
     myTokens: [] as app.TokenInfo[],
-    lookedUp: null as app.TokenInfo | null,
+    searchResults: [] as app.TokenInfo[],
   }),
   actions: {
     async refresh() {
@@ -13,9 +13,12 @@ export const useTokenStore = defineStore('token', {
         this.myTokens = await Nom.GetMyTokens()
       } catch { /* not connected / locked — leave as-is */ }
     },
-    async lookup(zts: string) {
-      const t = await Nom.GetTokenByZts(zts)
-      this.lookedUp = t && t.tokenStandard !== '' ? t : null
+    // Search by ZTS id, name, or symbol (backend decides which).
+    async search(query: string) {
+      this.searchResults = (await Nom.SearchTokens(query)) ?? []
+    },
+    clearSearch() {
+      this.searchResults = []
     },
   },
 })

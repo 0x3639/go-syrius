@@ -40,17 +40,26 @@ async function renderQR(addr: string) {
     if (ctx) {
       const logo = await loadImage(logoUrl)
       if (id !== reqId) return
-      const s = Math.round(canvas.width * 0.26)
+      const s = Math.round(canvas.width * 0.28)
       const x = (canvas.width - s) / 2
       const y = (canvas.height - s) / 2
-      const pad = Math.round(s * 0.1)
       const r = Math.round(s * 0.22)
       // Dark rounded patch behind the logo so modules don't bleed under it.
       ctx.fillStyle = '#0d0d0d'
       ctx.beginPath()
-      ctx.roundRect(x - pad, y - pad, s + pad * 2, s + pad * 2, r)
+      ctx.roundRect(x, y, s, s, r)
       ctx.fill()
-      ctx.drawImage(logo, x, y, s, s)
+      // The icon PNG bakes generous dark padding around the star; draw it
+      // zoomed and clipped to the patch so that padding is cropped rather than
+      // stacked as an extra black ring. 1.25 keeps the star tips (~70% span)
+      // safely inside the crop.
+      const zs = s * 1.25
+      ctx.save()
+      ctx.beginPath()
+      ctx.roundRect(x, y, s, s, r)
+      ctx.clip()
+      ctx.drawImage(logo, x - (zs - s) / 2, y - (zs - s) / 2, zs, zs)
+      ctx.restore()
     }
     const u = canvas.toDataURL('image/png')
     if (id === reqId) dataUrl.value = u

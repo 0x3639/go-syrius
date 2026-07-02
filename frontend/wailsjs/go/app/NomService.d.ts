@@ -115,3 +115,5 @@ export function PrepareUpdateToken(arg1:string,arg2:string,arg3:boolean,arg4:boo
 export function PrepareVote(arg1:string,arg2:string,arg3:number):Promise<app.CallPreview>;
 
 export function PrepareWithdrawQsr():Promise<app.CallPreview>;
+
+export function SearchTokens(arg1:string):Promise<Array<app.TokenInfo>>;

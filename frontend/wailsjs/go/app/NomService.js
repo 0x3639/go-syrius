@@ -229,3 +229,7 @@ export function PrepareVote(arg1, arg2, arg3) {
 export function PrepareWithdrawQsr() {
   return window['go']['app']['NomService']['PrepareWithdrawQsr']();
 }
+
+export function SearchTokens(arg1) {
+  return window['go']['app']['NomService']['SearchTokens'](arg1);
+}

@@ -896,6 +896,66 @@ func (s *NomService) GetTokenByZts(zts string) (TokenInfo, error) {
 	return tokenInfoDTO(tok), nil
 }
 
+// SearchTokens finds tokens by ZTS id, name, or symbol. A query that parses as
+// a ZTS id resolves directly; anything else is a case-insensitive substring
+// match on name/symbol over the on-chain token list. Read-only; the query is
+// validated before any node use and the result set is capped.
+func (s *NomService) SearchTokens(query string) ([]TokenInfo, error) {
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return nil, errors.New("empty search query")
+	}
+	if len(q) > 40 { // longest legal token name
+		return nil, errors.New("search query too long (max 40 chars)")
+	}
+	client := s.node.currentClient()
+	if client == nil {
+		return nil, errors.New("not connected")
+	}
+	// Exact ZTS id → single direct lookup.
+	if zts, err := types.ParseZTS(q); err == nil {
+		tok, err := client.TokenApi.GetByZts(zts)
+		if err != nil {
+			return nil, err
+		}
+		if dto := tokenInfoDTO(tok); dto.TokenStandard != "" {
+			return []TokenInfo{dto}, nil
+		}
+		return []TokenInfo{}, nil
+	}
+	const (
+		pageSize   uint32 = 100
+		maxMatches        = 25
+		maxPages          = 50 // safety cap; the on-chain token list is small
+	)
+	needle := strings.ToLower(q)
+	out := []TokenInfo{}
+	seen := 0
+	for pageIndex := uint32(0); pageIndex < maxPages; pageIndex++ {
+		list, err := client.TokenApi.GetAll(pageIndex, pageSize)
+		if err != nil {
+			return nil, err
+		}
+		for _, t := range list.List {
+			if t == nil {
+				continue
+			}
+			if strings.Contains(strings.ToLower(t.Name), needle) ||
+				strings.Contains(strings.ToLower(t.Symbol), needle) {
+				out = append(out, tokenInfoDTO(t))
+				if len(out) >= maxMatches {
+					return out, nil
+				}
+			}
+		}
+		seen += len(list.List)
+		if len(list.List) == 0 || seen >= list.Count {
+			break
+		}
+	}
+	return out, nil
+}
+
 var (
 	tokenNameRe   = regexp.MustCompile(`^([a-zA-Z0-9]+[-._]?)*[a-zA-Z0-9]$`)
 	tokenSymbolRe = regexp.MustCompile(`^[A-Z0-9]+$`)

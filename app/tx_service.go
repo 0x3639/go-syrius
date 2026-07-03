@@ -197,9 +197,10 @@ func (t *TxService) holdPending(template *nom.AccountBlock, expect callExpect, g
 
 // ConfirmPublish broadcasts the held block after re-asserting it matches the
 // originating request, then clears it. holdId is the identity of the preview
-// the USER confirmed (0 skips the check): if a slower Prepare replaced the
-// held block after that preview was displayed, we refuse — the wallet must
-// never broadcast a block the user didn't see (confirm-what-you-sign).
+// the USER confirmed; every preview stamps a non-zero id, so the gate fails
+// CLOSED — a zero or mismatched id is refused (never trust frontend
+// validation). If a slower Prepare replaced the held block after that preview
+// was displayed, the wallet must not broadcast a block the user didn't see.
 func (t *TxService) ConfirmPublish(holdId uint64) (string, error) {
 	// Only one confirm may be in flight: PoW+publish run for seconds, so a second
 	// concurrent call must be rejected rather than double-publish/race the template.
@@ -220,10 +221,11 @@ func (t *TxService) ConfirmPublish(holdId uint64) (string, error) {
 	if template == nil {
 		return "", errors.New("no pending transaction")
 	}
-	if holdId != 0 && holdId != holdID {
-		// Held block ≠ the one the confirm dialog displayed. Refuse without
-		// clearing: the divergence self-heals (the stale hold is released by its
-		// own prepare's cleanup or superseded by the next prepare).
+	if holdId == 0 || holdId != holdID {
+		// Held block ≠ the one the confirm dialog displayed (or no identity was
+		// supplied at all — fail closed). Refuse without clearing: the divergence
+		// self-heals (the stale hold is released by its own prepare's cleanup or
+		// superseded by the next prepare).
 		return "", errors.New("the pending transaction changed since it was displayed; please review and confirm again")
 	}
 

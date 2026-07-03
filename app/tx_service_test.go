@@ -45,11 +45,59 @@ func TestConfirmPublishRejectsTamperedBlock(t *testing.T) {
 	}
 	exTo, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
 	tx.pendingExpect = callExpect{to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}
-	if _, err := tx.ConfirmPublish(0); err == nil {
+	tx.pendingHoldID = 1
+	if _, err := tx.ConfirmPublish(1); err == nil {
 		t.Fatal("expected mismatch error; tampered block must not publish")
 	}
 	if tx.pending != nil {
 		t.Fatal("pending block must be cleared after a mismatch")
+	}
+}
+
+func TestConfirmPublishFailsClosedOnZeroHoldID(t *testing.T) {
+	tx := newTestTxService(t)
+	unlockTestWallet(t, tx.wallet)
+	tx.holdPending(&nom.AccountBlock{
+		ToAddress:     types.ParseAddressPanic("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"),
+		Amount:        big.NewInt(1),
+		TokenStandard: types.ZnnTokenStandard,
+	}, callExpect{}, tx.wallet.sessionGen())
+	// Every real preview carries a non-zero id; 0 means the frontend lost track
+	// of what it is confirming — the gate must fail closed, not skip the check.
+	_, err := tx.ConfirmPublish(0)
+	if err == nil || !strings.Contains(err.Error(), "changed since it was displayed") {
+		t.Fatalf("expected fail-closed identity refusal for holdId 0, got %v", err)
+	}
+	if tx.pending == nil {
+		t.Fatal("a refused confirm must not clear the held block")
+	}
+}
+
+func TestConfirmPublishMatchingHoldIDPassesTheGate(t *testing.T) {
+	tx := newTestTxService(t)
+	unlockTestWallet(t, tx.wallet)
+	tx.node.chainID = 3
+	const addr = "z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"
+	exTo, _ := types.ParseAddress(addr)
+	block := &nom.AccountBlock{
+		ToAddress:       types.ParseAddressPanic(addr),
+		Amount:          big.NewInt(1),
+		TokenStandard:   types.ZnnTokenStandard,
+		ChainIdentifier: 3,
+	}
+	id := tx.holdPending(block, callExpect{to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}, tx.wallet.sessionGen())
+	// Offline test: the confirm must get PAST the identity gate and fail later
+	// on the missing node connection — a gate regression that refuses valid
+	// matching ids (bricking every real publish) fails here.
+	_, err := tx.ConfirmPublish(id)
+	if err == nil {
+		t.Fatal("expected a downstream (not-connected) error in this offline test")
+	}
+	if strings.Contains(err.Error(), "changed since it was displayed") {
+		t.Fatalf("matching holdId must pass the identity gate, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "not connected") {
+		t.Fatalf("expected the not-connected error downstream of the gate, got %v", err)
 	}
 }
 
@@ -147,7 +195,8 @@ func TestConfirmPublishRejectsChainMismatch(t *testing.T) {
 	}
 	exTo, _ := types.ParseAddress(addr)
 	tx.pendingExpect = callExpect{to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}
-	_, err := tx.ConfirmPublish(0)
+	tx.pendingHoldID = 1
+	_, err := tx.ConfirmPublish(1)
 	if err == nil {
 		t.Fatal("expected chain-mismatch error; cross-chain block must not publish")
 	}
@@ -173,11 +222,12 @@ func TestConfirmPublishRejectsWhenLocked(t *testing.T) {
 	}
 	exTo, _ := types.ParseAddress(addr)
 	tx.pendingExpect = callExpect{to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}
+	tx.pendingHoldID = 1
 	// Lock the wallet: activeAddress() becomes !ok and the session advances.
 	if err := tx.wallet.Lock(); err != nil {
 		t.Fatalf("Lock: %v", err)
 	}
-	_, err := tx.ConfirmPublish(0)
+	_, err := tx.ConfirmPublish(1)
 	if err == nil {
 		t.Fatal("expected error; a locked wallet must not publish")
 	}

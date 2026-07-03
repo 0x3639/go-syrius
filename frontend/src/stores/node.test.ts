@@ -1,10 +1,11 @@
 // stores/node.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
+const NodeStatus = vi.hoisted(() => vi.fn().mockResolvedValue({ mode: 'remote', connected: true, syncing: false, height: 42, peers: 3, chainId: 3 }))
 vi.mock('../../wailsjs/go/app/NodeService', () => ({
   Connect: vi.fn().mockResolvedValue(undefined),
   GetBalances: vi.fn().mockResolvedValue([{ zts: 'zts1znn', symbol: 'ZNN', decimals: 8, amount: '150000000' }]),
-  NodeStatus: vi.fn().mockResolvedValue({ mode: 'remote', connected: true, syncing: false, height: 42, peers: 3, chainId: 3 }),
+  NodeStatus,
 }))
 // Capture EventsOn handlers so tests can fire backend events.
 const handlers = vi.hoisted(() => ({}) as Record<string, (data?: any) => void>)
@@ -71,10 +72,25 @@ describe('node store', () => {
     const s = useNodeStore()
     s.initEvents(vi.fn())
     await new Promise((r) => setTimeout(r))
+    handlers['node:status']?.({ connected: true, chainId: 3, mode: 'embedded' })
     handlers['node:sync']?.({ state: 'syncing' })
     expect(s.syncing).toBe(true)
-    await s.refreshStatus() // snapshot DTO carries no meaningful syncing value
+    // A pull consistent with the current mode must not touch syncing (the
+    // snapshot DTO carries no meaningful syncing value).
+    NodeStatus.mockResolvedValueOnce({ mode: 'embedded', connected: true, height: 43, peers: 3, chainId: 3 })
+    await s.refreshStatus()
     expect(s.syncing).toBe(true)
+  })
+
+  it('drops straggler node:sync events outside embedded mode', async () => {
+    const s = useNodeStore()
+    s.initEvents(vi.fn())
+    await new Promise((r) => setTimeout(r))
+    expect(s.mode).toBe('remote')
+    // A dying embedded poller can emit one last sync after the mode switch —
+    // it must not re-stick "Syncing…".
+    handlers['node:sync']?.({ state: 'syncing' })
+    expect(s.syncing).toBe(false)
   })
 
   it('clearTick detaches the callback (no refreshes while locked)', () => {

@@ -78,24 +78,24 @@ describe('NomConfirm (global panel confirm)', () => {
     expect(w.find('[data-test="tx-modal"]').exists()).toBe(false)
   })
 
-  it('closing while awaiting calls tx.cancel', async () => {
+  it('closing while awaiting calls tx.discard', async () => {
     const tx = useTxStore()
     tx.awaitConfirm(PREVIEW)
-    const cancel = vi.spyOn(tx, 'cancel').mockResolvedValue(undefined)
+    const discard = vi.spyOn(tx, 'discard').mockImplementation(() => {})
     const reset = vi.spyOn(tx, 'reset')
 
     const w = mount(NomConfirm)
     w.findComponent({ name: 'Dialog' }).vm.$emit('update:open', false)
     await w.vm.$nextTick()
 
-    expect(cancel).toHaveBeenCalled()
+    expect(discard).toHaveBeenCalled()
     expect(reset).not.toHaveBeenCalled()
   })
 
   it('closing while done calls tx.reset', async () => {
     const tx = useTxStore()
     tx.status = 'done'
-    const cancel = vi.spyOn(tx, 'cancel').mockResolvedValue(undefined)
+    const discard = vi.spyOn(tx, 'discard').mockImplementation(() => {})
     const reset = vi.spyOn(tx, 'reset')
 
     const w = mount(NomConfirm)
@@ -103,7 +103,7 @@ describe('NomConfirm (global panel confirm)', () => {
     await w.vm.$nextTick()
 
     expect(reset).toHaveBeenCalled()
-    expect(cancel).not.toHaveBeenCalled()
+    expect(discard).not.toHaveBeenCalled()
   })
 
   it('stays open on error and renders the failure', async () => {

@@ -51,7 +51,7 @@ const { preview: p, status } = storeToRefs(tx)
     </div>
     <div v-else class="flex gap-2 pt-2">
       <Button class="flex-1" @click="tx.confirm()">Confirm</Button>
-      <Button class="flex-1" variant="outline" @click="tx.cancel()">Cancel</Button>
+      <Button class="flex-1" variant="outline" @click="tx.discard()">Cancel</Button>
     </div>
   </div>
 </template>

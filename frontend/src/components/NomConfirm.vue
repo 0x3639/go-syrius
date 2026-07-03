@@ -18,9 +18,10 @@ const open = computed({
   get: () => tx.status === 'awaiting' || tx.status === 'publishing' || tx.status === 'done' || tx.status === 'error',
   set: (v: boolean) => {
     if (!v) {
-      // Closing while awaiting cancels the held block; after a publish
+      // Closing while awaiting discards the held block (synchronous, then a
+      // background identity-checked CancelPending); after a publish
       // (done/error) it just clears the result.
-      tx.status === 'awaiting' ? tx.cancel() : tx.reset()
+      tx.status === 'awaiting' ? tx.discard() : tx.reset()
     }
   },
 })

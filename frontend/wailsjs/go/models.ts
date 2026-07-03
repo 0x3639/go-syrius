@@ -141,6 +141,7 @@ export namespace app {
 	    usedPlasma: number;
 	    difficulty: number;
 	    needsPoW: boolean;
+	    holdId: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new CallPreview(source);
@@ -158,6 +159,7 @@ export namespace app {
 	        this.usedPlasma = source["usedPlasma"];
 	        this.difficulty = source["difficulty"];
 	        this.needsPoW = source["needsPoW"];
+	        this.holdId = source["holdId"];
 	    }
 	}
 	export class Contact {
@@ -558,6 +560,7 @@ export namespace app {
 	    difficulty: number;
 	    hash: string;
 	    needsPoW: boolean;
+	    holdId: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new SendPreview(source);
@@ -574,6 +577,7 @@ export namespace app {
 	        this.difficulty = source["difficulty"];
 	        this.hash = source["hash"];
 	        this.needsPoW = source["needsPoW"];
+	        this.holdId = source["holdId"];
 	    }
 	}
 	export class SendRequest {

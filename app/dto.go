@@ -166,6 +166,7 @@ type SendPreview struct {
 	Difficulty uint64 `json:"difficulty"`
 	Hash       string `json:"hash"`
 	NeedsPoW   bool   `json:"needsPoW"`
+	HoldID     uint64 `json:"holdId"` // identity of the backend hold; lets a cancel target exactly this block
 }
 
 // CallPreview is the confirm-what-you-sign preview for an embedded-contract call,
@@ -181,6 +182,7 @@ type CallPreview struct {
 	UsedPlasma uint64 `json:"usedPlasma"`
 	Difficulty uint64 `json:"difficulty"`
 	NeedsPoW   bool   `json:"needsPoW"`
+	HoldID     uint64 `json:"holdId"` // identity of the backend hold; lets a cancel target exactly this block
 }
 
 // PlasmaInfo is the active address's plasma snapshot.

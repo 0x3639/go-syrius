@@ -55,20 +55,21 @@ export const useNodeStore = defineStore('node', {
     },
     // Single field-mapping for a node status payload, shared by the push
     // handler and the pull so the two can never drift. `syncing`/`sync` are
-    // NOT set here — they are owned exclusively by the node:sync event (the
-    // status DTO does not carry a meaningful syncing value).
+    // owned by the node:sync event (the status DTO carries no meaningful
+    // syncing value) — with one exception: LEAVING embedded mode clears them,
+    // because only the embedded node runs the sync poller and stale mid-sync
+    // progress would otherwise show "Syncing…" for the rest of the session.
+    // (Catching up TO embedded must not clear: a live node:sync push may
+    // already have landed before this pull resolved.)
     applyStatus(s: { connected?: boolean; height?: number; mode?: string; chainId?: number } | null | undefined) {
       this.connected = !!s?.connected
       this.height = s?.height ?? this.height
       const mode = s?.mode ?? this.mode
-      if (mode !== this.mode) {
-        // Sync state is per-mode: only the embedded node runs the sync poller,
-        // so stale progress must not outlive a mode switch (embedded mid-sync →
-        // remote would otherwise show "Syncing…" for the rest of the session).
+      if (this.mode === 'embedded' && mode !== 'embedded') {
         this.syncing = false
         this.sync = null
-        this.mode = mode
       }
+      this.mode = mode
       this.chainId = s?.chainId ?? this.chainId
     },
     // Pull the current node status once. Needed because push events only reach
@@ -101,6 +102,10 @@ export const useNodeStore = defineStore('node', {
         this.applyStatus(s)
       })
       EventsOn('node:sync', (s: any) => {
+        // Only the embedded node emits sync progress. Drop stragglers from a
+        // dying embedded poller after a mode switch — they would re-stick
+        // "Syncing…" right after applyStatus cleared it.
+        if (this.mode !== 'embedded') return
         this.sync = s
         this.syncing = s?.state !== 'synced'
       })

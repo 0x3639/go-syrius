@@ -28,6 +28,8 @@ type TxService struct {
 	pending       *nom.AccountBlock
 	pendingExpect callExpect
 	pendingGen    uint64 // wallet session generation captured at PrepareSend
+	pendingHoldID uint64 // identity of the current hold (stamped into previews)
+	holdCounter   uint64 // monotonically increasing hold-id source
 
 	// publishMu serializes ConfirmPublish for its whole duration. PoW+publish run
 	// for seconds outside mu, so without this a second (untrusted) caller could
@@ -163,7 +165,7 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 		return SendPreview{}, errors.New("wallet state changed during prepare")
 	}
 
-	t.holdPending(template, callExpect{to: to, zts: zts, amount: new(big.Int).Set(amount), data: append([]byte(nil), template.Data...)}, gen)
+	holdID := t.holdPending(template, callExpect{to: to, zts: zts, amount: new(big.Int).Set(amount), data: append([]byte(nil), template.Data...)}, gen)
 
 	return SendPreview{
 		ToAddress: to.String(),
@@ -172,17 +174,25 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 		Amount:    amount.String(),
 		Decimals:  resolveDecimals(zts.String(), clientTokenDecimals(client)),
 		NeedsPoW:  needsPoW,
+		HoldID:    holdID,
 		// UsedPlasma / Difficulty / Hash are filled by ConfirmPublish's PoW.
 	}, nil
 }
 
 // holdPending stores the un-PoW'd template + the effect to re-assert at publish.
-func (t *TxService) holdPending(template *nom.AccountBlock, expect callExpect, gen uint64) {
+// It returns a fresh hold id that identifies THIS hold: previews carry it so a
+// cancel can be identity-checked (see CancelPending) — a stale cancel racing a
+// newer Prepare must never release the newer block.
+func (t *TxService) holdPending(template *nom.AccountBlock, expect callExpect, gen uint64) uint64 {
 	t.mu.Lock()
+	t.holdCounter++
+	t.pendingHoldID = t.holdCounter
 	t.pending = template
 	t.pendingExpect = expect
 	t.pendingGen = gen
+	id := t.pendingHoldID
 	t.mu.Unlock()
+	return id
 }
 
 // ConfirmPublish broadcasts the held block after re-asserting it matches the
@@ -300,7 +310,7 @@ func (t *TxService) prepareCall(template *nom.AccountBlock, expect callExpect, s
 	if t.wallet.sessionGen() != gen {
 		return CallPreview{}, errors.New("wallet state changed during prepare")
 	}
-	t.holdPending(template, callExpect{to: expect.to, zts: expect.zts, amount: new(big.Int).Set(expect.amount), data: append([]byte(nil), expect.data...)}, gen)
+	holdID := t.holdPending(template, callExpect{to: expect.to, zts: expect.zts, amount: new(big.Int).Set(expect.amount), data: append([]byte(nil), expect.data...)}, gen)
 	return CallPreview{
 		ToAddress: template.ToAddress.String(),
 		Zts:       template.TokenStandard.String(),
@@ -309,6 +319,7 @@ func (t *TxService) prepareCall(template *nom.AccountBlock, expect callExpect, s
 		Decimals:  resolveDecimals(template.TokenStandard.String(), clientTokenDecimals(client)),
 		Summary:   summary,
 		NeedsPoW:  needsPoW,
+		HoldID:    holdID,
 		// UsedPlasma / Difficulty / Hash are filled by ConfirmPublish's PoW.
 	}, nil
 }
@@ -354,9 +365,20 @@ func (t *TxService) Receive(fromHash string) (string, error) {
 	return h, nil
 }
 
-// CancelPending discards the held block.
-func (t *TxService) CancelPending() error {
-	t.clearPending()
+// CancelPending discards the held block. A non-zero holdId makes the cancel
+// identity-aware: it only discards the hold it was issued for, so a stale
+// cancel that loses a race against a newer Prepare cannot release the newer
+// block. holdId 0 discards whatever is held (unconditional).
+func (t *TxService) CancelPending(holdId uint64) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if holdId != 0 && holdId != t.pendingHoldID {
+		return nil // stale cancel for a hold we no longer have
+	}
+	t.pending = nil
+	t.pendingExpect = callExpect{}
+	t.pendingGen = 0
+	t.pendingHoldID = 0
 	return nil
 }
 
@@ -365,5 +387,6 @@ func (t *TxService) clearPending() {
 	t.pending = nil
 	t.pendingExpect = callExpect{}
 	t.pendingGen = 0
+	t.pendingHoldID = 0
 	t.mu.Unlock()
 }

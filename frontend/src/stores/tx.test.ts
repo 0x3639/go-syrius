@@ -22,27 +22,26 @@ describe('tx store (confirm-what-you-sign)', () => {
     const s = useTxStore(); await s.prepare('x', 'z', '1'); expect(s.status).toBe('error'); expect(s.error).toBe('bad addr')
   })
 
-  it('a stale cancel does not wipe a NEWER awaiting transaction', async () => {
+  it('discard leaves awaiting synchronously and releases the backend hold by identity', () => {
     const s = useTxStore()
-    s.awaitConfirm({ summary: 'first' } as any)
-    // Hold CancelPending open so a new prepare can land mid-round-trip.
-    let release!: () => void
-    CancelPending.mockReturnValueOnce(new Promise<void>((r) => { release = r }))
-    const cancelling = s.cancel()
-    s.awaitConfirm({ summary: 'second' } as any) // user starts a new action
-    release()
-    await cancelling
-    // Same status ('awaiting') but a different transaction — must survive.
-    expect(s.status).toBe('awaiting')
-    expect((s.preview as any)?.summary).toBe('second')
-  })
-
-  it('discard leaves awaiting synchronously and releases the backend hold', () => {
-    const s = useTxStore()
-    s.awaitConfirm({ summary: 'gov' } as any)
+    s.awaitConfirm({ summary: 'gov', holdId: 7 } as any)
     s.discard()
     expect(s.status).toBe('idle') // no frame with a live Confirm button
-    expect(CancelPending).toHaveBeenCalled()
+    // Identity-checked: the backend can only release THIS hold — a newer
+    // Prepare that wins a race against the RPC is untouchable.
+    expect(CancelPending).toHaveBeenCalledWith(7)
+  })
+
+  it('a confirm outcome is dropped when the state was reset mid-publish', async () => {
+    let reject!: (e: Error) => void
+    ConfirmPublish.mockReturnValueOnce(new Promise<string>((_, rj) => { reject = rj }))
+    const s = useTxStore()
+    const publishing = s.confirm()
+    s.reset() // router.afterEach fires on navigation
+    reject(new Error('boom'))
+    await publishing
+    expect(s.status).toBe('idle') // no orphan error dialog on the new screen
+    expect(s.error).toBe('')
   })
 
   it('discard is a no-op outside awaiting', () => {

@@ -29,7 +29,9 @@ const cards = computed(() =>
 </script>
 
 <template>
-  <div class="flex flex-col gap-5">
+  <!-- Cap the whole page on ultra-wide windows so the hero, balance cards and
+       activity card stay aligned instead of only the table centering. -->
+  <div class="mx-auto flex w-full max-w-[90rem] flex-col gap-5">
     <!-- Plasma hero -->
     <div class="overflow-hidden rounded-xl bg-plasma p-7 text-[#0c1f12] shadow-md">
       <!-- No price feed → the headline is just the ZNN balance; label it as
@@ -72,9 +74,7 @@ const cards = computed(() =>
       <div class="flex items-center px-5 pb-1.5 pt-4">
         <span class="text-base font-semibold text-foreground">Recent activity</span>
       </div>
-      <!-- Cap + center the table on ultra-wide windows (the cap used to live
-           inside TxHistory's chrome; the card owns layout now). -->
-      <div class="mx-auto max-w-[90rem] px-3 pb-3">
+      <div class="px-3 pb-3">
         <TxHistory />
       </div>
     </div>

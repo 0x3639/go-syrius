@@ -5,7 +5,6 @@
 import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUiStore } from '../stores/ui'
-import { useNodeStore } from '../stores/node'
 import { useTxStore } from '../stores/tx'
 import PlasmaPanel from '../components/panels/PlasmaPanel.vue'
 import StakingPanel from '../components/panels/StakingPanel.vue'
@@ -22,25 +21,27 @@ const PANELS: Record<string, any> = {
 }
 const route = useRoute()
 const ui = useUiStore()
-const node = useNodeStore()
 const panelKey = computed(() => route.meta.panel as string)
 const panel = computed(() => PANELS[panelKey.value])
 // Accelerator deep-link: ?sub=Vote drives the panel's initial sub-view.
 const initialSub = computed(() => (typeof route.query.sub === 'string' ? route.query.sub : ''))
 
-// TESTNET-ONLY Governance: gate the panel itself reactively, so the UI
-// vanishes (rather than staying interactive) if the node connects to mainnet
-// or the Settings opt-in is turned off while the route is open. Fails CLOSED:
-// mainnet is chainId 1 and 0 means "not known yet" (pre-connect), so only a
-// confirmed testnet chainId (> 1) may render the panel.
+// TESTNET-ONLY Governance: gate the panel itself reactively (single predicate
+// shared with the Sidebar via ui.governanceAllowed), so the UI vanishes rather
+// than staying interactive if the node connects to mainnet or the Settings
+// opt-in is turned off while the route is open.
 const governanceBlocked = computed(
-  () => panelKey.value === 'governance' && (!ui.showGovernance || node.chainId <= 1),
+  () => panelKey.value === 'governance' && !ui.governanceAllowed,
 )
-// When the gate slams shut, also discard any in-flight prepared governance tx —
-// otherwise the global NomConfirm dialog (owned by AppShell) would keep the
-// already-built block confirmable after the panel disappears.
+// When the gate slams shut with a prepared-but-unconfirmed block, CANCEL it —
+// same path as NomConfirm's dialog-close (backend CancelPending releases the
+// held block, then the frontend state resets). Only in 'awaiting': once
+// publishing has started the block is already submitted and the result/error
+// must surface normally.
 const tx = useTxStore()
-watch(governanceBlocked, (blocked) => { if (blocked) tx.reset() })
+watch(governanceBlocked, (blocked) => {
+  if (blocked && tx.status === 'awaiting') tx.cancel()
+})
 </script>
 
 <template>

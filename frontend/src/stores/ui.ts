@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import * as Cfg from '../../wailsjs/go/app/ConfigService'
+import { useNodeStore } from './node'
 
 // UI preferences persisted in app settings. Currently just the opt-in for the
 // experimental, testnet-only Governance navigation tab (off by default).
@@ -12,6 +13,15 @@ export const useUiStore = defineStore('ui', {
     // (App.vue reads the key directly at startup, before any store init runs).
     splashEnabled: true,
   }),
+  getters: {
+    // SINGLE source of truth for the TESTNET-ONLY Governance gate, consumed by
+    // both the Sidebar (tab) and NetworkPage (panel) so the two can never
+    // drift. Fails CLOSED: chainId 0 = not known yet (pre-connect), 1 =
+    // mainnet; only a confirmed testnet (> 1) allows Governance.
+    governanceAllowed(): boolean {
+      return this.showGovernance && useNodeStore().chainId > 1
+    },
+  },
   actions: {
     // NOTE: this store owns the theme PREFERENCE (persisted as syrius.theme).
     // The DOM (dark class) is applied in exactly one place: App.vue watches

@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 vi.mock('../../wailsjs/go/app/NodeService', () => ({
   Connect: vi.fn().mockResolvedValue(undefined),
   GetBalances: vi.fn().mockResolvedValue([{ zts: 'zts1znn', symbol: 'ZNN', decimals: 8, amount: '150000000' }]),
+  NodeStatus: vi.fn().mockResolvedValue({ mode: 'remote', connected: true, syncing: false, height: 42, peers: 3, chainId: 3 }),
 }))
 // Capture EventsOn handlers so tests can fire backend events.
 const handlers = vi.hoisted(() => ({}) as Record<string, (data?: any) => void>)
@@ -30,6 +31,16 @@ describe('node store', () => {
     handlers['momentum:tick']?.()
     expect(firstMount).not.toHaveBeenCalled()
     expect(secondMount).toHaveBeenCalledTimes(1)
+  })
+
+  it('initEvents hydrates status by pull (connect-time push may predate the listener)', async () => {
+    const s = useNodeStore()
+    expect(s.chainId).toBe(0)
+    s.initEvents(vi.fn())
+    await new Promise((r) => setTimeout(r))
+    expect(s.chainId).toBe(3)
+    expect(s.connected).toBe(true)
+    expect(s.height).toBe(42)
   })
 
   it('clearTick detaches the callback (no refreshes while locked)', () => {

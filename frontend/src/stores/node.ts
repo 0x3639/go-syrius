@@ -50,6 +50,20 @@ export const useNodeStore = defineStore('node', {
     async deleteEmbeddedData() {
       await N.DeleteEmbeddedData()
     },
+    // Pull the current node status once. Needed because push events only reach
+    // listeners that exist: the connect-time node:status fires while the user
+    // is still on the Unlock screen (before AppShell registers initEvents), so
+    // without this pull chainId/height stay 0 until the next momentum status.
+    async refreshStatus() {
+      try {
+        const s = await N.NodeStatus()
+        this.connected = !!s?.connected
+        this.height = s?.height ?? this.height
+        this.mode = s?.mode ?? this.mode
+        this.chainId = s?.chainId ?? this.chainId
+        this.syncing = !!s?.syncing
+      } catch { /* not connected; events will hydrate later */ }
+    },
     // initEvents wires backend push events into the store. onTick is invoked on
     // each momentum so callers can refresh pulled data. Listeners register once,
     // but the tick callback is re-pointed on every call so each AppShell mount
@@ -57,6 +71,7 @@ export const useNodeStore = defineStore('node', {
     // a dead first-mount closure.
     initEvents(onTick: () => void) {
       this._onTick = onTick
+      this.refreshStatus() // catch up on any status emitted before we listened
       if (this._eventsInit) return
       this._eventsInit = true
       EventsOn('node:status', (s: any) => {

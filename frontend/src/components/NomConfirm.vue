@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from 'nom-ui'
+import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from 'nom-ui'
 import { useTxStore } from '../stores/tx'
 import TxModal from './TxModal.vue'
 import TxResult from './TxResult.vue'
@@ -13,12 +13,13 @@ import TxResult from './TxResult.vue'
 const tx = useTxStore()
 const open = computed({
   // Stay open through 'publishing' too, so the modal doesn't flicker closed
-  // between Confirm and the published result.
-  get: () => tx.status === 'awaiting' || tx.status === 'publishing' || tx.status === 'done',
+  // between Confirm and the published result — and through 'error', so a
+  // failed publish shows its failure instead of the dialog snapping shut.
+  get: () => tx.status === 'awaiting' || tx.status === 'publishing' || tx.status === 'done' || tx.status === 'error',
   set: (v: boolean) => {
     if (!v) {
-      // Closing while awaiting cancels the held block; after a publish (done)
-      // it just clears the result.
+      // Closing while awaiting cancels the held block; after a publish
+      // (done/error) it just clears the result.
       tx.status === 'awaiting' ? tx.cancel() : tx.reset()
     }
   },
@@ -31,6 +32,10 @@ const open = computed({
       <DialogHeader><DialogTitle>Confirm</DialogTitle></DialogHeader>
       <TxModal v-if="tx.status === 'awaiting' || tx.status === 'publishing'" />
       <TxResult v-else-if="tx.status === 'done'" @close="open = false" />
+      <div v-else-if="tx.status === 'error'" class="space-y-3">
+        <p class="text-sm text-destructive" role="alert">{{ tx.error || 'Transaction failed.' }}</p>
+        <Button class="w-full" aria-label="close" @click="open = false">Close</Button>
+      </div>
     </DialogContent>
   </Dialog>
 </template>

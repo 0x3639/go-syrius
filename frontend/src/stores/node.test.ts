@@ -53,6 +53,20 @@ describe('node store', () => {
     expect(s.height).toBe(50)
   })
 
+  it('a mode switch clears stale sync state (embedded mid-sync → remote)', async () => {
+    const s = useNodeStore()
+    s.initEvents(vi.fn())
+    await new Promise((r) => setTimeout(r))
+    handlers['node:status']?.({ connected: true, chainId: 3, mode: 'embedded' })
+    handlers['node:sync']?.({ state: 'syncing' })
+    expect(s.syncing).toBe(true)
+    // Only the embedded node runs the sync poller — switching modes must not
+    // leave "Syncing…" stuck for the rest of the session.
+    handlers['node:status']?.({ connected: true, chainId: 3, mode: 'remote' })
+    expect(s.syncing).toBe(false)
+    expect(s.sync).toBeNull()
+  })
+
   it('the pull never clobbers syncing (owned by node:sync)', async () => {
     const s = useNodeStore()
     s.initEvents(vi.fn())

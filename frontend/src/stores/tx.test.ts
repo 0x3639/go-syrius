@@ -21,4 +21,36 @@ describe('tx store (confirm-what-you-sign)', () => {
     PrepareSend.mockRejectedValue(new Error('bad addr'))
     const s = useTxStore(); await s.prepare('x', 'z', '1'); expect(s.status).toBe('error'); expect(s.error).toBe('bad addr')
   })
+
+  it('a stale cancel does not wipe a NEWER awaiting transaction', async () => {
+    const s = useTxStore()
+    s.awaitConfirm({ summary: 'first' } as any)
+    // Hold CancelPending open so a new prepare can land mid-round-trip.
+    let release!: () => void
+    CancelPending.mockReturnValueOnce(new Promise<void>((r) => { release = r }))
+    const cancelling = s.cancel()
+    s.awaitConfirm({ summary: 'second' } as any) // user starts a new action
+    release()
+    await cancelling
+    // Same status ('awaiting') but a different transaction — must survive.
+    expect(s.status).toBe('awaiting')
+    expect((s.preview as any)?.summary).toBe('second')
+  })
+
+  it('discard leaves awaiting synchronously and releases the backend hold', () => {
+    const s = useTxStore()
+    s.awaitConfirm({ summary: 'gov' } as any)
+    s.discard()
+    expect(s.status).toBe('idle') // no frame with a live Confirm button
+    expect(CancelPending).toHaveBeenCalled()
+  })
+
+  it('discard is a no-op outside awaiting', () => {
+    const s = useTxStore()
+    s.status = 'publishing'
+    CancelPending.mockClear()
+    s.discard()
+    expect(s.status).toBe('publishing')
+    expect(CancelPending).not.toHaveBeenCalled()
+  })
 })

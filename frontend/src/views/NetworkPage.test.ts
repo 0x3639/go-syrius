@@ -63,38 +63,38 @@ describe('NetworkPage', () => {
     expect(w.find('.gov-stub').exists()).toBe(false)
   })
 
-  it('cancels a prepared (awaiting) tx when the gate slams shut', async () => {
+  it('discards a prepared (awaiting) tx when the gate slams shut', async () => {
     routeState.meta.panel = 'governance'
     const ui = useUiStore(); ui.showGovernance = true
     const node = useNodeStore(); node.chainId = 2
     const tx = useTxStore()
     tx.status = 'awaiting' // a built governance block is held, dialog open
-    // cancel() releases the backend-held block (CancelPending) then resets.
-    const cancel = vi.spyOn(tx, 'cancel').mockResolvedValue(undefined)
+    // discard() leaves 'awaiting' synchronously, then releases the held block.
+    const discard = vi.spyOn(tx, 'discard').mockImplementation(() => {})
     const w = mount(NetworkPage, { global: { stubs } })
     expect(w.find('.gov-stub').exists()).toBe(true)
 
     node.chainId = 1 // node reconnects to mainnet mid-flow
     await w.vm.$nextTick()
     expect(w.find('.gov-stub').exists()).toBe(false)
-    expect(cancel).toHaveBeenCalled()
+    expect(discard).toHaveBeenCalled()
   })
 
-  it('cancels a Prepare that resolves AFTER the gate has closed', async () => {
+  it('discards a Prepare that resolves AFTER the gate has closed', async () => {
     routeState.meta.panel = 'governance'
     const ui = useUiStore(); ui.showGovernance = true
     const node = useNodeStore(); node.chainId = 2
     const tx = useTxStore()
-    const cancel = vi.spyOn(tx, 'cancel').mockResolvedValue(undefined)
+    const discard = vi.spyOn(tx, 'discard').mockImplementation(() => {})
     const w = mount(NetworkPage, { global: { stubs } })
 
     node.chainId = 1 // gate slams while a Prepare RPC is still in flight
     await w.vm.$nextTick()
-    expect(cancel).not.toHaveBeenCalled() // nothing to cancel yet
+    expect(discard).not.toHaveBeenCalled() // nothing to discard yet
 
-    tx.status = 'awaiting' // the late Prepare resolves and opens the dialog
+    tx.status = 'awaiting' // the late Prepare resolves
     await w.vm.$nextTick()
-    expect(cancel).toHaveBeenCalled() // …and is immediately cancelled
+    expect(discard).toHaveBeenCalled() // …and is discarded before any dialog frame
   })
 
   it('does not disturb a tx already publishing when the gate closes', async () => {
@@ -103,13 +103,13 @@ describe('NetworkPage', () => {
     const node = useNodeStore(); node.chainId = 2
     const tx = useTxStore()
     tx.status = 'publishing' // ConfirmPublish already in flight
-    const cancel = vi.spyOn(tx, 'cancel').mockResolvedValue(undefined)
+    const discard = vi.spyOn(tx, 'discard').mockImplementation(() => {})
     const reset = vi.spyOn(tx, 'reset')
     const w = mount(NetworkPage, { global: { stubs } })
 
     node.chainId = 1
     await w.vm.$nextTick()
-    expect(cancel).not.toHaveBeenCalled()
+    expect(discard).not.toHaveBeenCalled()
     expect(reset).not.toHaveBeenCalled()
   })
 })

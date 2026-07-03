@@ -60,7 +60,15 @@ export const useNodeStore = defineStore('node', {
     applyStatus(s: { connected?: boolean; height?: number; mode?: string; chainId?: number } | null | undefined) {
       this.connected = !!s?.connected
       this.height = s?.height ?? this.height
-      this.mode = s?.mode ?? this.mode
+      const mode = s?.mode ?? this.mode
+      if (mode !== this.mode) {
+        // Sync state is per-mode: only the embedded node runs the sync poller,
+        // so stale progress must not outlive a mode switch (embedded mid-sync →
+        // remote would otherwise show "Syncing…" for the rest of the session).
+        this.syncing = false
+        this.sync = null
+        this.mode = mode
+      }
       this.chainId = s?.chainId ?? this.chainId
     },
     // Pull the current node status once. Needed because push events only reach

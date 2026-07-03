@@ -15,6 +15,7 @@ vi.mock('nom-ui', () => ({
   DialogContent: { template: '<div><slot /></div>' },
   DialogHeader: { template: '<div><slot /></div>' },
   DialogTitle: { template: '<div><slot /></div>' },
+  Button: { template: '<button @click="$emit(\'click\')"><slot /></button>' },
 }))
 
 // Stub the body components so we only assert which one renders, not their guts.
@@ -103,5 +104,21 @@ describe('NomConfirm (global panel confirm)', () => {
 
     expect(reset).toHaveBeenCalled()
     expect(cancel).not.toHaveBeenCalled()
+  })
+
+  it('stays open on error and renders the failure', async () => {
+    const tx = useTxStore()
+    tx.status = 'error'
+    tx.error = 'no pending block'
+
+    const w = mount(NomConfirm)
+    expect(w.find('[data-test="dialog"]').attributes('data-open')).toBe('true')
+    expect(w.text()).toContain('no pending block')
+
+    // closing from error just clears the state
+    const reset = vi.spyOn(tx, 'reset')
+    w.findComponent({ name: 'Dialog' }).vm.$emit('update:open', false)
+    await w.vm.$nextTick()
+    expect(reset).toHaveBeenCalled()
   })
 })

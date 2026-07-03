@@ -51,7 +51,6 @@ describe('TxHistory', () => {
     const w = mount(TxHistory)
     seed([tx])
     await w.vm.$nextTick()
-    expect(w.text()).toContain('Recent transactions')
     expect(w.text()).toContain('1.5')
     expect(w.text()).toContain('ZNN')
     expect(w.text()).toContain('in') // receive -> 'in'

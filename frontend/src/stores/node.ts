@@ -26,6 +26,7 @@ export const useNodeStore = defineStore('node', {
     sync: null as SyncStatus | null,
     balances: [] as TokenBalance[],
     _eventsInit: false,
+    _onTick: null as (() => void) | null,
   }),
   actions: {
     async connect() {
@@ -50,8 +51,12 @@ export const useNodeStore = defineStore('node', {
       await N.DeleteEmbeddedData()
     },
     // initEvents wires backend push events into the store. onTick is invoked on
-    // each momentum so callers can refresh pulled data. Guarded to register once.
+    // each momentum so callers can refresh pulled data. Listeners register once,
+    // but the tick callback is re-pointed on every call so each AppShell mount
+    // (one per lock/unlock cycle) drives the refresh — the handler never holds
+    // a dead first-mount closure.
     initEvents(onTick: () => void) {
+      this._onTick = onTick
       if (this._eventsInit) return
       this._eventsInit = true
       EventsOn('node:status', (s: any) => {
@@ -64,7 +69,7 @@ export const useNodeStore = defineStore('node', {
         this.sync = s
         this.syncing = s?.state !== 'synced'
       })
-      EventsOn('momentum:tick', () => onTick())
+      EventsOn('momentum:tick', () => this._onTick?.())
     },
   },
 })

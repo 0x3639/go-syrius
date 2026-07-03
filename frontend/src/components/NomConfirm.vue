@@ -7,8 +7,9 @@ import TxResult from './TxResult.vue'
 
 // Global confirm modal for PANEL-triggered transactions. The NoM panels call
 // tx.awaitConfirm(preview) (status -> 'awaiting') but don't own a modal, so this
-// renders the confirm/result UI for them. Send/Receive own their own TxModal, so
-// Home gates this with !sendOpen && !receiveOpen to avoid a double modal.
+// renders the confirm/result UI for them. The Transfer page drives its own
+// TxModal/TxResult, so AppShell renders this dialog on every route EXCEPT
+// 'transfer' to avoid a double modal on the same tx status.
 const tx = useTxStore()
 const open = computed({
   // Stay open through 'publishing' too, so the modal doesn't flicker closed

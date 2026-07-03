@@ -78,13 +78,10 @@ async function copyHash(h: string) {
 </script>
 
 <template>
-  <div class="rounded border border-border bg-card px-4 py-3">
-    <!-- The table shows full addresses + hashes, so it has a fixed natural
-         width. Cap it there and center it: on ultra-wide screens the surrounding
-         card stays full-width and the slack becomes equal left/right margins. -->
-    <div class="mx-auto max-w-[90rem]">
-    <div class="mb-2 flex items-center justify-between">
-      <h2 class="text-sm text-muted-foreground">Recent transactions</h2>
+  <!-- Container-less: the consumer (Dashboard's "Recent activity" card) owns
+       the surrounding card and heading — no card-in-card, no double title. -->
+  <div>
+    <div class="mb-2 flex items-center justify-end">
       <div class="flex items-center gap-0.5 rounded-md border border-border p-0.5 text-xs">
         <button
           type="button"
@@ -221,7 +218,6 @@ async function copyHash(h: string) {
       >
         <ChevronRightIcon :size="14" />
       </button>
-    </div>
     </div>
   </div>
 </template>

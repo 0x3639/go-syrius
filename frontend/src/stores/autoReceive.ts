@@ -4,9 +4,9 @@ import * as N from '../../wailsjs/go/app/NodeService'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 
 // Auto-receive engine. The backend subscribes + sweeps for ONE active account at
-// a time. Kept in a store (not in Home) so the top-bar toggle works from any
-// screen, while Home drives init + account-following. `receiving` reflects the
-// backend actively claiming blocks (PoW/plasma generation) for a progress UI.
+// a time. Kept in a store (not in a view) so the top-bar toggle works from any
+// screen, while AppShell drives init + account-following. `receiving` reflects
+// the backend actively claiming blocks (PoW/plasma generation) for a progress UI.
 export const useAutoReceiveStore = defineStore('autoReceive', {
   state: () => ({
     enabled: false,

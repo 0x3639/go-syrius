@@ -47,10 +47,11 @@ describe('TopBar', () => {
     expect(toggle).toHaveBeenCalledWith(3)
   })
 
-  it('disables the lock button while locked', () => {
-    const w = mount(TopBar, { props: { title: 'Dashboard', locked: true }, global: { stubs } })
+  // TopBar only renders inside AppShell (unlocked); the lock button is always live.
+  it('renders an enabled lock button', () => {
+    const w = mount(TopBar, { props: { title: 'Dashboard' }, global: { stubs } })
     const btn = w.find('button[aria-label="Lock wallet"]')
     expect(btn.exists()).toBe(true)
-    expect(btn.attributes('disabled')).toBeDefined()
+    expect(btn.attributes('disabled')).toBeUndefined()
   })
 })

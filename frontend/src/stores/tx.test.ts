@@ -58,15 +58,63 @@ describe('tx store (confirm-what-you-sign)', () => {
     expect(s.error).toBe('')
   })
 
-  it('a stale prepare cannot resurrect the dialog after a reset', async () => {
+  it('a stale prepare cannot resurrect the dialog after a reset, and releases its hold', async () => {
     let resolve!: (p: unknown) => void
     PrepareSend.mockReturnValueOnce(new Promise((r) => { resolve = r }))
     const s = useTxStore()
     const preparing = s.prepare('z1', 'zts1znn', '1')
     s.reset() // navigation while PrepareSend is in flight
-    resolve({ toAddress: 'z1', amount: '1' })
+    CancelPending.mockClear()
+    resolve({ toAddress: 'z1', amount: '1', holdId: 9 })
     await preparing
     expect(s.status).toBe('idle') // no live Confirm popping on another screen
+    // The dropped prepare's backend hold must not linger in the pending slot.
+    expect(CancelPending).toHaveBeenCalledWith(9)
+  })
+
+  it('a late success does not clobber a NEWER awaiting transaction', async () => {
+    let resolve!: (h: string) => void
+    ConfirmPublish.mockReturnValueOnce(new Promise<string>((r) => { resolve = r }))
+    const s = useTxStore()
+    s.awaitConfirm({ summary: 'A', holdId: 1 } as any)
+    const publishingA = s.confirm()
+    s.reset()
+    s.awaitConfirm({ summary: 'B', holdId: 2 } as any) // user prepared B, dialog live
+    resolve('hash-A')
+    await publishingA
+    expect(s.status).toBe('awaiting') // B's dialog intact (A lands in history)
+    expect((s.preview as any)?.holdId).toBe(2)
+  })
+
+  it('a late success does not wipe a NEWER prepare in flight', async () => {
+    let resolveConfirm!: (h: string) => void
+    ConfirmPublish.mockReturnValueOnce(new Promise<string>((r) => { resolveConfirm = r }))
+    let resolvePrepare!: (p: unknown) => void
+    PrepareSend.mockReturnValueOnce(new Promise((r) => { resolvePrepare = r }))
+    const s = useTxStore()
+    s.awaitConfirm({ summary: 'A', holdId: 1 } as any)
+    const publishingA = s.confirm()
+    const preparingB = s.prepare('z1', 'zts1znn', '1') // user already sending B
+    resolveConfirm('hash-A')
+    await publishingA
+    expect(s.status).toBe('preparing') // B's flow not hijacked by A's outcome
+    resolvePrepare({ toAddress: 'z1', amount: '1', holdId: 2 })
+    await preparingB
+    expect(s.status).toBe('awaiting') // B's dialog appears as the user expects
+  })
+
+  it('a stale failure cannot hijack a newer publishing transaction (holdId guard)', async () => {
+    let reject!: (e: Error) => void
+    ConfirmPublish.mockReturnValueOnce(new Promise<string>((_, rj) => { reject = rj }))
+    const s = useTxStore()
+    s.awaitConfirm({ summary: 'A', holdId: 1 } as any)
+    const publishingA = s.confirm()
+    s.awaitConfirm({ summary: 'B', holdId: 2 } as any)
+    s.status = 'publishing' // B's own confirm is now in flight
+    reject(new Error('A failed'))
+    await publishingA
+    expect(s.status).toBe('publishing') // same status, different tx — A dropped
+    expect(s.error).toBe('')
   })
 
   it('discard is a no-op outside awaiting', () => {

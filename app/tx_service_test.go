@@ -28,7 +28,7 @@ func TestPrepareSendRejectsBadAddress(t *testing.T) {
 
 func TestConfirmPublishNoPending(t *testing.T) {
 	tx := newTestTxService(t)
-	if _, err := tx.ConfirmPublish(); err == nil {
+	if _, err := tx.ConfirmPublish(0); err == nil {
 		t.Fatal("expected error when no pending transaction")
 	}
 }
@@ -45,7 +45,7 @@ func TestConfirmPublishRejectsTamperedBlock(t *testing.T) {
 	}
 	exTo, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
 	tx.pendingExpect = callExpect{to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}
-	if _, err := tx.ConfirmPublish(); err == nil {
+	if _, err := tx.ConfirmPublish(0); err == nil {
 		t.Fatal("expected mismatch error; tampered block must not publish")
 	}
 	if tx.pending != nil {
@@ -53,11 +53,52 @@ func TestConfirmPublishRejectsTamperedBlock(t *testing.T) {
 	}
 }
 
+func TestConfirmPublishRejectsMismatchedHoldID(t *testing.T) {
+	tx := newTestTxService(t)
+	unlockTestWallet(t, tx.wallet)
+	// Hold a block as holdId 1; the caller confirms against a preview for a
+	// DIFFERENT hold (e.g. a slower prepare replaced the slot after the dialog
+	// was displayed). Confirm-what-you-sign: must refuse, must NOT clear the
+	// (valid, newer) hold.
+	tx.holdPending(&nom.AccountBlock{
+		ToAddress:     types.ParseAddressPanic("z1qqjnwjjpnue8xmmpanz6csze6tcmtzzdtfsww7"),
+		Amount:        big.NewInt(1),
+		TokenStandard: types.ZnnTokenStandard,
+	}, callExpect{}, tx.wallet.sessionGen())
+	_, err := tx.ConfirmPublish(tx.pendingHoldID + 1)
+	if err == nil || !strings.Contains(err.Error(), "changed since it was displayed") {
+		t.Fatalf("expected hold-identity refusal, got %v", err)
+	}
+	if tx.pending == nil {
+		t.Fatal("a mismatched confirm must not clear the held block")
+	}
+}
+
+func TestCancelPendingIdentityChecked(t *testing.T) {
+	tx := newTestTxService(t)
+	unlockTestWallet(t, tx.wallet)
+	id := tx.holdPending(&nom.AccountBlock{TokenStandard: types.ZnnTokenStandard, Amount: big.NewInt(1)}, callExpect{}, tx.wallet.sessionGen())
+	// A stale cancel (different id) must not release the hold…
+	if err := tx.CancelPending(id + 100); err != nil {
+		t.Fatalf("CancelPending: %v", err)
+	}
+	if tx.pending == nil {
+		t.Fatal("stale cancel must not release a newer hold")
+	}
+	// …the matching cancel must.
+	if err := tx.CancelPending(id); err != nil {
+		t.Fatalf("CancelPending: %v", err)
+	}
+	if tx.pending != nil {
+		t.Fatal("matching cancel must release the hold")
+	}
+}
+
 func TestConfirmPublishRejectsConcurrent(t *testing.T) {
 	tx := newTestTxService(t)
 	tx.publishMu.Lock() // simulate a confirm already in flight
 	defer tx.publishMu.Unlock()
-	if _, err := tx.ConfirmPublish(); err == nil {
+	if _, err := tx.ConfirmPublish(0); err == nil {
 		t.Fatal("expected a concurrent ConfirmPublish to be rejected")
 	}
 }
@@ -75,7 +116,7 @@ func TestConfirmPublishBlockedOnMainnet(t *testing.T) {
 	}
 	exTo, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")
 	tx.pendingExpect = callExpect{to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}
-	_, err := tx.ConfirmPublish()
+	_, err := tx.ConfirmPublish(0)
 	if err == nil {
 		t.Fatal("expected mainnet guard error; block prepared on another chain must not publish")
 	}
@@ -106,7 +147,7 @@ func TestConfirmPublishRejectsChainMismatch(t *testing.T) {
 	}
 	exTo, _ := types.ParseAddress(addr)
 	tx.pendingExpect = callExpect{to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}
-	_, err := tx.ConfirmPublish()
+	_, err := tx.ConfirmPublish(0)
 	if err == nil {
 		t.Fatal("expected chain-mismatch error; cross-chain block must not publish")
 	}
@@ -136,7 +177,7 @@ func TestConfirmPublishRejectsWhenLocked(t *testing.T) {
 	if err := tx.wallet.Lock(); err != nil {
 		t.Fatalf("Lock: %v", err)
 	}
-	_, err := tx.ConfirmPublish()
+	_, err := tx.ConfirmPublish(0)
 	if err == nil {
 		t.Fatal("expected error; a locked wallet must not publish")
 	}

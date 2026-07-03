@@ -6,8 +6,8 @@ export function CancelPending(arg1) {
   return window['go']['app']['TxService']['CancelPending'](arg1);
 }
 
-export function ConfirmPublish() {
-  return window['go']['app']['TxService']['ConfirmPublish']();
+export function ConfirmPublish(arg1) {
+  return window['go']['app']['TxService']['ConfirmPublish'](arg1);
 }
 
 export function PrepareSend(arg1) {

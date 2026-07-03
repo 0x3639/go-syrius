@@ -4,7 +4,7 @@ import {app} from '../models';
 
 export function CancelPending(arg1:number):Promise<void>;
 
-export function ConfirmPublish():Promise<string>;
+export function ConfirmPublish(arg1:number):Promise<string>;
 
 export function PrepareSend(arg1:app.SendRequest):Promise<app.SendPreview>;
 

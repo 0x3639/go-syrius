@@ -3,6 +3,7 @@ import * as Tx from '../../wailsjs/go/app/TxService'
 import type { app } from '../../wailsjs/go/models'
 
 export type SendPreview = { toAddress: string; symbol: string; zts: string; amount: string; decimals: number; usedPlasma: number; difficulty: number; hash: string; needsPoW: boolean; summary?: string; holdId?: number }
+export type TxStatus = 'idle'|'preparing'|'awaiting'|'publishing'|'done'|'error'
 
 // Identifies the latest prepare() call (the store is a singleton, so a module
 // token suffices): a stale continuation must not resurrect a dialog the user
@@ -10,18 +11,23 @@ export type SendPreview = { toAddress: string; symbol: string; zts: string; amou
 let prepareToken = 0
 
 export const useTxStore = defineStore('tx', {
-  state: () => ({ status: 'idle' as 'idle'|'preparing'|'awaiting'|'publishing'|'done'|'error', preview: null as SendPreview | null, hash: '', error: '' }),
+  state: () => ({ status: 'idle' as TxStatus, preview: null as SendPreview | null, hash: '', error: '' }),
   actions: {
-    reset() { this.status = 'idle'; this.preview = null; this.hash = ''; this.error = '' },
+    reset() { prepareToken++; this.status = 'idle'; this.preview = null; this.hash = ''; this.error = '' },
     async prepare(toAddress: string, zts: string, amount: string) {
       const token = ++prepareToken
       this.status = 'preparing'; this.preview = null; this.hash = ''; this.error = ''
       try {
         const preview = (await Tx.PrepareSend({ toAddress, zts, amount } as any)) as unknown as SendPreview
         // Nothing is on-chain yet, so a prepare that lost ownership (navigation
-        // reset, or a newer prepare) is safe to drop — seating it would pop a
-        // live Confirm dialog on a screen the user has moved on from.
-        if (token !== prepareToken || this.status !== 'preparing') return
+        // reset bumps the token; another flow took the state) is dropped — but
+        // its backend hold MUST be released, or the single pending slot would
+        // diverge from whatever a dialog is displaying.
+        if (token !== prepareToken || this.status !== 'preparing') {
+          const orphan = preview?.holdId ?? 0
+          if (orphan !== 0) Tx.CancelPending(orphan).catch(() => {})
+          return
+        }
         this.preview = preview
         this.status = 'awaiting'
       } catch (e: any) {
@@ -29,16 +35,32 @@ export const useTxStore = defineStore('tx', {
         this.status = 'error'; this.error = e?.message ?? String(e)
       }
     },
+    // NOTE: the panel flows (tx.awaitConfirm(await Nom.PrepareX())) carry no
+    // staleness guard on purpose — if the user navigates mid-prepare, the
+    // global dialog follows them (long-standing UX). Funds-safety does not
+    // depend on it: ConfirmPublish(holdId) refuses to broadcast anything but
+    // the exact block this preview describes.
     awaitConfirm(preview: SendPreview | app.CallPreview) { this.preview = preview as SendPreview; this.status = 'awaiting'; this.hash = ''; this.error = '' },
     async confirm() {
       const holdId = this.preview?.holdId ?? 0
       this.status = 'publishing'
       try {
-        const hash = (await Tx.ConfirmPublish()) as string
-        // ASYMMETRIC on purpose: a real broadcast ALWAYS surfaces, even if the
-        // user closed the dialog or navigated meanwhile — funds moved, and
-        // silently dropping the outcome invites a double-send. (This also lets
-        // a genuine success overwrite a raced double-confirm's error.)
+        // holdId travels to the backend: ConfirmPublish refuses if the held
+        // block is no longer the one this dialog displayed (confirm-what-you-
+        // sign across the binding boundary).
+        const hash = (await Tx.ConfirmPublish(holdId)) as string
+        // ASYMMETRIC on purpose: a real broadcast surfaces even if the user
+        // closed the dialog or navigated meanwhile (state idle/done/error) —
+        // funds moved, and hiding that invites a double-send. The one
+        // exception: a NEWER transaction actively in flight keeps its state;
+        // wiping a live dialog would strand that block's hold.
+        // Snapshot as the full union: TS's flow analysis otherwise still
+        // narrows this.status to 'publishing' across the await.
+        const cur = this.status as TxStatus
+        const ownedByUs = cur === 'publishing' && (this.preview?.holdId ?? 0) === holdId
+        const newerActive = !ownedByUs
+          && (cur === 'preparing' || cur === 'awaiting' || cur === 'publishing')
+        if (newerActive) return // outcome still lands in history/balances
         this.hash = hash; this.status = 'done'; this.preview = null
       } catch (e: any) {
         // Nothing happened on-chain. Surface the failure only if THIS

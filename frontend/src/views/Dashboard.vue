@@ -72,7 +72,9 @@ const cards = computed(() =>
       <div class="flex items-center px-5 pb-1.5 pt-4">
         <span class="text-base font-semibold text-foreground">Recent activity</span>
       </div>
-      <div class="px-3 pb-3">
+      <!-- Cap + center the table on ultra-wide windows (the cap used to live
+           inside TxHistory's chrome; the card owns layout now). -->
+      <div class="mx-auto max-w-[90rem] px-3 pb-3">
         <TxHistory />
       </div>
     </div>

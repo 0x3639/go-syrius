@@ -13,8 +13,9 @@ const router = useRouter()
 const wallet = useWalletStore()
 const ui = useUiStore()
 
-// The ui store owns the theme preference (syrius.theme); nom-ui's composable
-// (which drives Toaster etc. and keeps its own storage key) just follows it.
+// SINGLE theme applier: the ui store owns the preference (syrius.theme), and
+// this watch is the one place it reaches the DOM — nom-ui's setTheme toggles
+// the dark class and keeps its own composable state (Toaster etc.) in sync.
 watch(() => ui.theme, (t) => setTheme?.(t), { immediate: true })
 
 // Show the logo intro on every launch, unless the user disabled it in Settings

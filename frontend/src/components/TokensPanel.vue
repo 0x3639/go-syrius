@@ -39,7 +39,7 @@ const filtered = computed(() => {
           </div>
         </div>
         <div class="pl-4 font-mono tabular-nums text-foreground">
-          {{ formatAmount(b.amount, b.decimals || 8) }}
+          {{ formatAmount(b.amount, b.decimals ?? 8) }}
         </div>
       </div>
     </template>

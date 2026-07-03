@@ -65,7 +65,10 @@ onMounted(async () => {
   ui.init() // restore persisted theme + showGovernance
   await autoReceive.init(wallet.activeIndex)
 })
-onBeforeUnmount(() => price.stop())
+onBeforeUnmount(() => {
+  price.stop()
+  node.clearTick() // stop momentum-driven refreshes while locked
+})
 </script>
 
 <template>

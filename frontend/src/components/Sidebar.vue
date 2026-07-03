@@ -12,7 +12,9 @@ import SidebarLink from './SidebarLink.vue'
 const node = useNodeStore()
 const ui = useUiStore()
 
-const showGovernance = computed(() => ui.showGovernance && node.chainId !== 1)
+// Fail closed like NetworkPage's gate: chainId 0 = unknown (pre-connect),
+// 1 = mainnet; only a confirmed testnet (> 1) shows the tab.
+const showGovernance = computed(() => ui.showGovernance && node.chainId > 1)
 
 const topNav = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboardIcon },

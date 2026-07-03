@@ -71,5 +71,11 @@ export const useNodeStore = defineStore('node', {
       })
       EventsOn('momentum:tick', () => this._onTick?.())
     },
+    // Detach the tick callback (AppShell unmount / lock): momentum:tick fires
+    // whenever the node is connected, independent of wallet state, so without
+    // this a locked session would keep refreshing all stores every momentum.
+    clearTick() {
+      this._onTick = null
+    },
   },
 })

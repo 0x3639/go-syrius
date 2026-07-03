@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { useUiStore } from '../stores/ui'
 import { useNodeStore } from '../stores/node'
+import { useTxStore } from '../stores/tx'
 
 // NetworkPage resolves its panel via useRoute() (inject-based), so a $route
 // global.mock won't satisfy it — mock the composable directly, matching the
@@ -52,5 +53,28 @@ describe('NetworkPage', () => {
     const node = useNodeStore(); node.chainId = 2
     const w = mount(NetworkPage, { global: { stubs } })
     expect(w.find('.gov-stub').exists()).toBe(false)
+  })
+
+  it('fails closed while chainId is unknown (0, pre-connect)', () => {
+    routeState.meta.panel = 'governance'
+    const ui = useUiStore(); ui.showGovernance = true
+    const node = useNodeStore(); node.chainId = 0
+    const w = mount(NetworkPage, { global: { stubs } })
+    expect(w.find('.gov-stub').exists()).toBe(false)
+  })
+
+  it('discards an in-flight tx when the gate slams shut', async () => {
+    routeState.meta.panel = 'governance'
+    const ui = useUiStore(); ui.showGovernance = true
+    const node = useNodeStore(); node.chainId = 2
+    const tx = useTxStore()
+    const reset = vi.spyOn(tx, 'reset')
+    const w = mount(NetworkPage, { global: { stubs } })
+    expect(w.find('.gov-stub').exists()).toBe(true)
+
+    node.chainId = 1 // node reconnects to mainnet mid-flow
+    await w.vm.$nextTick()
+    expect(w.find('.gov-stub').exists()).toBe(false)
+    expect(reset).toHaveBeenCalled()
   })
 })

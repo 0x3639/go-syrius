@@ -31,4 +31,13 @@ describe('node store', () => {
     expect(firstMount).not.toHaveBeenCalled()
     expect(secondMount).toHaveBeenCalledTimes(1)
   })
+
+  it('clearTick detaches the callback (no refreshes while locked)', () => {
+    const s = useNodeStore()
+    const cb = vi.fn()
+    s.initEvents(cb)
+    s.clearTick() // AppShell unmounts on lock
+    handlers['momentum:tick']?.()
+    expect(cb).not.toHaveBeenCalled()
+  })
 })

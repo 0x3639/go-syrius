@@ -13,24 +13,23 @@ export const useUiStore = defineStore('ui', {
     splashEnabled: true,
   }),
   actions: {
-    applyTheme() {
-      document.documentElement.classList.toggle('dark', this.theme === 'dark')
-    },
+    // NOTE: this store owns the theme PREFERENCE (persisted as syrius.theme).
+    // The DOM (dark class) is applied in exactly one place: App.vue watches
+    // ui.theme and forwards it to nom-ui's setTheme — no second toggler here.
     toggleTheme() {
       this.theme = this.theme === 'dark' ? 'light' : 'dark'
-      this.applyTheme()
       try { localStorage.setItem('syrius.theme', this.theme) } catch { /* ignore */ }
     },
     setSplashEnabled(v: boolean) {
       this.splashEnabled = v
       try { localStorage.setItem('syrius.splash', v ? '1' : '0') } catch { /* ignore */ }
     },
-    // Restore + apply the persisted theme. Sync and store-only, so main.ts can
-    // call it before mount — the first paint (including the locked Unlock/
-    // Create/Import screens, which never mount AppShell) honors the preference.
+    // Restore the persisted theme. Sync and store-only, so main.ts can call it
+    // before mount; App.vue's immediate theme watch then applies it during App
+    // setup — still ahead of the first paint, including the locked Unlock/
+    // Create/Import screens, which never mount AppShell.
     initTheme() {
       try { const t = localStorage.getItem('syrius.theme'); if (t === 'light' || t === 'dark') this.theme = t } catch { /* ignore */ }
-      this.applyTheme()
     },
     async init() {
       this.initTheme()

@@ -34,6 +34,18 @@ describe('ui store', () => {
     expect(s.showGovernance).toBe(false)
   })
 
+  it('initTheme restores a persisted light theme (sync, pre-mount safe)', () => {
+    localStorage.setItem('syrius.theme', 'light')
+    try {
+      const s = useUiStore()
+      s.initTheme()
+      expect(s.theme).toBe('light')
+      expect(document.documentElement.classList.contains('dark')).toBe(false)
+    } finally {
+      localStorage.removeItem('syrius.theme')
+    }
+  })
+
   it('setShowGovernance flips state and persists the merged settings', async () => {
     GetSettings.mockResolvedValue({ showGovernance: false })
     const s = useUiStore()

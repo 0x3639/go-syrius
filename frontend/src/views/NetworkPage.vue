@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // Thin wrapper for each NoM feature route. Renders the panel named by the
-// route's meta.panel and resets the tx flow on enter so a half-built block
-// can't leak in from another feature.
-import { computed, watch } from 'vue'
+// route's meta.panel. (Half-built tx state is reset by the router's global
+// afterEach on every navigation, including between /network/* routes.)
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { useTxStore } from '../stores/tx'
+import { useUiStore } from '../stores/ui'
+import { useNodeStore } from '../stores/node'
 import PlasmaPanel from '../components/panels/PlasmaPanel.vue'
 import StakingPanel from '../components/panels/StakingPanel.vue'
 import PillarPanel from '../components/panels/PillarPanel.vue'
@@ -19,19 +20,29 @@ const PANELS: Record<string, any> = {
   governance: GovernancePanel,
 }
 const route = useRoute()
-const tx = useTxStore()
+const ui = useUiStore()
+const node = useNodeStore()
 const panelKey = computed(() => route.meta.panel as string)
 const panel = computed(() => PANELS[panelKey.value])
 // Accelerator deep-link: ?sub=Vote drives the panel's initial sub-view.
 const initialSub = computed(() => (typeof route.query.sub === 'string' ? route.query.sub : ''))
 
-watch(panelKey, () => tx.reset())
+// TESTNET-ONLY Governance: mirror the Sidebar's gate reactively on the panel
+// itself, so the UI vanishes (rather than staying interactive) if the node
+// connects to mainnet (chainId 1) or the Settings opt-in is turned off while
+// the route is open.
+const governanceBlocked = computed(
+  () => panelKey.value === 'governance' && (!ui.showGovernance || node.chainId === 1),
+)
 </script>
 
 <template>
   <!-- Cap every NoM page to the same centered width as the Tokens page so the
        section reads consistently instead of sprawling full-width. -->
   <div class="mx-auto max-w-[48rem]">
-    <component :is="panel" v-bind="panelKey === 'accelerator' ? { initialSub } : {}" />
+    <p v-if="governanceBlocked" class="text-sm text-muted-foreground">
+      Governance is testnet-only. Enable it in Settings and connect to a testnet node.
+    </p>
+    <component :is="panel" v-else v-bind="panelKey === 'accelerator' ? { initialSub } : {}" />
   </div>
 </template>

@@ -32,7 +32,9 @@ const cards = computed(() =>
   <div class="flex flex-col gap-5">
     <!-- Plasma hero -->
     <div class="overflow-hidden rounded-xl bg-plasma p-7 text-[#0c1f12] shadow-md">
-      <p class="text-ledger opacity-70">TOTAL PORTFOLIO VALUE</p>
+      <!-- No price feed → the headline is just the ZNN balance; label it as
+           such rather than claiming a (wrong) portfolio total. -->
+      <p class="text-ledger opacity-70">{{ totalUsd !== null ? 'TOTAL PORTFOLIO VALUE' : 'ZNN BALANCE' }}</p>
       <div class="mb-4 mt-2 font-mono text-5xl font-bold tabular-nums tracking-tight">
         <template v-if="totalUsd !== null">{{ formatFiat(totalUsd) }}</template>
         <template v-else>{{ formatAmount(znn?.amount ?? '0', znn?.decimals ?? 8) }} <span class="text-2xl">ZNN</span></template>
@@ -69,7 +71,6 @@ const cards = computed(() =>
     <div class="rounded-xl border border-border bg-card">
       <div class="flex items-center px-5 pb-1.5 pt-4">
         <span class="text-base font-semibold text-foreground">Recent activity</span>
-        <button class="ml-auto text-sm text-muted-foreground transition-colors hover:text-foreground" @click="router.push('/tokens')">View all</button>
       </div>
       <div class="px-3 pb-3">
         <TxHistory />

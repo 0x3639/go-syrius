@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRouter } from 'vue-router'
 import { Input, TokenIcon } from 'nom-ui'
 import { useBalancesStore } from '../stores/balances'
 import { formatAmount } from '../lib/format'
 
-const router = useRouter()
 const { items } = storeToRefs(useBalancesStore())
 
 const q = ref('')
@@ -22,24 +20,11 @@ const filtered = computed(() => {
       (b.zts || '').toLowerCase().includes(s),
   )
 })
-
-// Manage routes to the /tokens placeholder (registered in Task 10).
-function manage() {
-  router.push('/tokens')
-}
 </script>
 
 <template>
-  <div class="space-y-3 p-4">
-    <div class="flex items-center justify-between">
-      <Input v-model="q" placeholder="Search tokens…" aria-label="search tokens" />
-      <button
-        class="ml-2 shrink-0 rounded border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-        @click="manage"
-      >
-        Manage
-      </button>
-    </div>
+  <div class="space-y-3">
+    <Input v-model="q" placeholder="Filter held tokens…" aria-label="search tokens" class="w-full" />
     <template v-if="filtered.length">
       <div
         v-for="b in filtered"

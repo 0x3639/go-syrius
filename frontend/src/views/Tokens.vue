@@ -9,6 +9,7 @@ import { useWalletStore } from '../stores/wallet'
 import { formatAmount } from '../lib/format'
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from '@lucide/vue'
 import MonoTruncate from '../components/MonoTruncate.vue'
+import TokensPanel from '../components/TokensPanel.vue'
 
 const token = useTokenStore()
 const tx = useTxStore()
@@ -103,6 +104,13 @@ async function update(t: app.TokenInfo) {
 
 <template>
   <div class="mx-auto max-w-[48rem] space-y-6">
+    <!-- Every token the active address HOLDS (any issuer) — this is the only
+         place third-party ZTS balances are visible (Dashboard shows ZNN/QSR). -->
+    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+      <h2 class="text-sm text-muted-foreground">Held balances</h2>
+      <TokensPanel />
+    </section>
+
     <section class="rounded-xl border border-border bg-card p-5 space-y-2">
       <h2 class="text-sm text-muted-foreground">Issue a token (1 ZNN fee)</h2>
       <div class="grid grid-cols-2 gap-2">

@@ -5,11 +5,17 @@ import { useRouter } from 'vue-router'
 import { useTheme, Toaster } from 'nom-ui'
 import * as N from '../wailsjs/go/app/NodeService'
 import { useWalletStore } from './stores/wallet'
+import { useUiStore } from './stores/ui'
 import IntroSplash from './components/IntroSplash.vue'
 
 const { setTheme } = useTheme()
 const router = useRouter()
 const wallet = useWalletStore()
+const ui = useUiStore()
+
+// The ui store owns the theme preference (syrius.theme); nom-ui's composable
+// (which drives Toaster etc. and keeps its own storage key) just follows it.
+watch(() => ui.theme, (t) => setTheme?.(t), { immediate: true })
 
 // Show the logo intro on every launch, unless the user disabled it in Settings
 // (persisted in localStorage; read directly here since this runs at root mount,
@@ -32,7 +38,6 @@ watch(
 )
 
 onMounted(async () => {
-  setTheme?.('dark')
   try {
     await N.Connect()
   } catch {

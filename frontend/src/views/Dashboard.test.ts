@@ -35,5 +35,13 @@ describe('Dashboard', () => {
     await w.vm.$nextTick()
     expect(w.text()).toContain('ZNN')
     expect(w.text()).not.toContain('≈ $')
+    // The hero must not claim a portfolio total it can't compute.
+    expect(w.text()).toContain('ZNN BALANCE')
+    expect(w.text()).not.toContain('TOTAL PORTFOLIO VALUE')
+  })
+
+  it('has no View all button (history pages in place)', () => {
+    const w = setup()
+    expect(w.text()).not.toContain('View all')
   })
 })

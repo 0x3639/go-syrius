@@ -58,6 +58,7 @@ vi.mock('nom-ui', () => ({
   // falls through to the native <button>. Emitting AND falling through would
   // double-fire handlers (which broke the mint/update toggle behavior).
   Button: { props: ['disabled'], template: '<button :disabled="disabled"><slot/></button>' },
+  TokenIcon: { props: ['symbol'], template: '<span>{{ symbol }}</span>' },
   Table: { template: '<table><slot/></table>' },
   TableHeader: { template: '<thead><slot/></thead>' },
   TableBody: { template: '<tbody><slot/></tbody>' },

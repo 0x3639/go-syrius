@@ -8,7 +8,7 @@ import './style.css'
 const app = createApp(App)
 const pinia = createPinia()
 app.use(pinia)
-// Apply the theme before mount so the first paint defaults to dark (the wallet's
-// native habitat). ui.init() later reconciles any persisted preference.
-useUiStore().applyTheme()
+// Restore the persisted theme (default dark) before mount so the first paint —
+// including the locked screens, which never mount AppShell — honors it.
+useUiStore().initTheme()
 app.use(router).mount('#app')

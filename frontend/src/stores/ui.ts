@@ -25,10 +25,16 @@ export const useUiStore = defineStore('ui', {
       this.splashEnabled = v
       try { localStorage.setItem('syrius.splash', v ? '1' : '0') } catch { /* ignore */ }
     },
-    async init() {
+    // Restore + apply the persisted theme. Sync and store-only, so main.ts can
+    // call it before mount — the first paint (including the locked Unlock/
+    // Create/Import screens, which never mount AppShell) honors the preference.
+    initTheme() {
       try { const t = localStorage.getItem('syrius.theme'); if (t === 'light' || t === 'dark') this.theme = t } catch { /* ignore */ }
-      try { this.splashEnabled = localStorage.getItem('syrius.splash') !== '0' } catch { /* ignore */ }
       this.applyTheme()
+    },
+    async init() {
+      this.initTheme()
+      try { this.splashEnabled = localStorage.getItem('syrius.splash') !== '0' } catch { /* ignore */ }
       try {
         this.showGovernance = (await Cfg.GetSettings()).showGovernance ?? false
       } catch {

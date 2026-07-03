@@ -4,10 +4,6 @@ import { createPinia, setActivePinia } from 'pinia'
 import TokensPanel from './TokensPanel.vue'
 import { useBalancesStore, type TokenBalance } from '../stores/balances'
 
-// Manage routes via vue-router; stub it so the test stays component-local.
-const push = vi.fn()
-vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
-
 // Stub nom-ui Input/TokenIcon to trivial templates: Input is a controlled
 // <input> mirroring v-model; TokenIcon just renders its symbol. This exercises
 // our filter + row composition, not nom-ui internals.
@@ -23,7 +19,6 @@ vi.mock('nom-ui', () => ({
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  push.mockClear()
 })
 
 const znn: TokenBalance = { zts: 'zts1znn', symbol: 'ZNN', decimals: 8, amount: '150000000' }

@@ -32,7 +32,20 @@ describe('tx store (confirm-what-you-sign)', () => {
     expect(CancelPending).toHaveBeenCalledWith(7)
   })
 
-  it('a confirm outcome is dropped when the state was reset mid-publish', async () => {
+  it('a real broadcast ALWAYS surfaces, even after a mid-publish reset', async () => {
+    let resolve!: (h: string) => void
+    ConfirmPublish.mockReturnValueOnce(new Promise<string>((r) => { resolve = r }))
+    const s = useTxStore()
+    const publishing = s.confirm()
+    s.reset() // user closed the dialog / navigated during the publish
+    resolve('hash-real')
+    await publishing
+    // Funds moved on-chain — hiding the outcome would invite a double-send.
+    expect(s.status).toBe('done')
+    expect(s.hash).toBe('hash-real')
+  })
+
+  it('a stale publish FAILURE is dropped when the state was reset mid-publish', async () => {
     let reject!: (e: Error) => void
     ConfirmPublish.mockReturnValueOnce(new Promise<string>((_, rj) => { reject = rj }))
     const s = useTxStore()
@@ -40,8 +53,20 @@ describe('tx store (confirm-what-you-sign)', () => {
     s.reset() // router.afterEach fires on navigation
     reject(new Error('boom'))
     await publishing
-    expect(s.status).toBe('idle') // no orphan error dialog on the new screen
+    // Nothing happened on-chain — no orphan error dialog on the new screen.
+    expect(s.status).toBe('idle')
     expect(s.error).toBe('')
+  })
+
+  it('a stale prepare cannot resurrect the dialog after a reset', async () => {
+    let resolve!: (p: unknown) => void
+    PrepareSend.mockReturnValueOnce(new Promise((r) => { resolve = r }))
+    const s = useTxStore()
+    const preparing = s.prepare('z1', 'zts1znn', '1')
+    s.reset() // navigation while PrepareSend is in flight
+    resolve({ toAddress: 'z1', amount: '1' })
+    await preparing
+    expect(s.status).toBe('idle') // no live Confirm popping on another screen
   })
 
   it('discard is a no-op outside awaiting', () => {

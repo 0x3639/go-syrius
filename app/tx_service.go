@@ -212,7 +212,7 @@ func (t *TxService) ConfirmPublish() (string, error) {
 		return "", err
 	}
 	t.mu.Lock()
-	template, expect, pendingGen := t.pending, t.pendingExpect, t.pendingGen
+	template, expect, pendingGen, holdID := t.pending, t.pendingExpect, t.pendingGen, t.pendingHoldID
 	t.mu.Unlock()
 	if template == nil {
 		return "", errors.New("no pending transaction")
@@ -220,19 +220,19 @@ func (t *TxService) ConfirmPublish() (string, error) {
 
 	// Refuse if the wallet was locked or its session changed since prepare.
 	if _, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != pendingGen {
-		t.clearPending()
+		t.clearPendingIf(holdID)
 		return "", errors.New("wallet locked or changed; not publishing")
 	}
 	// Re-assert the approved effect on the held template BEFORE the expensive PoW
 	// (and again on the built block after). PrepareBlock never alters the funds-
 	// moving fields, so a template match guarantees the built block matches.
 	if err := assertMatches(template, expect); err != nil {
-		t.clearPending()
+		t.clearPendingIf(holdID)
 		return "", err
 	}
 	kp, err := t.wallet.signingKeyPair()
 	if err != nil {
-		t.clearPending()
+		t.clearPendingIf(holdID)
 		return "", err
 	}
 	client := t.node.currentClient()
@@ -256,29 +256,29 @@ func (t *TxService) ConfirmPublish() (string, error) {
 	}
 	built, err := z.PrepareBlock(template, kp)
 	if err != nil {
-		t.clearPending()
+		t.clearPendingIf(holdID)
 		return "", err
 	}
 	// Re-assert the session after PoW (it took seconds — a lock could have raced).
 	if _, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != pendingGen {
-		t.clearPending()
+		t.clearPendingIf(holdID)
 		return "", errors.New("wallet locked or changed; not publishing")
 	}
 	// Confirm-what-you-sign: the built block must move exactly the approved effect.
 	if err := assertMatches(built, expect); err != nil {
-		t.clearPending()
+		t.clearPendingIf(holdID)
 		return "", err
 	}
 	if built.ChainIdentifier != t.node.currentChainID() {
-		t.clearPending()
+		t.clearPendingIf(holdID)
 		return "", fmt.Errorf("configured Chain ID (%d) does not match the connected node's chain (%d)", built.ChainIdentifier, t.node.currentChainID())
 	}
 	if err := client.LedgerApi.PublishRawTransaction(built); err != nil {
-		t.clearPending()
+		t.clearPendingIf(holdID)
 		return "", err
 	}
 	hash := built.Hash.String()
-	t.clearPending()
+	t.clearPendingIf(holdID)
 	if t.ctx != nil {
 		runtime.EventsEmit(t.ctx, EventTxPublished, map[string]string{"hash": hash})
 	}
@@ -370,23 +370,36 @@ func (t *TxService) Receive(fromHash string) (string, error) {
 // cancel that loses a race against a newer Prepare cannot release the newer
 // block. holdId 0 discards whatever is held (unconditional).
 func (t *TxService) CancelPending(holdId uint64) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if holdId != 0 && holdId != t.pendingHoldID {
-		return nil // stale cancel for a hold we no longer have
+	if holdId != 0 {
+		t.clearPendingIf(holdId)
+	} else {
+		t.clearPending()
 	}
+	return nil
+}
+
+// clearPendingLocked zeroes the hold. Callers must hold t.mu — this is the ONE
+// place the slot's fields are cleared, so adding a field can't be half-done.
+func (t *TxService) clearPendingLocked() {
 	t.pending = nil
 	t.pendingExpect = callExpect{}
 	t.pendingGen = 0
 	t.pendingHoldID = 0
-	return nil
 }
 
 func (t *TxService) clearPending() {
 	t.mu.Lock()
-	t.pending = nil
-	t.pendingExpect = callExpect{}
-	t.pendingGen = 0
-	t.pendingHoldID = 0
+	t.clearPendingLocked()
+	t.mu.Unlock()
+}
+
+// clearPendingIf zeroes the hold only if it is still the one identified by id.
+// ConfirmPublish's terminal clears use this: a publish finishing after a newer
+// Prepare replaced the hold must not wipe the newer block.
+func (t *TxService) clearPendingIf(id uint64) {
+	t.mu.Lock()
+	if t.pendingHoldID == id {
+		t.clearPendingLocked()
+	}
 	t.mu.Unlock()
 }

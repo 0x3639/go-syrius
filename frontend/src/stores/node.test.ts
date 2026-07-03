@@ -43,6 +43,26 @@ describe('node store', () => {
     expect(s.height).toBe(42)
   })
 
+  it('a push landing during the pull wins (stale snapshot discarded)', async () => {
+    const s = useNodeStore()
+    s.initEvents(vi.fn()) // pull (chainId 3) starts…
+    // …but a fresher push (mainnet) lands before the RPC resolves:
+    handlers['node:status']?.({ connected: true, chainId: 1, height: 50, mode: 'remote' })
+    await new Promise((r) => setTimeout(r))
+    expect(s.chainId).toBe(1) // stale pull must not re-open the governance gate
+    expect(s.height).toBe(50)
+  })
+
+  it('the pull never clobbers syncing (owned by node:sync)', async () => {
+    const s = useNodeStore()
+    s.initEvents(vi.fn())
+    await new Promise((r) => setTimeout(r))
+    handlers['node:sync']?.({ state: 'syncing' })
+    expect(s.syncing).toBe(true)
+    await s.refreshStatus() // snapshot DTO carries no meaningful syncing value
+    expect(s.syncing).toBe(true)
+  })
+
   it('clearTick detaches the callback (no refreshes while locked)', () => {
     const s = useNodeStore()
     const cb = vi.fn()

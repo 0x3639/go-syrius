@@ -27,6 +27,9 @@ export const useNodeStore = defineStore('node', {
     balances: [] as TokenBalance[],
     _eventsInit: false,
     _onTick: null as (() => void) | null,
+    // Bumped on every node:status push; lets the refreshStatus pull detect
+    // that a fresher push landed while its RPC was in flight.
+    _statusSeq: 0,
   }),
   actions: {
     async connect() {
@@ -50,18 +53,29 @@ export const useNodeStore = defineStore('node', {
     async deleteEmbeddedData() {
       await N.DeleteEmbeddedData()
     },
+    // Single field-mapping for a node status payload, shared by the push
+    // handler and the pull so the two can never drift. `syncing`/`sync` are
+    // NOT set here — they are owned exclusively by the node:sync event (the
+    // status DTO does not carry a meaningful syncing value).
+    applyStatus(s: { connected?: boolean; height?: number; mode?: string; chainId?: number } | null | undefined) {
+      this.connected = !!s?.connected
+      this.height = s?.height ?? this.height
+      this.mode = s?.mode ?? this.mode
+      this.chainId = s?.chainId ?? this.chainId
+    },
     // Pull the current node status once. Needed because push events only reach
     // listeners that exist: the connect-time node:status fires while the user
     // is still on the Unlock screen (before AppShell registers initEvents), so
     // without this pull chainId/height stay 0 until the next momentum status.
     async refreshStatus() {
+      const seq = this._statusSeq
       try {
         const s = await N.NodeStatus()
-        this.connected = !!s?.connected
-        this.height = s?.height ?? this.height
-        this.mode = s?.mode ?? this.mode
-        this.chainId = s?.chainId ?? this.chainId
-        this.syncing = !!s?.syncing
+        // A push that arrived while the RPC was in flight is fresher than this
+        // snapshot — never let the stale pull overwrite it (it could briefly
+        // re-open the fail-closed governance gate with an old testnet chainId).
+        if (seq !== this._statusSeq) return
+        this.applyStatus(s)
       } catch { /* not connected; events will hydrate later */ }
     },
     // initEvents wires backend push events into the store. onTick is invoked on
@@ -75,10 +89,8 @@ export const useNodeStore = defineStore('node', {
       if (this._eventsInit) return
       this._eventsInit = true
       EventsOn('node:status', (s: any) => {
-        this.connected = !!s?.connected
-        this.height = s?.height ?? this.height
-        this.mode = s?.mode ?? this.mode
-        this.chainId = s?.chainId ?? this.chainId
+        this._statusSeq++
+        this.applyStatus(s)
       })
       EventsOn('node:sync', (s: any) => {
         this.sync = s

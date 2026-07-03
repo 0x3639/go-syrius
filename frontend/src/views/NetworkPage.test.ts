@@ -80,6 +80,23 @@ describe('NetworkPage', () => {
     expect(cancel).toHaveBeenCalled()
   })
 
+  it('cancels a Prepare that resolves AFTER the gate has closed', async () => {
+    routeState.meta.panel = 'governance'
+    const ui = useUiStore(); ui.showGovernance = true
+    const node = useNodeStore(); node.chainId = 2
+    const tx = useTxStore()
+    const cancel = vi.spyOn(tx, 'cancel').mockResolvedValue(undefined)
+    const w = mount(NetworkPage, { global: { stubs } })
+
+    node.chainId = 1 // gate slams while a Prepare RPC is still in flight
+    await w.vm.$nextTick()
+    expect(cancel).not.toHaveBeenCalled() // nothing to cancel yet
+
+    tx.status = 'awaiting' // the late Prepare resolves and opens the dialog
+    await w.vm.$nextTick()
+    expect(cancel).toHaveBeenCalled() // …and is immediately cancelled
+  })
+
   it('does not disturb a tx already publishing when the gate closes', async () => {
     routeState.meta.panel = 'governance'
     const ui = useUiStore(); ui.showGovernance = true

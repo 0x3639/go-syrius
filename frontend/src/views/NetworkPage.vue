@@ -33,15 +33,20 @@ const initialSub = computed(() => (typeof route.query.sub === 'string' ? route.q
 const governanceBlocked = computed(
   () => panelKey.value === 'governance' && !ui.governanceAllowed,
 )
-// When the gate slams shut with a prepared-but-unconfirmed block, CANCEL it —
-// same path as NomConfirm's dialog-close (backend CancelPending releases the
-// held block, then the frontend state resets). Only in 'awaiting': once
-// publishing has started the block is already submitted and the result/error
-// must surface normally.
+// While the gate is shut, no prepared-but-unconfirmed block may survive:
+// CANCEL it via the same path as NomConfirm's dialog-close (backend
+// CancelPending releases the held block, then the frontend state resets).
+// Watching BOTH the gate and the tx status covers the in-flight-Prepare hole:
+// a Prepare RPC that was already running when the gate closed resolves later
+// and only then flips status to 'awaiting' — the watcher re-fires and cancels
+// it before the dialog can publish a testnet-only block on mainnet. Only
+// 'awaiting' is cancelled: once publishing has started the block is already
+// submitted and its result/error must surface normally.
 const tx = useTxStore()
-watch(governanceBlocked, (blocked) => {
-  if (blocked && tx.status === 'awaiting') tx.cancel()
-})
+watch(
+  [governanceBlocked, () => tx.status],
+  ([blocked, status]) => { if (blocked && status === 'awaiting') tx.cancel() },
+)
 </script>
 
 <template>

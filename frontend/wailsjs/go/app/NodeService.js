@@ -38,10 +38,6 @@ export function NodeStatus() {
   return window['go']['app']['NodeService']['NodeStatus']();
 }
 
-export function SetNode(arg1) {
-  return window['go']['app']['NodeService']['SetNode'](arg1);
-}
-
 export function SetNodeMode(arg1) {
   return window['go']['app']['NodeService']['SetNodeMode'](arg1);
 }

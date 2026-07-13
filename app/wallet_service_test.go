@@ -675,3 +675,30 @@ func TestUnlockSerializesWithSelection(t *testing.T) {
 		t.Fatalf("after a serialized re-unlock the active index must be the new session's 0, got %d", active)
 	}
 }
+
+// TestSelectAccountFailsWhenPersistenceFails: persistence is part of the
+// operation — a selection that cannot persist must fail WITHOUT changing the
+// signer (round-3 review P2).
+func TestSelectAccountFailsWhenPersistenceFails(t *testing.T) {
+	w := newTestWalletService(t)
+	unlockTestWallet(t, w)
+	dir := os.Getenv("GO_SYRIUS_DATA_DIR")
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	genBefore := w.sessionGen()
+	if _, err := w.SelectAccount(1); err == nil {
+		t.Fatal("a selection whose persistence fails must fail the call")
+	}
+	w.mu.Lock()
+	active := w.active
+	w.mu.Unlock()
+	if active != 0 {
+		t.Fatalf("a failed selection must not change the signer, got active %d", active)
+	}
+	if w.sessionGen() != genBefore {
+		t.Fatal("a failed selection must not invalidate the session")
+	}
+}

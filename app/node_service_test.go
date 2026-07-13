@@ -172,7 +172,7 @@ func TestSetNodeFailedConnectLeavesCleanStatus(t *testing.T) {
 	n := newTestNode(t)
 	// Unreachable address: the connect/reachability check fails. After a failed
 	// connect the status must be a clean disconnected state (not stale).
-	err := n.SetNode("ws://127.0.0.1:1")
+	err := n.setNode("ws://127.0.0.1:1")
 	if err == nil {
 		t.Fatal("expected SetNode to fail against an unreachable node")
 	}

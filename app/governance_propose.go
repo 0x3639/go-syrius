@@ -637,28 +637,36 @@ func (s *NomService) PrepareProposeAction(name, description, url, kind string, p
 			break
 		}
 	}
-	// Decode the EXACT action payload the proposal carries into structured
-	// confirmation fields. Fail closed: a proposal whose material parameters
-	// cannot be rendered must not reach the confirm dialog with a bare label.
-	payloadData, err := base64.StdEncoding.DecodeString(payload.Data)
+	// Confirm-what-you-sign end to end: EVERYTHING rendered — the proposal
+	// metadata included — is decoded back out of the exact held template, then
+	// cross-checked against the payload we just built. Fail closed on any
+	// divergence or anything undecodable.
+	env, err := decodeProposeEnvelope(template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot decode the held proposal: %w", err)
+	}
+	if env.Destination != payload.Destination || env.Data != payload.Data {
+		return CallPreview{}, errors.New("held proposal does not carry the built action payload; not preparing")
+	}
+	payloadData, err := base64.StdEncoding.DecodeString(env.Data)
 	if err != nil {
 		return CallPreview{}, fmt.Errorf("cannot decode the proposal payload: %w", err)
 	}
-	effect, err := decodeContractCall(payload.Destination, payloadData)
+	effect, err := decodeContractCall(env.Destination, payloadData)
 	if err != nil {
 		return CallPreview{}, fmt.Errorf("cannot render the exact proposal effect: %w", err)
 	}
-	// The proposal metadata is part of the signed action record; show it with
-	// the decoded parameters.
+	// The proposal metadata is part of the signed action record; every value
+	// below comes from the decoded envelope, not the raw inputs.
 	effect.Fields = append([]EffectField{
-		{Label: "Proposal name", Value: name},
-		{Label: "Proposal description", Value: description},
-		{Label: "Proposal URL", Value: url},
-		{Label: "Destination", Value: payload.Destination.String()},
+		{Label: "Proposal name", Value: env.Name},
+		{Label: "Proposal description", Value: env.Description},
+		{Label: "Proposal URL", Value: env.Url},
+		{Label: "Destination", Value: env.Destination.String()},
 	}, effect.Fields...)
 	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.GovernanceContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...),
 			policy: s.requireTestnet},
-		fmt.Sprintf("Propose %q (1 ZNN) — %s calls %s.%s", name, label, effect.Contract, effect.Method),
+		fmt.Sprintf("Propose %q (1 ZNN) — %s calls %s.%s", env.Name, label, effect.Contract, effect.Method),
 		effect)
 }

@@ -20,8 +20,6 @@ export function GetUnreceived():Promise<Array<app.UnreceivedBlock>>;
 
 export function NodeStatus():Promise<app.NodeStatus>;
 
-export function SetNode(arg1:string):Promise<void>;
-
 export function SetNodeMode(arg1:string):Promise<void>;
 
 export function SetNodeURL(arg1:string,arg2:string):Promise<void>;

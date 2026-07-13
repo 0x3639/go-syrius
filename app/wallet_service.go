@@ -458,26 +458,40 @@ func (w *WalletService) SelectAccount(index int) (AccountInfo, error) {
 	name := w.activeWallet
 	w.mu.Unlock()
 
-	// Bound by the wallet's REVEALED account count, not maxAccounts. CurrentAccounts
-	// only exposes accountCountFor(...) accounts; without this a direct Wails call
-	// could activate — and then sign from — an index the UI never revealed. Fall
-	// back to accountRange (the always-revealed minimum) if settings are
-	// unavailable, and only persist when we could read them.
-	count := accountRange
-	persist := false
-	label := ""
+	// Settings are PART of the operation, not best-effort: the bound comes from
+	// the revealed account count and the selection must persist, so a settings
+	// failure fails the call with the signer unchanged (never a "successful"
+	// selection that silently didn't stick).
 	s, err := w.config.GetSettings()
-	if err == nil {
-		count = accountCountFor(s, name)
-		persist = true
-		label = s.AccountLabels[labelKey(name, index)]
+	if err != nil {
+		return AccountInfo{}, fmt.Errorf("cannot read settings: %w", err)
 	}
-	if index >= count {
+	// Bound by the wallet's REVEALED account count, not maxAccounts.
+	// CurrentAccounts only exposes accountCountFor(...) accounts; without this a
+	// direct Wails call could activate — and then sign from — an index the UI
+	// never revealed.
+	if count := accountCountFor(s, name); index >= count {
 		return AccountInfo{}, fmt.Errorf("account index %d out of range (only %d revealed)", index, count)
+	}
+	label := s.AccountLabels[labelKey(name, index)]
+
+	if w.beforeSelectPersist != nil {
+		w.beforeSelectPersist()
+	}
+	// Persist BEFORE the in-memory transition: either both commit, or the call
+	// fails here and the signer never changes. (The reverse order could report
+	// success while leaving ActiveAccount stale on disk.)
+	if err := w.config.updateSettings(func(s *Settings) error {
+		s.ActiveAccount = index
+		return nil
+	}); err != nil {
+		return AccountInfo{}, fmt.Errorf("cannot persist the account selection: %w", err)
 	}
 
 	w.mu.Lock()
 	if w.keystore == nil {
+		// Defensive only: Lock/Unlock serialize on selMu, so the session cannot
+		// change mid-operation.
 		w.mu.Unlock()
 		return AccountInfo{}, errLocked
 	}
@@ -499,15 +513,6 @@ func (w *WalletService) SelectAccount(index int) (AccountInfo, error) {
 
 	if changed && onChange != nil {
 		onChange()
-	}
-	if w.beforeSelectPersist != nil {
-		w.beforeSelectPersist()
-	}
-	if persist {
-		_ = w.config.updateSettings(func(s *Settings) error {
-			s.ActiveAccount = index
-			return nil
-		})
 	}
 	return AccountInfo{Index: index, Address: addr.String(), Label: label}, nil
 }

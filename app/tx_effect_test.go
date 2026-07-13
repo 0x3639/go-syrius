@@ -242,3 +242,37 @@ func mustBig(t *testing.T, s string) *big.Int {
 	}
 	return n
 }
+
+// TestDecodeProposeEnvelope: proposal metadata rendered in the confirmation
+// must come from the exact held ProposeAction template (round-3 review P2).
+func TestDecodeProposeEnvelope(t *testing.T) {
+	gov := embedded.NewGovernanceApi(nil)
+	payload, err := buildProposalPayloadWith(gov, "bridge.changeAdministrator", map[string]string{"administrator": effAddr1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := gov.ProposeAction("Rotate admin", "hand over to the new multisig", "https://forum.zenon.org/t/1", payload.Destination, payload.Data)
+
+	env, err := decodeProposeEnvelope(tmpl.Data)
+	if err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if env.Name != "Rotate admin" || env.Description != "hand over to the new multisig" || env.Url != "https://forum.zenon.org/t/1" {
+		t.Fatalf("metadata not decoded from the template: %+v", env)
+	}
+	if env.Destination != payload.Destination || env.Data != payload.Data {
+		t.Fatalf("wrapped destination/data mismatch: %+v", env)
+	}
+
+	// A non-ProposeAction call must be refused…
+	exec := gov.ExecuteAction(types.HexToHashPanic(effHash))
+	if _, err := decodeProposeEnvelope(exec.Data); err == nil {
+		t.Fatal("ExecuteAction data must not decode as a proposal envelope")
+	}
+	// …as must tampered bytes (flip one byte past the selector).
+	tampered := append([]byte(nil), tmpl.Data...)
+	tampered[len(tampered)-1] ^= 0xff
+	if _, err := decodeProposeEnvelope(tampered); err == nil {
+		t.Fatal("tampered envelope must fail closed")
+	}
+}

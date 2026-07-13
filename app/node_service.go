@@ -69,10 +69,13 @@ func newNodeService(c *ConfigService, w *WalletService) *NodeService {
 	return n
 }
 
-// SetNode connects to url, verifies reachability, and starts the momentum
+// setNode connects to url, verifies reachability, and starts the momentum
 // subscription that drives status/height events. URL persistence belongs to
-// SetNodeMode/SetNodeURL; SetNode is a pure connect.
-func (n *NodeService) SetNode(url string) error {
+// SetNodeMode/SetNodeURL; setNode is the raw connector. It is UNEXPORTED on
+// purpose: it must only run inside opMu-protected transitions — a direct
+// WebView call could otherwise win the connection generation and pair the
+// persisted/displayed mode with an arbitrary endpoint.
+func (n *NodeService) setNode(url string) error {
 	n.mu.Lock()
 	n.disconnectLocked()
 	gen := n.connGen
@@ -343,7 +346,7 @@ func (n *NodeService) SetNodeMode(mode string) error {
 	if mode == "embedded" {
 		return n.startEmbedded()
 	}
-	return n.SetNode(target)
+	return n.setNode(target)
 }
 
 // startEmbedded starts the embedded node, connects to it, and starts the sync
@@ -369,7 +372,7 @@ func (n *NodeService) startEmbedded() error {
 	n.mu.Lock()
 	n.embedded = h
 	n.mu.Unlock()
-	if cerr := n.SetNode(h.WSURL()); cerr != nil {
+	if cerr := n.setNode(h.WSURL()); cerr != nil {
 		n.stopEmbedded() // tear down the just-started node so Retry can start fresh
 		return cerr
 	}
@@ -407,7 +410,7 @@ func (n *NodeService) SetNodeURL(mode, url string) error {
 		return err
 	}
 	if mode == activeMode {
-		return n.SetNode(url)
+		return n.setNode(url)
 	}
 	return nil
 }
@@ -527,7 +530,7 @@ func (n *NodeService) Connect() error {
 	if s.NodeMode == "embedded" {
 		return n.startEmbedded()
 	}
-	return n.SetNode(s.ActiveNodeURL())
+	return n.setNode(s.ActiveNodeURL())
 }
 
 // GetNodeConfig returns the node mode and per-mode URLs for the settings UI.

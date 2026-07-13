@@ -682,11 +682,22 @@ func TestUnlockSerializesWithSelection(t *testing.T) {
 func TestSelectAccountFailsWhenPersistenceFails(t *testing.T) {
 	w := newTestWalletService(t)
 	unlockTestWallet(t, w)
-	dir := os.Getenv("GO_SYRIUS_DATA_DIR")
-	if err := os.Chmod(dir, 0o500); err != nil {
+
+	// Break persistence portably: redirect the data dir to a child of a regular
+	// FILE right before the persist step, so MkdirAll fails on every platform.
+	// (Unix directory permissions don't translate to Windows, where a read-only
+	// directory attribute does not prevent creating child files.) The hook runs
+	// on this goroutine, inside the selection operation, AFTER validation read
+	// the real settings — the failure is therefore specifically the persist.
+	goodDir := os.Getenv("GO_SYRIUS_DATA_DIR")
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("not a directory"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	w.beforeSelectPersist = func() {
+		os.Setenv("GO_SYRIUS_DATA_DIR", filepath.Join(blocker, "child"))
+	}
+	t.Cleanup(func() { os.Setenv("GO_SYRIUS_DATA_DIR", goodDir) })
 
 	genBefore := w.sessionGen()
 	if _, err := w.SelectAccount(1); err == nil {

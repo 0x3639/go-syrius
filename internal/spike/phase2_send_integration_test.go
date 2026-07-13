@@ -155,24 +155,27 @@ func buildApp(t *testing.T, env testEnv, accountIndex int) (*app.App, *rpc_clien
 	a := app.New()
 
 	// Import the keystore into the app's wallets dir under the temp data dir,
-	// then unlock it through the real WalletService.
-	meta, err := a.Wallet.ImportKeystore(env.keystorePath)
+	// then unlock it through the real WalletService. Unlock is keyed by the
+	// wallet ID (the uuid keystore filename the import assigned).
+	meta, err := a.Wallet.ImportKeystore(env.keystorePath, "")
 	if err != nil {
 		t.Fatalf("Wallet.ImportKeystore(%q): %v", env.keystorePath, err)
 	}
-	if err := a.Wallet.Unlock(meta.Name, env.password); err != nil {
-		t.Fatalf("Wallet.Unlock(%q): %v", meta.Name, err)
+	if err := a.Wallet.Unlock(meta.ID, env.password); err != nil {
+		t.Fatalf("Wallet.Unlock(%q): %v", meta.ID, err)
 	}
 	if accountIndex != 0 {
-		if err := a.Wallet.SelectAccount(accountIndex); err != nil {
+		if _, err := a.Wallet.SelectAccount(accountIndex); err != nil {
 			t.Fatalf("Wallet.SelectAccount(%d): %v", accountIndex, err)
 		}
 	}
 
-	// Connect the NodeService to the testnet (this also persists the URL and
-	// starts the momentum subscription, exactly as the running app does).
-	if err := a.Node.SetNode(env.url); err != nil {
-		t.Fatalf("Node.SetNode(%q): %v", env.url, err)
+	// Connect the NodeService through the serialized transition path, exactly
+	// as the running app does: persist the remote URL (the default mode), which
+	// reconnects and starts the momentum subscription. The raw connector is
+	// intentionally not exported.
+	if err := a.Node.SetNodeURL("remote", env.url); err != nil {
+		t.Fatalf("Node.SetNodeURL(remote, %q): %v", env.url, err)
 	}
 
 	client, err := rpc_client.NewRpcClient(env.url)
@@ -262,15 +265,17 @@ func TestPhase2SendReceive(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Tx.PrepareSend: %v", err)
 		}
-		t.Logf("prepared: to=%s amount=%s hash=%s needsPoW=%v difficulty=%d usedPlasma=%d",
-			preview.ToAddress, preview.Amount, preview.Hash, preview.NeedsPoW, preview.Difficulty, preview.UsedPlasma)
+		// PoW/hashing is deferred to ConfirmPublish, so the preview carries the
+		// approved effect + hold identity, not a hash.
+		t.Logf("prepared: from=%s to=%s amount=%s needsPoW=%v holdId=%d",
+			preview.FromAddress, preview.ToAddress, preview.Amount, preview.NeedsPoW, preview.HoldID)
 
-		hash, err := a.Tx.ConfirmPublish()
+		hash, err := a.Tx.ConfirmPublish(preview.HoldID)
 		if err != nil {
 			t.Fatalf("Tx.ConfirmPublish: %v", err)
 		}
-		if hash != preview.Hash {
-			t.Fatalf("published hash %s != prepared hash %s (confirm-what-you-sign violation)", hash, preview.Hash)
+		if hash == "" {
+			t.Fatal("ConfirmPublish returned an empty hash")
 		}
 		pollConfirmed(t, client, hashOf(t, hash))
 	})
@@ -332,23 +337,31 @@ func TestPhase2SendReceive(t *testing.T) {
 			}
 			t.Fatalf("Tx.PrepareSend (PoW path): %v", err)
 		}
-		if preview.Difficulty == 0 || !preview.NeedsPoW {
-			t.Fatalf("expected a PoW block (Difficulty>0, NeedsPoW=true), got difficulty=%d needsPoW=%v",
-				preview.Difficulty, preview.NeedsPoW)
+		// PoW is deferred to ConfirmPublish; at prepare time only NeedsPoW is
+		// known. The on-chain Difficulty is asserted after confirmation below.
+		if !preview.NeedsPoW {
+			t.Fatalf("expected a PoW block (NeedsPoW=true), got needsPoW=%v", preview.NeedsPoW)
 		}
-		t.Logf("PoW block prepared: difficulty=%d hash=%s", preview.Difficulty, preview.Hash)
+		t.Logf("PoW block prepared: holdId=%d", preview.HoldID)
 
-		hash, err := a.Tx.ConfirmPublish()
+		hash, err := a.Tx.ConfirmPublish(preview.HoldID)
 		if err != nil {
-			// The block already proved PoW (Difficulty>0) at prepare time; if the
-			// account simply lacks ZNN to spend, skip rather than fail. The
+			// If the account simply lacks ZNN to spend, skip rather than fail. The
 			// canonical on-chain PoW proof is TestGate2PoWReceive, which self-funds.
 			if isNoFundsErr(err) {
-				t.Skipf("PoW account index %d has no spendable ZNN (PoW already proven at prepare): %v", env.powIndex, err)
+				t.Skipf("PoW account index %d has no spendable ZNN: %v", env.powIndex, err)
 			}
 			t.Fatalf("Tx.ConfirmPublish (PoW path): %v", err)
 		}
 		pollConfirmed(t, client, hashOf(t, hash))
+		// The published block must genuinely carry PoW.
+		got, err := client.LedgerApi.GetAccountBlockByHash(hashOf(t, hash))
+		if err != nil {
+			t.Fatalf("GetAccountBlockByHash(%s): %v", hash, err)
+		}
+		if got == nil || got.Difficulty == 0 {
+			t.Fatalf("published block must carry Difficulty>0 (PoW), got %+v", got)
+		}
 	})
 }
 

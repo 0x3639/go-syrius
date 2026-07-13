@@ -35,9 +35,9 @@ func TestGate2PoWReceive(t *testing.T) {
 		if err != nil {
 			t.Fatalf("fund PrepareSend: %v", err)
 		}
-		t.Logf("funding index1: to=%s amount=%s hash=%s needsPoW=%v",
-			preview.ToAddress, preview.Amount, preview.Hash, preview.NeedsPoW)
-		hash, err := a.Tx.ConfirmPublish()
+		t.Logf("funding index1: to=%s amount=%s needsPoW=%v holdId=%d",
+			preview.ToAddress, preview.Amount, preview.NeedsPoW, preview.HoldID)
+		hash, err := a.Tx.ConfirmPublish(preview.HoldID)
 		if err != nil {
 			t.Fatalf("fund ConfirmPublish: %v", err)
 		}

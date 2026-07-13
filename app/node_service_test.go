@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/0x3639/znn-sdk-go/rpc_client"
 	"github.com/zenon-network/go-zenon/chain/nom"
 	"github.com/zenon-network/go-zenon/common/types"
 	api "github.com/zenon-network/go-zenon/rpc/api"
@@ -335,5 +336,71 @@ func TestGetTransactionsRejectsNegativePaging(t *testing.T) {
 		t.Fatal("negative count must be rejected")
 	} else if !strings.Contains(err.Error(), "non-negative") {
 		t.Fatalf("negative count must be rejected with a non-negative message, got %v", err)
+	}
+}
+
+func TestSupersededDialDoesNotInstall(t *testing.T) {
+	n := newTestNode(t)
+	// First connect intent captures its generation (as SetNode does).
+	n.mu.Lock()
+	n.disconnectLocked()
+	gen := n.connGen
+	n.mu.Unlock()
+
+	// A newer intent (SetNode/Disconnect) arrives while the first dial is slow.
+	n.mu.Lock()
+	n.disconnectLocked()
+	cur := n.connGen
+	n.mu.Unlock()
+
+	if n.installConnection(&rpc_client.RpcClient{}, "ws://stale", 1, 3, gen) {
+		t.Fatal("a superseded dial must not install its client over the newer one")
+	}
+	if n.currentClient() != nil {
+		t.Fatal("the stale install must leave no client behind")
+	}
+
+	// The latest intent still installs normally.
+	fresh := &rpc_client.RpcClient{}
+	if !n.installConnection(fresh, "ws://fresh", 9, 3, cur) {
+		t.Fatal("the current dial must install")
+	}
+	if n.currentClient() != fresh {
+		t.Fatal("expected the fresh client to be installed")
+	}
+	if n.currentChainID() != 3 {
+		t.Fatalf("chainID not installed, got %d", n.currentChainID())
+	}
+}
+
+func TestDisconnectInvalidatesInFlightDial(t *testing.T) {
+	n := newTestNode(t)
+	n.mu.Lock()
+	n.disconnectLocked()
+	gen := n.connGen
+	n.mu.Unlock()
+
+	if err := n.Disconnect(); err != nil {
+		t.Fatalf("Disconnect: %v", err)
+	}
+	if n.installConnection(&rpc_client.RpcClient{}, "ws://late", 1, 3, gen) {
+		t.Fatal("a dial that loses to an explicit Disconnect must not install")
+	}
+}
+
+func TestStartMomentumLoopSupersededIsNoop(t *testing.T) {
+	n := newTestNode(t)
+	n.mu.Lock()
+	n.disconnectLocked()
+	gen := n.connGen
+	n.disconnectLocked() // superseded before the loop starts
+	n.mu.Unlock()
+	if err := n.startMomentumLoop(gen); err != nil {
+		t.Fatalf("a superseded loop start must be a silent no-op, got %v", err)
+	}
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	if n.stop != nil {
+		t.Fatal("a superseded loop must not install a stop channel")
 	}
 }

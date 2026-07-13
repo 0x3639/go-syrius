@@ -38,6 +38,12 @@ type NodeService struct {
 	height  uint64
 	chainID uint64
 	stop    chan struct{}
+	// connGen identifies the latest connection intent. Every disconnect (and thus
+	// every SetNode/Connect/Disconnect) bumps it; a dial that finishes late must
+	// find its captured gen still current or it may not install — otherwise two
+	// overlapping connects could leave the wallet on whichever endpoint finished
+	// LAST rather than the one selected last, leaking the loser's client.
+	connGen uint64
 
 	receiveFn func(fromHash string) (string, error)
 	autoStop  chan struct{}
@@ -61,49 +67,87 @@ func newNodeService(c *ConfigService, w *WalletService) *NodeService {
 func (n *NodeService) SetNode(url string) error {
 	n.mu.Lock()
 	n.disconnectLocked()
+	gen := n.connGen
 	n.mu.Unlock()
+
+	// stillCurrent reports whether this call still owns the connection intent.
+	// A dial can take seconds; if a newer SetNode/Disconnect ran meanwhile, this
+	// call must neither install its client nor emit status over the newer one's.
+	stillCurrent := func() bool {
+		n.mu.RLock()
+		defer n.mu.RUnlock()
+		return n.connGen == gen
+	}
 
 	client, err := rpc_client.NewRpcClient(url)
 	if err != nil {
-		n.emitStatus(false)
+		if stillCurrent() {
+			n.emitStatus(false)
+		}
 		return fmt.Errorf("connect: %w", err)
 	}
 	m, err := client.LedgerApi.GetFrontierMomentum()
 	if err != nil {
 		client.Stop()
-		n.emitStatus(false)
+		if stillCurrent() {
+			n.emitStatus(false)
+		}
 		return fmt.Errorf("node unreachable: %w", err)
 	}
 
-	n.mu.Lock()
-	n.client = client
-	n.url = url
-	n.height = m.Height
-	n.chainID = m.ChainIdentifier
-	n.mu.Unlock()
+	if !n.installConnection(client, url, m.Height, m.ChainIdentifier, gen) {
+		client.Stop()
+		return errors.New("connection attempt superseded by a newer request")
+	}
 
 	n.emitStatus(true)
 
-	if err := n.startMomentumLoop(); err != nil {
+	if err := n.startMomentumLoop(gen); err != nil {
 		// Subscription failed: disconnect so we don't appear connected when no
-		// ticks will ever fire.
+		// ticks will ever fire — but only if we still own the connection.
 		n.mu.Lock()
-		n.disconnectLocked()
+		if n.connGen == gen {
+			n.disconnectLocked()
+		}
 		n.mu.Unlock()
-		n.emitStatus(false)
+		if stillCurrent() {
+			n.emitStatus(false)
+		}
 		return fmt.Errorf("subscribe to momentums: %w", err)
 	}
 	return nil
 }
 
+// installConnection publishes a successfully dialed client as the current
+// connection iff gen is still the latest connection intent. Returns false when
+// superseded — the caller must Stop the orphaned client.
+func (n *NodeService) installConnection(client *rpc_client.RpcClient, url string, height, chainID, gen uint64) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.connGen != gen {
+		return false
+	}
+	n.client = client
+	n.url = url
+	n.height = height
+	n.chainID = chainID
+	return true
+}
+
 // startMomentumLoop starts the subscription goroutine and returns an error if
-// the subscription cannot be established. The caller must NOT hold n.mu.
-func (n *NodeService) startMomentumLoop() error {
+// the subscription cannot be established. gen must be the connection intent the
+// caller installed under; a superseded loop unsubscribes itself instead of
+// racing the newer connection's loop. The caller must NOT hold n.mu.
+func (n *NodeService) startMomentumLoop(gen uint64) error {
 	n.mu.RLock()
 	client := n.client
 	subCtx := n.ctx
+	current := n.connGen == gen
 	n.mu.RUnlock()
 
+	if !current || client == nil {
+		return nil // superseded; the newer connection owns the loop
+	}
 	if subCtx == nil {
 		subCtx = context.Background()
 	}
@@ -114,6 +158,11 @@ func (n *NodeService) startMomentumLoop() error {
 	}
 
 	n.mu.Lock()
+	if n.connGen != gen {
+		n.mu.Unlock()
+		sub.Unsubscribe()
+		return nil // superseded while subscribing
+	}
 	n.stop = make(chan struct{})
 	stop := n.stop
 	n.mu.Unlock()
@@ -124,7 +173,12 @@ func (n *NodeService) startMomentumLoop() error {
 			select {
 			case <-stop:
 				return
-			case ms := <-ch:
+			case ms, ok := <-ch:
+				if !ok {
+					// Unexpected channel closure (connection died): exit instead of
+					// spinning on a closed channel.
+					return
+				}
 				n.mu.Lock()
 				for _, m := range ms {
 					if m.Height > n.height {
@@ -148,6 +202,9 @@ func (n *NodeService) startMomentumLoop() error {
 // disconnectLocked tears down client and stop channel.
 // Callers MUST hold n.mu (write lock) before calling this.
 func (n *NodeService) disconnectLocked() {
+	// Any teardown is a new connection intent: an in-flight dial captured under
+	// the previous gen must not install its client afterwards.
+	n.connGen++
 	if n.stop != nil {
 		close(n.stop)
 		n.stop = nil
@@ -538,6 +595,10 @@ func (n *NodeService) StartAutoReceive() error {
 	}
 	go func() {
 		defer sub.Unsubscribe()
+		// Release the running slot on ANY exit — including an unexpected channel
+		// closure — so a later StartAutoReceive can restart instead of seeing a
+		// phantom "already running". No-op when StopAutoReceive already cleared it.
+		defer releaseSlot()
 		// Drain whatever is already pending (the subscription only delivers NEW
 		// blocks). Then re-drain on every new-block signal.
 		n.sweepUnreceived(client, addr, stop)
@@ -545,7 +606,12 @@ func (n *NodeService) StartAutoReceive() error {
 			select {
 			case <-stop:
 				return
-			case <-ch:
+			case _, ok := <-ch:
+				if !ok {
+					// Unexpected channel closure (connection died): exit instead of
+					// spinning on a closed channel.
+					return
+				}
 				n.sweepUnreceived(client, addr, stop)
 			}
 		}

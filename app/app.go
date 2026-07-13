@@ -23,7 +23,7 @@ func New() *App {
 	t := newTxService(cfg, w, n)
 	nom := newNomService(n, w, t)
 	n.setReceiveFunc(t.Receive)
-	w.setOnLock(t.clearPending)
+	w.setOnSessionChange(t.clearPending)
 	return &App{Config: cfg, Wallet: w, Node: n, Tx: t, Nom: nom}
 }
 

@@ -432,3 +432,63 @@ func TestSelectAccountRejectsUnrevealedIndex(t *testing.T) {
 		t.Fatalf("SelectAccount(%d) should succeed after AddAccount: %v", accountRange, err)
 	}
 }
+
+func TestSelectAccountBumpsSessionGen(t *testing.T) {
+	w := newTestWalletService(t)
+	unlockTestWallet(t, w)
+	gen := w.sessionGen()
+	if err := w.SelectAccount(1); err != nil {
+		t.Fatalf("SelectAccount: %v", err)
+	}
+	if w.sessionGen() == gen {
+		t.Fatal("switching accounts must bump the session generation (invalidates pending tx)")
+	}
+	gen = w.sessionGen()
+	if err := w.SelectAccount(1); err != nil {
+		t.Fatalf("SelectAccount: %v", err)
+	}
+	if w.sessionGen() != gen {
+		t.Fatal("re-selecting the already-active account must not bump the generation")
+	}
+}
+
+func TestSelectAccountInvokesSessionChange(t *testing.T) {
+	w := newTestWalletService(t)
+	unlockTestWallet(t, w)
+	calls := 0
+	w.setOnSessionChange(func() { calls++ })
+	if err := w.SelectAccount(2); err != nil {
+		t.Fatalf("SelectAccount: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("account switch must fire the session-change callback once, got %d", calls)
+	}
+	if err := w.SelectAccount(2); err != nil {
+		t.Fatalf("SelectAccount: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("same-index select must not fire the callback, got %d", calls)
+	}
+}
+
+func TestUnlockZeroesPriorKeystore(t *testing.T) {
+	w := newTestWalletService(t)
+	m, err := w.GenerateMnemonic()
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := w.ImportMnemonic("zero", "pw", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Unlock(meta.ID, "pw"); err != nil {
+		t.Fatal(err)
+	}
+	prior := w.keystore
+	if err := w.Unlock(meta.ID, "pw"); err != nil {
+		t.Fatal(err)
+	}
+	if prior.Mnemonic != "" || prior.Seed != nil || prior.Entropy != nil {
+		t.Fatal("re-unlock must zero the previously decrypted keystore, not abandon it to the GC")
+	}
+}

@@ -51,14 +51,18 @@ type WalletService struct {
 	keystore     *wallet.KeyStore // nil when locked
 	active       int
 	activeWallet string // name of the unlocked keystore; "" when locked
-	gen          uint64 // session generation, bumped on each Unlock and Lock
+	gen          uint64 // session generation, bumped on Unlock, Lock, and account switch
 
-	onLock func() // optional callback invoked on Lock (e.g. clear pending tx)
+	// onSessionChange is invoked whenever the signing session changes — Lock and
+	// account switch (e.g. clear the pending tx so it can't be signed by the
+	// wrong key).
+	onSessionChange func()
 }
 
-// setOnLock wires a callback invoked when the wallet is locked, mirroring the
-// NodeService.setReceiveFunc pattern to avoid a hard WalletService→TxService dep.
-func (w *WalletService) setOnLock(fn func()) { w.onLock = fn }
+// setOnSessionChange wires a callback invoked on Lock and account switch,
+// mirroring the NodeService.setReceiveFunc pattern to avoid a hard
+// WalletService→TxService dep.
+func (w *WalletService) setOnSessionChange(fn func()) { w.onSessionChange = fn }
 
 func newWalletService(c *ConfigService) *WalletService {
 	return &WalletService{config: c}
@@ -296,6 +300,11 @@ func (w *WalletService) Unlock(name, password string) error {
 		return errors.New("incorrect password")
 	}
 	w.mu.Lock()
+	if w.keystore != nil {
+		// Unlocking over an already-unlocked wallet: zero the prior decrypted
+		// seed instead of leaving it for the GC (minimize decrypted-seed lifetime).
+		w.keystore.Zero()
+	}
 	w.keystore = ks
 	w.active = 0
 	w.activeWallet = name
@@ -348,11 +357,11 @@ func (w *WalletService) Lock() error {
 	}
 	w.activeWallet = ""
 	w.gen++
-	onLock := w.onLock
+	onChange := w.onSessionChange
 	w.mu.Unlock()
 
-	if onLock != nil {
-		onLock()
+	if onChange != nil {
+		onChange()
 	}
 	if w.ctx != nil {
 		runtime.EventsEmit(w.ctx, EventWalletLocked)
@@ -440,12 +449,26 @@ func (w *WalletService) SelectAccount(index int) error {
 		w.mu.Unlock()
 		return errLocked
 	}
+	changed := w.active != index
 	w.active = index
+	if changed {
+		// An account switch is a session change: a transaction prepared under the
+		// previous account must never be finalized with this account's key (the SDK
+		// stamps the block sender from the CURRENT keypair at publish time), so the
+		// generation bump makes ConfirmPublish refuse any pending hold.
+		w.gen++
+	}
+	onChange := w.onSessionChange
 	w.mu.Unlock()
 
+	if changed && onChange != nil {
+		onChange()
+	}
 	if persist {
-		s.ActiveAccount = index
-		_ = w.config.SetSettings(s)
+		_ = w.config.updateSettings(func(s *Settings) error {
+			s.ActiveAccount = index
+			return nil
+		})
 	}
 	return nil
 }
@@ -461,15 +484,13 @@ func (w *WalletService) SetAccountLabel(index int, label string) error {
 	if name == "" {
 		return errLocked
 	}
-	s, err := w.config.GetSettings()
-	if err != nil {
-		return err
-	}
-	if s.AccountLabels == nil {
-		s.AccountLabels = map[string]string{}
-	}
-	s.AccountLabels[labelKey(name, index)] = label
-	return w.config.SetSettings(s)
+	return w.config.updateSettings(func(s *Settings) error {
+		if s.AccountLabels == nil {
+			s.AccountLabels = map[string]string{}
+		}
+		s.AccountLabels[labelKey(name, index)] = label
+		return nil
+	})
 }
 
 // AddAccount reveals one more account (derivation index) for the active wallet
@@ -483,19 +504,17 @@ func (w *WalletService) AddAccount() ([]AccountInfo, error) {
 	if locked || name == "" {
 		return nil, errLocked
 	}
-	s, err := w.config.GetSettings()
-	if err != nil {
-		return nil, err
-	}
-	cur := accountCountFor(s, name)
-	if cur >= maxAccounts {
-		return nil, fmt.Errorf("maximum of %d accounts reached", maxAccounts)
-	}
-	if s.AccountCounts == nil {
-		s.AccountCounts = map[string]int{}
-	}
-	s.AccountCounts[name] = cur + 1
-	if err := w.config.SetSettings(s); err != nil {
+	if err := w.config.updateSettings(func(s *Settings) error {
+		cur := accountCountFor(*s, name)
+		if cur >= maxAccounts {
+			return fmt.Errorf("maximum of %d accounts reached", maxAccounts)
+		}
+		if s.AccountCounts == nil {
+			s.AccountCounts = map[string]int{}
+		}
+		s.AccountCounts[name] = cur + 1
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	return w.CurrentAccounts()
@@ -559,10 +578,7 @@ func (w *WalletService) RevealMnemonic(password string) (string, error) {
 	w.mu.Lock()
 	locked := w.keystore == nil
 	name := w.activeWallet
-	mnemonic := ""
-	if w.keystore != nil {
-		mnemonic = w.keystore.Mnemonic
-	}
+	gen := w.gen
 	w.mu.Unlock()
 	if locked {
 		return "", errLocked
@@ -580,7 +596,16 @@ func (w *WalletService) RevealMnemonic(password string) (string, error) {
 		return "", errors.New("incorrect password")
 	}
 	ks.Zero()
-	return mnemonic, nil
+	// The KDF above takes noticeable time. Re-check the session under the lock:
+	// if the wallet was locked or switched meanwhile, no secret may cross the
+	// binding — and the mnemonic returned is read from the CURRENT keystore, so
+	// it can never be a stale capture from a superseded session.
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.keystore == nil || w.gen != gen {
+		return "", errors.New("wallet state changed; not revealing")
+	}
+	return w.keystore.Mnemonic, nil
 }
 
 func copyFile(src, dst string) error {

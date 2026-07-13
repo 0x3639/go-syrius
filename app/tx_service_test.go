@@ -239,7 +239,7 @@ func TestConfirmPublishRejectsWhenLocked(t *testing.T) {
 func TestLockClearsPending(t *testing.T) {
 	tx := newTestTxService(t)
 	// Wire the App-style callback so locking the wallet clears the held block.
-	tx.wallet.setOnLock(tx.clearPending)
+	tx.wallet.setOnSessionChange(tx.clearPending)
 	tx.pending = &nom.AccountBlock{
 		ToAddress:     types.ParseAddressPanic("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"),
 		Amount:        big.NewInt(1),
@@ -293,13 +293,8 @@ func TestConfiguredChainID(t *testing.T) {
 		t.Fatalf("unset ChainID should normalize to mainnet (%d), got %d", mainnetChainID, got)
 	}
 	// A configured non-mainnet chain id must be returned verbatim.
-	s, err := tx.config.GetSettings()
-	if err != nil {
-		t.Fatalf("GetSettings: %v", err)
-	}
-	s.ChainID = 73404
-	if err := tx.config.SetSettings(s); err != nil {
-		t.Fatalf("SetSettings: %v", err)
+	if err := tx.config.SetChainID(73404); err != nil {
+		t.Fatalf("SetChainID: %v", err)
 	}
 	if got := tx.configuredChainID(); got != 73404 {
 		t.Fatalf("configured ChainID 73404 should be returned, got %d", got)
@@ -311,13 +306,8 @@ func TestConfiguredChainID(t *testing.T) {
 // done at each of the three block-building sites before PrepareBlock/Send.
 func TestConfiguredChainIDStampsTemplate(t *testing.T) {
 	tx := newTestTxService(t)
-	s, err := tx.config.GetSettings()
-	if err != nil {
-		t.Fatalf("GetSettings: %v", err)
-	}
-	s.ChainID = 73404
-	if err := tx.config.SetSettings(s); err != nil {
-		t.Fatalf("SetSettings: %v", err)
+	if err := tx.config.SetChainID(73404); err != nil {
+		t.Fatalf("SetChainID: %v", err)
 	}
 	// Mirror the stamping step performed at every build site.
 	template := &nom.AccountBlock{
@@ -360,10 +350,8 @@ func TestReceiveRejectsChainMismatch(t *testing.T) {
 	tx.node.client = &rpc_client.RpcClient{}
 	tx.node.chainID = 12 // connected chain
 	// Configure a different non-mainnet chain id: guard passes, chain check fails.
-	s, _ := tx.config.GetSettings()
-	s.ChainID = 3
-	if err := tx.config.SetSettings(s); err != nil {
-		t.Fatalf("SetSettings: %v", err)
+	if err := tx.config.SetChainID(3); err != nil {
+		t.Fatalf("SetChainID: %v", err)
 	}
 	_, err := tx.Receive(zeroHash)
 	if err == nil {

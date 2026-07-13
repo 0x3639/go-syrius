@@ -1,6 +1,6 @@
 module github.com/0x3639/go-syrius
 
-go 1.25.11
+go 1.25.12
 
 require (
 	github.com/0x3639/znn-sdk-go v0.1.20-0.20260628114538-fb41ea138645

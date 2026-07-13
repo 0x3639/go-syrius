@@ -56,6 +56,21 @@ jobs:
           go install github.com/securego/gosec/v2/cmd/gosec@v2.27.1
           gosec -conf .gosec.json ./...
 
+  # Race detector on Linux (needs cgo + runtime/race, which the release
+  # toolchain ships there). The wallet has real concurrency — settings writers,
+  # node reconnects, publish vs auto-receive — so -race gates regressions the
+  # plain test job can't see.
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Stub frontend/dist for //go:embed
+        run: mkdir -p frontend/dist && touch frontend/dist/index.html
+      - run: go test -race ./...
+
   build-test:
     strategy:
       fail-fast: false

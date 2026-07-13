@@ -155,34 +155,36 @@ type SendRequest struct {
 	Amount    string `json:"amount"` // base-unit decimal string
 }
 
-// SendPreview is rendered from the built, signed block before broadcast.
+// SendPreview is rendered from the held template before broadcast.
 type SendPreview struct {
-	ToAddress  string `json:"toAddress"`
-	Symbol     string `json:"symbol"`
-	Zts        string `json:"zts"`
-	Amount     string `json:"amount"`
-	Decimals   int    `json:"decimals"`
-	UsedPlasma uint64 `json:"usedPlasma"`
-	Difficulty uint64 `json:"difficulty"`
-	Hash       string `json:"hash"`
-	NeedsPoW   bool   `json:"needsPoW"`
-	HoldID     uint64 `json:"holdId"` // identity of the backend hold; lets a cancel target exactly this block
+	FromAddress string `json:"fromAddress"` // the account that will sign and send
+	ToAddress   string `json:"toAddress"`
+	Symbol      string `json:"symbol"`
+	Zts         string `json:"zts"`
+	Amount      string `json:"amount"`
+	Decimals    int    `json:"decimals"`
+	UsedPlasma  uint64 `json:"usedPlasma"`
+	Difficulty  uint64 `json:"difficulty"`
+	Hash        string `json:"hash"`
+	NeedsPoW    bool   `json:"needsPoW"`
+	HoldID      uint64 `json:"holdId"` // identity of the backend hold; lets a cancel target exactly this block
 }
 
 // CallPreview is the confirm-what-you-sign preview for an embedded-contract call,
 // rendered from the built, signed block plus a human action summary.
 type CallPreview struct {
-	ToAddress  string `json:"toAddress"`
-	Zts        string `json:"zts"`
-	Symbol     string `json:"symbol"`
-	Amount     string `json:"amount"`
-	Decimals   int    `json:"decimals"`
-	Hash       string `json:"hash"`
-	Summary    string `json:"summary"`
-	UsedPlasma uint64 `json:"usedPlasma"`
-	Difficulty uint64 `json:"difficulty"`
-	NeedsPoW   bool   `json:"needsPoW"`
-	HoldID     uint64 `json:"holdId"` // identity of the backend hold; lets a cancel target exactly this block
+	FromAddress string `json:"fromAddress"` // the account that will sign and send
+	ToAddress   string `json:"toAddress"`
+	Zts         string `json:"zts"`
+	Symbol      string `json:"symbol"`
+	Amount      string `json:"amount"`
+	Decimals    int    `json:"decimals"`
+	Hash        string `json:"hash"`
+	Summary     string `json:"summary"`
+	UsedPlasma  uint64 `json:"usedPlasma"`
+	Difficulty  uint64 `json:"difficulty"`
+	NeedsPoW    bool   `json:"needsPoW"`
+	HoldID      uint64 `json:"holdId"` // identity of the backend hold; lets a cancel target exactly this block
 }
 
 // PlasmaInfo is the active address's plasma snapshot.
@@ -334,15 +336,15 @@ type ProjectListDTO struct {
 // ActionDTO is one governance action with its current-round vote tally and the
 // per-round thresholds the node computed for it. Reuses VoteBreakdownDTO.
 type ActionDTO struct {
-	Id                    string           `json:"id"`
-	Owner                 string           `json:"owner"`
-	Name                  string           `json:"name"`
-	Description           string           `json:"description"`
-	Url                   string           `json:"url"`
-	Destination           string           `json:"destination"`
-	Data                  string           `json:"data"` // base64 ABI call data
-	Type                  int              `json:"type"` // 1 Spork, 2 Normal
-	Round                 int              `json:"round"`
+	Id          string `json:"id"`
+	Owner       string `json:"owner"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Url         string `json:"url"`
+	Destination string `json:"destination"`
+	Data        string `json:"data"` // base64 ABI call data
+	Type        int    `json:"type"` // 1 Spork, 2 Normal
+	Round       int    `json:"round"`
 	// CurrentVoteId is the votable hash for the action's CURRENT round — the id a
 	// vote must target (it equals Id only in round 0, then ratchets per round).
 	CurrentVoteId         string           `json:"currentVoteId"`
@@ -379,7 +381,7 @@ type ProposeFieldDTO struct {
 
 // ProposeKindDTO is one proposable governance action kind + its input schema.
 type ProposeKindDTO struct {
-	Kind   string            `json:"kind"`  // stable id, e.g. "spork.create"
+	Kind   string            `json:"kind"` // stable id, e.g. "spork.create"
 	Label  string            `json:"label"`
 	Group  string            `json:"group"` // Spork|Bridge|Liquidity|Custom
 	Fields []ProposeFieldDTO `json:"fields"`

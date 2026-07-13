@@ -1,9 +1,11 @@
 package app
 
 import (
+	"errors"
 	"math/big"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/0x3639/znn-sdk-go/rpc_client"
 	"github.com/zenon-network/go-zenon/chain/nom"
@@ -77,15 +79,17 @@ func TestConfirmPublishMatchingHoldIDPassesTheGate(t *testing.T) {
 	tx := newTestTxService(t)
 	unlockTestWallet(t, tx.wallet)
 	tx.node.chainID = 3
+	from, _ := tx.wallet.activeAddress()
 	const addr = "z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"
 	exTo, _ := types.ParseAddress(addr)
 	block := &nom.AccountBlock{
+		Address:         from,
 		ToAddress:       types.ParseAddressPanic(addr),
 		Amount:          big.NewInt(1),
 		TokenStandard:   types.ZnnTokenStandard,
 		ChainIdentifier: 3,
 	}
-	id := tx.holdPending(block, callExpect{to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}, tx.wallet.sessionGen())
+	id := tx.holdPending(block, callExpect{from: from, to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}, tx.wallet.sessionGen())
 	// Offline test: the confirm must get PAST the identity gate and fail later
 	// on the missing node connection — a gate regression that refuses valid
 	// matching ids (bricking every real publish) fails here.
@@ -186,15 +190,17 @@ func TestConfirmPublishRejectsChainMismatch(t *testing.T) {
 	// Two distinct non-mainnet chain ids: the block was prepared on one, but the
 	// node is now connected to another. Guard passes (neither is mainnet).
 	tx.node.chainID = 12
+	from, _ := tx.wallet.activeAddress()
 	const addr = "z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"
 	tx.pending = &nom.AccountBlock{
+		Address:         from,
 		ToAddress:       types.ParseAddressPanic(addr),
 		Amount:          big.NewInt(1),
 		TokenStandard:   types.ZnnTokenStandard,
 		ChainIdentifier: 3, // testnet id different from the connected node's
 	}
 	exTo, _ := types.ParseAddress(addr)
-	tx.pendingExpect = callExpect{to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}
+	tx.pendingExpect = callExpect{from: from, to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}
 	tx.pendingHoldID = 1
 	_, err := tx.ConfirmPublish(1)
 	if err == nil {
@@ -366,5 +372,102 @@ func TestSymbolFor(t *testing.T) {
 	tx := newTestTxService(t)
 	if tx.symbolFor(types.ZnnTokenStandard.String()) != "ZNN" || tx.symbolFor(types.QsrTokenStandard.String()) != "QSR" {
 		t.Fatal("ZNN/QSR symbols wrong")
+	}
+}
+
+func TestConfirmPublishRejectsAccountSwitch(t *testing.T) {
+	tx := newTestTxService(t)
+	unlockTestWallet(t, tx.wallet)
+	tx.node.chainID = 3
+	from, _ := tx.wallet.activeAddress()
+	const addr = "z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"
+	exTo, _ := types.ParseAddress(addr)
+	id := tx.holdPending(&nom.AccountBlock{
+		Address:         from,
+		ToAddress:       types.ParseAddressPanic(addr),
+		Amount:          big.NewInt(1),
+		TokenStandard:   types.ZnnTokenStandard,
+		ChainIdentifier: 3,
+	}, callExpect{from: from, to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}, tx.wallet.sessionGen())
+
+	// The user switches accounts after reviewing the confirmation. The prepared
+	// block must NOT be signed/published by the new account's key.
+	if err := tx.wallet.SelectAccount(1); err != nil {
+		t.Fatalf("SelectAccount: %v", err)
+	}
+	_, err := tx.ConfirmPublish(id)
+	if err == nil {
+		t.Fatal("expected refusal; an account switch invalidates the pending transaction")
+	}
+	if tx.pending != nil {
+		t.Fatal("pending must be cleared after an account-switch refusal")
+	}
+}
+
+func TestConfirmPublishRejectsSenderMismatch(t *testing.T) {
+	tx := newTestTxService(t)
+	unlockTestWallet(t, tx.wallet)
+	tx.node.chainID = 3
+	// The hold was prepared for a DIFFERENT sender than the active account
+	// (gen unchanged — this exercises the address comparison specifically).
+	other := types.ParseAddressPanic("z1qqjnwjjpnue8xmmpanz6csze6tcmtzzdtfsww7")
+	id := tx.holdPending(&nom.AccountBlock{
+		Address:         other,
+		ToAddress:       other,
+		Amount:          big.NewInt(1),
+		TokenStandard:   types.ZnnTokenStandard,
+		ChainIdentifier: 3,
+	}, callExpect{from: other, to: other, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}, tx.wallet.sessionGen())
+	_, err := tx.ConfirmPublish(id)
+	if err == nil {
+		t.Fatal("expected refusal; the active account is not the approved sender")
+	}
+}
+
+func TestReceiveSerializesWithPublish(t *testing.T) {
+	tx := newTestTxService(t)
+	tx.publishMu.Lock() // simulate an in-flight ConfirmPublish (PoW takes seconds)
+	done := make(chan error, 1)
+	go func() {
+		_, err := tx.Receive(zeroHash)
+		done <- err
+	}()
+	select {
+	case <-done:
+		t.Fatal("Receive must wait for the in-flight publish, not race it on the same frontier")
+	case <-time.After(100 * time.Millisecond):
+	}
+	tx.publishMu.Unlock()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected a downstream (not-connected) error in this offline test")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Receive did not proceed after the publish lock was released")
+	}
+}
+
+func TestConfirmPublishReassertsPolicy(t *testing.T) {
+	tx := newTestTxService(t)
+	unlockTestWallet(t, tx.wallet)
+	tx.node.chainID = 3
+	from, _ := tx.wallet.activeAddress()
+	policyErr := errors.New("governance is testnet-only")
+	id := tx.holdPending(&nom.AccountBlock{
+		Address:       from,
+		ToAddress:     from,
+		Amount:        big.NewInt(0),
+		TokenStandard: types.ZnnTokenStandard,
+	}, callExpect{
+		from: from, to: from, zts: types.ZnnTokenStandard, amount: big.NewInt(0),
+		policy: func() error { return policyErr },
+	}, tx.wallet.sessionGen())
+	_, err := tx.ConfirmPublish(id)
+	if err != policyErr {
+		t.Fatalf("expected the prepare-time policy to be re-asserted at publish, got %v", err)
+	}
+	if tx.pending == nil {
+		t.Fatal("a policy refusal must retain the hold (reconnect + retry, like the mainnet guard)")
 	}
 }

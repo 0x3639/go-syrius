@@ -40,16 +40,24 @@ type TxService struct {
 // callExpect captures the funds-moving effect a prepared block must match before
 // it may be published (confirm-what-you-sign).
 type callExpect struct {
+	from   types.Address // the sender account the preview displayed
 	to     types.Address
 	zts    types.ZenonTokenStandard
 	amount *big.Int
 	data   []byte
+	// policy, when non-nil, re-asserts a prepare-time gate at publish time (e.g.
+	// the governance testnet-only rule). Without it the gate would be checked
+	// only while preparing and could be raced by a chain change before confirm.
+	policy func() error
 }
 
-// assertMatches verifies a built block moves exactly the expected funds and
-// carries the expected contract-call data (Fuse beneficiary / Cancel id).
+// assertMatches verifies a built block is sent by the expected account and
+// moves exactly the expected funds with the expected contract-call data (Fuse
+// beneficiary / Cancel id). The sender check matters because the SDK stamps the
+// block's Address from the CURRENT keypair: without it an account switch could
+// publish a reviewed transaction from a different account.
 func assertMatches(b *nom.AccountBlock, e callExpect) error {
-	if b.ToAddress != e.to || b.TokenStandard != e.zts || b.Amount == nil || e.amount == nil || b.Amount.Cmp(e.amount) != 0 || !bytes.Equal(b.Data, e.data) {
+	if b.Address != e.from || b.ToAddress != e.to || b.TokenStandard != e.zts || b.Amount == nil || e.amount == nil || b.Amount.Cmp(e.amount) != 0 || !bytes.Equal(b.Data, e.data) {
 		return errors.New("prepared block does not match the expected effect; not publishing")
 	}
 	return nil
@@ -152,6 +160,13 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 		return SendPreview{}, err
 	}
 
+	// Capture the sender the preview will display. signingKeyPair has already
+	// asserted the keypair matches this address.
+	from, ok := t.wallet.activeAddress()
+	if !ok {
+		return SendPreview{}, errLocked
+	}
+
 	template := client.LedgerApi.SendTemplate(to, zts, amount, nil)
 	template.ChainIdentifier = t.configuredChainID()
 	// Determine whether PoW is needed (a cheap node query) but DON'T do it yet.
@@ -165,16 +180,17 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 		return SendPreview{}, errors.New("wallet state changed during prepare")
 	}
 
-	holdID := t.holdPending(template, callExpect{to: to, zts: zts, amount: new(big.Int).Set(amount), data: append([]byte(nil), template.Data...)}, gen)
+	holdID := t.holdPending(template, callExpect{from: from, to: to, zts: zts, amount: new(big.Int).Set(amount), data: append([]byte(nil), template.Data...)}, gen)
 
 	return SendPreview{
-		ToAddress: to.String(),
-		Symbol:    t.symbolFor(zts.String()),
-		Zts:       zts.String(),
-		Amount:    amount.String(),
-		Decimals:  resolveDecimals(zts.String(), clientTokenDecimals(client)),
-		NeedsPoW:  needsPoW,
-		HoldID:    holdID,
+		FromAddress: from.String(),
+		ToAddress:   to.String(),
+		Symbol:      t.symbolFor(zts.String()),
+		Zts:         zts.String(),
+		Amount:      amount.String(),
+		Decimals:    resolveDecimals(zts.String(), clientTokenDecimals(client)),
+		NeedsPoW:    needsPoW,
+		HoldID:      holdID,
 		// UsedPlasma / Difficulty / Hash are filled by ConfirmPublish's PoW.
 	}, nil
 }
@@ -221,6 +237,14 @@ func (t *TxService) ConfirmPublish(holdId uint64) (string, error) {
 	if template == nil {
 		return "", errors.New("no pending transaction")
 	}
+	// Re-assert any prepare-time policy gate (e.g. governance testnet-only)
+	// before publishing. Like the mainnet guard: refuse WITHOUT clearing, so the
+	// user can reconnect to the right network and retry.
+	if expect.policy != nil {
+		if err := expect.policy(); err != nil {
+			return "", err
+		}
+	}
 	if holdId == 0 || holdId != holdID {
 		// Held block ≠ the one the confirm dialog displayed (or no identity was
 		// supplied at all — fail closed). Refuse without clearing: the divergence
@@ -229,8 +253,12 @@ func (t *TxService) ConfirmPublish(holdId uint64) (string, error) {
 		return "", errors.New("the pending transaction changed since it was displayed; please review and confirm again")
 	}
 
-	// Refuse if the wallet was locked or its session changed since prepare.
-	if _, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != pendingGen {
+	// Refuse if the wallet was locked, its session changed, or the active
+	// account is no longer the sender the user approved. The session generation
+	// already covers account switches, but the address comparison keeps this
+	// fail-closed even if the two ever diverge — the SDK stamps the block sender
+	// from the CURRENT keypair at signing time.
+	if addr, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != pendingGen || addr != expect.from {
 		t.clearPendingIf(holdID)
 		return "", errors.New("wallet locked or changed; not publishing")
 	}
@@ -270,8 +298,9 @@ func (t *TxService) ConfirmPublish(holdId uint64) (string, error) {
 		t.clearPendingIf(holdID)
 		return "", err
 	}
-	// Re-assert the session after PoW (it took seconds — a lock could have raced).
-	if _, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != pendingGen {
+	// Re-assert the session after PoW (it took seconds — a lock or account
+	// switch could have raced).
+	if addr, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != pendingGen || addr != expect.from {
 		t.clearPendingIf(holdID)
 		return "", errors.New("wallet locked or changed; not publishing")
 	}
@@ -311,6 +340,12 @@ func (t *TxService) prepareCall(template *nom.AccountBlock, expect callExpect, s
 	if err != nil {
 		return CallPreview{}, err
 	}
+	// Capture the sender the preview will display. signingKeyPair has already
+	// asserted the keypair matches this address.
+	from, ok := t.wallet.activeAddress()
+	if !ok {
+		return CallPreview{}, errLocked
+	}
 	template.ChainIdentifier = t.configuredChainID()
 	// PoW is deferred to ConfirmPublish (see PrepareSend); here we only learn
 	// whether it will be needed, then hold the un-PoW'd template.
@@ -321,16 +356,17 @@ func (t *TxService) prepareCall(template *nom.AccountBlock, expect callExpect, s
 	if t.wallet.sessionGen() != gen {
 		return CallPreview{}, errors.New("wallet state changed during prepare")
 	}
-	holdID := t.holdPending(template, callExpect{to: expect.to, zts: expect.zts, amount: new(big.Int).Set(expect.amount), data: append([]byte(nil), expect.data...)}, gen)
+	holdID := t.holdPending(template, callExpect{from: from, to: expect.to, zts: expect.zts, amount: new(big.Int).Set(expect.amount), data: append([]byte(nil), expect.data...), policy: expect.policy}, gen)
 	return CallPreview{
-		ToAddress: template.ToAddress.String(),
-		Zts:       template.TokenStandard.String(),
-		Symbol:    t.symbolFor(template.TokenStandard.String()),
-		Amount:    template.Amount.String(),
-		Decimals:  resolveDecimals(template.TokenStandard.String(), clientTokenDecimals(client)),
-		Summary:   summary,
-		NeedsPoW:  needsPoW,
-		HoldID:    holdID,
+		FromAddress: from.String(),
+		ToAddress:   template.ToAddress.String(),
+		Zts:         template.TokenStandard.String(),
+		Symbol:      t.symbolFor(template.TokenStandard.String()),
+		Amount:      template.Amount.String(),
+		Decimals:    resolveDecimals(template.TokenStandard.String(), clientTokenDecimals(client)),
+		Summary:     summary,
+		NeedsPoW:    needsPoW,
+		HoldID:      holdID,
 		// UsedPlasma / Difficulty / Hash are filled by ConfirmPublish's PoW.
 	}, nil
 }
@@ -341,6 +377,14 @@ func (t *TxService) Receive(fromHash string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid block hash: %w", err)
 	}
+	// A receive is a full account-block publication (build → PoW → sign →
+	// publish) for the SAME account frontier a send uses. Serialize it with
+	// ConfirmPublish under publishMu, or an auto-receive racing a confirmed send
+	// produces sibling blocks on one frontier — the loser is rejected after
+	// potentially expensive PoW. Blocking (not TryLock) is intentional: receives
+	// are queue-driven and can wait for an in-flight publish to finish.
+	t.publishMu.Lock()
+	defer t.publishMu.Unlock()
 	client := t.node.currentClient()
 	if client == nil {
 		return "", errors.New("not connected")

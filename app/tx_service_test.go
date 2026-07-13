@@ -392,7 +392,7 @@ func TestConfirmPublishRejectsAccountSwitch(t *testing.T) {
 
 	// The user switches accounts after reviewing the confirmation. The prepared
 	// block must NOT be signed/published by the new account's key.
-	if err := tx.wallet.SelectAccount(1); err != nil {
+	if _, err := tx.wallet.SelectAccount(1); err != nil {
 		t.Fatalf("SelectAccount: %v", err)
 	}
 	_, err := tx.ConfirmPublish(id)

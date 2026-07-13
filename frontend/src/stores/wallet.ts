@@ -8,6 +8,13 @@ export type AccountInfo = { index: number; address: string; label: string }
 // is the user-facing display name; `baseAddress` is the wallet's account-0 address.
 export type WalletMeta = { id: string; name: string; baseAddress: string }
 
+// Serializes account selection: the backend applies selections one at a time,
+// so the frontend must not fire overlapping calls (their backend order would
+// be a mutex race, not user intent). While one select is in flight the latest
+// requested index is queued and applied after — last intent wins.
+let selecting = false
+let queuedIndex: number | null = null
+
 export const useWalletStore = defineStore('wallet', {
   // `active` holds the active wallet's id (keystore filename), not its name.
   state: () => ({ locked: true, wallets: [] as WalletMeta[], active: '', accounts: [] as AccountInfo[], activeIndex: 0 }),
@@ -47,11 +54,32 @@ export const useWalletStore = defineStore('wallet', {
       try { this.accounts = (await W.CurrentAccounts()) as unknown as AccountInfo[] } catch { this.accounts = [] }
     },
     async select(index: number) {
-      await W.SelectAccount(index)
-      // The backend just switched accounts: any account-scoped response still
-      // in flight belongs to the previous account and must not be committed.
-      bumpRequestEpoch()
-      this.activeIndex = index
+      if (selecting) {
+        queuedIndex = index // supersede: only the latest intent is applied next
+        return
+      }
+      selecting = true
+      try {
+        let next: number | null = index
+        while (next !== null) {
+          const target = next
+          next = null
+          // The backend returns the AUTHORITATIVE selection; render that, not
+          // the assumption that the requested index won.
+          const info = (await W.SelectAccount(target)) as unknown as AccountInfo | undefined
+          // The backend just switched accounts: any account-scoped response
+          // still in flight belongs to the previous account.
+          bumpRequestEpoch()
+          this.activeIndex = info?.index ?? target
+          if (queuedIndex !== null) {
+            next = queuedIndex
+            queuedIndex = null
+          }
+        }
+      } finally {
+        selecting = false
+        queuedIndex = null
+      }
     },
     async setLabel(index: number, label: string) {
       await W.SetAccountLabel(index, label)

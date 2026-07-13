@@ -4,7 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	bip39 "github.com/tyler-smith/go-bip39"
 	"github.com/zenon-network/go-zenon/wallet"
@@ -412,23 +414,23 @@ func TestSelectAccountRejectsUnrevealedIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Default reveals accountRange accounts: indices 0..accountRange-1 selectable.
-	if err := w.SelectAccount(accountRange - 1); err != nil {
+	if _, err := w.SelectAccount(accountRange - 1); err != nil {
 		t.Fatalf("SelectAccount(%d) should succeed: %v", accountRange-1, err)
 	}
 	// An index at/above the revealed count must be rejected. Previously SelectAccount
 	// only bounded by maxAccounts, so a direct Wails call could activate — and then
 	// sign from — an account the UI never revealed.
-	if err := w.SelectAccount(accountRange); err == nil {
+	if _, err := w.SelectAccount(accountRange); err == nil {
 		t.Fatalf("SelectAccount(%d) must be rejected (only %d revealed)", accountRange, accountRange)
 	}
-	if err := w.SelectAccount(maxAccounts - 1); err == nil {
+	if _, err := w.SelectAccount(maxAccounts - 1); err == nil {
 		t.Fatal("SelectAccount(maxAccounts-1) must be rejected while unrevealed")
 	}
 	// Revealing one more makes exactly the next index selectable.
 	if _, err := w.AddAccount(); err != nil {
 		t.Fatalf("AddAccount: %v", err)
 	}
-	if err := w.SelectAccount(accountRange); err != nil {
+	if _, err := w.SelectAccount(accountRange); err != nil {
 		t.Fatalf("SelectAccount(%d) should succeed after AddAccount: %v", accountRange, err)
 	}
 }
@@ -437,14 +439,14 @@ func TestSelectAccountBumpsSessionGen(t *testing.T) {
 	w := newTestWalletService(t)
 	unlockTestWallet(t, w)
 	gen := w.sessionGen()
-	if err := w.SelectAccount(1); err != nil {
+	if _, err := w.SelectAccount(1); err != nil {
 		t.Fatalf("SelectAccount: %v", err)
 	}
 	if w.sessionGen() == gen {
 		t.Fatal("switching accounts must bump the session generation (invalidates pending tx)")
 	}
 	gen = w.sessionGen()
-	if err := w.SelectAccount(1); err != nil {
+	if _, err := w.SelectAccount(1); err != nil {
 		t.Fatalf("SelectAccount: %v", err)
 	}
 	if w.sessionGen() != gen {
@@ -457,13 +459,13 @@ func TestSelectAccountInvokesSessionChange(t *testing.T) {
 	unlockTestWallet(t, w)
 	calls := 0
 	w.setOnSessionChange(func() { calls++ })
-	if err := w.SelectAccount(2); err != nil {
+	if _, err := w.SelectAccount(2); err != nil {
 		t.Fatalf("SelectAccount: %v", err)
 	}
 	if calls != 1 {
 		t.Fatalf("account switch must fire the session-change callback once, got %d", calls)
 	}
-	if err := w.SelectAccount(2); err != nil {
+	if _, err := w.SelectAccount(2); err != nil {
 		t.Fatalf("SelectAccount: %v", err)
 	}
 	if calls != 1 {
@@ -490,5 +492,82 @@ func TestUnlockZeroesPriorKeystore(t *testing.T) {
 	}
 	if prior.Mnemonic != "" || prior.Seed != nil || prior.Entropy != nil {
 		t.Fatal("re-unlock must zero the previously decrypted keystore, not abandon it to the GC")
+	}
+}
+
+// TestSelectAccountSerialized forces the adverse interleaving from the review:
+// selection A pauses at the persistence boundary while selection B runs. The
+// selection mutex must hold B back until A completes, so the backend active
+// index and the persisted index always agree with the LAST completed call.
+func TestSelectAccountSerialized(t *testing.T) {
+	w := newTestWalletService(t)
+	unlockTestWallet(t, w)
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	w.beforeSelectPersist = func() {
+		once.Do(func() {
+			close(entered)
+			<-release
+		})
+	}
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := w.SelectAccount(1)
+		firstDone <- err
+	}()
+	<-entered // selection 1 is paused between mutation and persistence
+
+	secondDone := make(chan error, 1)
+	go func() {
+		_, err := w.SelectAccount(2)
+		secondDone <- err
+	}()
+	select {
+	case <-secondDone:
+		t.Fatal("a second selection completed while the first was mid-operation")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first SelectAccount: %v", err)
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatalf("second SelectAccount: %v", err)
+	}
+
+	w.mu.Lock()
+	active := w.active
+	w.mu.Unlock()
+	if active != 2 {
+		t.Fatalf("backend active = %d, want 2 (the last completed selection)", active)
+	}
+	s, err := w.config.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.ActiveAccount != 2 {
+		t.Fatalf("persisted ActiveAccount = %d, want 2 — a stale selection persisted last", s.ActiveAccount)
+	}
+}
+
+// TestSelectAccountReturnsAuthoritativeSelection: the caller gets the index and
+// address the backend signer will actually use.
+func TestSelectAccountReturnsAuthoritativeSelection(t *testing.T) {
+	w := newTestWalletService(t)
+	unlockTestWallet(t, w)
+	info, err := w.SelectAccount(3)
+	if err != nil {
+		t.Fatalf("SelectAccount: %v", err)
+	}
+	if info.Index != 3 {
+		t.Fatalf("returned index %d, want 3", info.Index)
+	}
+	addr, ok := w.activeAddress()
+	if !ok || info.Address != addr.String() {
+		t.Fatalf("returned address %q does not match the active signer address %q", info.Address, addr.String())
 	}
 }

@@ -63,3 +63,41 @@ describe('wallet store', () => {
     expect(s.activeIndex).toBe(0)
   })
 })
+
+describe('select — overlapping selections resolve to the latest intent', () => {
+  it('queues a selection made while one is in flight and applies the newest last', async () => {
+    const { useWalletStore } = await import('./wallet')
+    const W = await import('../../wailsjs/go/app/WalletService')
+    ;(W.SelectAccount as any).mockClear()
+    const store = useWalletStore()
+    store.locked = false
+
+    // First selection hangs at the backend…
+    let resolveFirst!: (v: unknown) => void
+    ;(W.SelectAccount as any).mockReturnValueOnce(new Promise((r) => { resolveFirst = r }))
+    const first = store.select(1)
+
+    // …two more clicks land while it is in flight; only the LAST may apply.
+    ;(W.SelectAccount as any).mockResolvedValue({ index: 3, address: 'z1acc3', label: '' })
+    const second = store.select(2)
+    const third = store.select(3)
+
+    resolveFirst({ index: 1, address: 'z1acc1', label: '' })
+    await Promise.all([first, second, third])
+
+    expect(store.activeIndex).toBe(3)
+    // The superseded intermediate selection (2) was never sent to the backend.
+    const calls = (W.SelectAccount as any).mock.calls.map((c: unknown[]) => c[0])
+    expect(calls).toEqual([1, 3])
+  })
+
+  it('renders the authoritative index returned by the backend', async () => {
+    const { useWalletStore } = await import('./wallet')
+    const W = await import('../../wailsjs/go/app/WalletService')
+    const store = useWalletStore()
+    store.locked = false
+    ;(W.SelectAccount as any).mockResolvedValueOnce({ index: 5, address: 'z1acc5', label: '' })
+    await store.select(5)
+    expect(store.activeIndex).toBe(5)
+  })
+})

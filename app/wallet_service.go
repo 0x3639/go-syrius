@@ -57,6 +57,17 @@ type WalletService struct {
 	// account switch (e.g. clear the pending tx so it can't be signed by the
 	// wrong key).
 	onSessionChange func()
+
+	// selMu serializes the COMPLETE account-selection operation — validation,
+	// active-index mutation, session invalidation, and persistence — so two
+	// overlapping selections can never leave the backend signer, the persisted
+	// selection, and the frontend disagreeing. It is separate from w.mu on
+	// purpose: other wallet methods must not block on settings disk I/O.
+	selMu sync.Mutex
+
+	// beforeSelectPersist, when non-nil, runs between a selection's in-memory
+	// switch and its persistence — a test hook for deterministic interleaving.
+	beforeSelectPersist func()
 }
 
 // setOnSessionChange wires a callback invoked on Lock and account switch,
@@ -415,15 +426,23 @@ func (w *WalletService) CurrentAccounts() ([]AccountInfo, error) {
 	return out, nil
 }
 
-// SelectAccount sets the active account index and persists it.
-func (w *WalletService) SelectAccount(index int) error {
+// SelectAccount sets the active account index, persists it, and returns the
+// authoritative selection (index + address) so the frontend renders what the
+// backend signer will actually use instead of assuming the requested index
+// won. The whole operation is serialized under selMu: two overlapping calls
+// apply strictly one after the other, so the backend active index and the
+// persisted index always describe the same (last-completed) selection.
+func (w *WalletService) SelectAccount(index int) (AccountInfo, error) {
 	if index < 0 {
-		return fmt.Errorf("account index %d out of range", index)
+		return AccountInfo{}, fmt.Errorf("account index %d out of range", index)
 	}
+	w.selMu.Lock()
+	defer w.selMu.Unlock()
+
 	w.mu.Lock()
 	if w.keystore == nil {
 		w.mu.Unlock()
-		return errLocked
+		return AccountInfo{}, errLocked
 	}
 	name := w.activeWallet
 	w.mu.Unlock()
@@ -435,19 +454,21 @@ func (w *WalletService) SelectAccount(index int) error {
 	// unavailable, and only persist when we could read them.
 	count := accountRange
 	persist := false
+	label := ""
 	s, err := w.config.GetSettings()
 	if err == nil {
 		count = accountCountFor(s, name)
 		persist = true
+		label = s.AccountLabels[labelKey(name, index)]
 	}
 	if index >= count {
-		return fmt.Errorf("account index %d out of range (only %d revealed)", index, count)
+		return AccountInfo{}, fmt.Errorf("account index %d out of range (only %d revealed)", index, count)
 	}
 
 	w.mu.Lock()
 	if w.keystore == nil {
 		w.mu.Unlock()
-		return errLocked
+		return AccountInfo{}, errLocked
 	}
 	changed := w.active != index
 	w.active = index
@@ -459,10 +480,17 @@ func (w *WalletService) SelectAccount(index int) error {
 		w.gen++
 	}
 	onChange := w.onSessionChange
+	addr, ok := w.activeAddressLocked()
 	w.mu.Unlock()
+	if !ok {
+		return AccountInfo{}, fmt.Errorf("cannot derive the address for account %d", index)
+	}
 
 	if changed && onChange != nil {
 		onChange()
+	}
+	if w.beforeSelectPersist != nil {
+		w.beforeSelectPersist()
 	}
 	if persist {
 		_ = w.config.updateSettings(func(s *Settings) error {
@@ -470,7 +498,7 @@ func (w *WalletService) SelectAccount(index int) error {
 			return nil
 		})
 	}
-	return nil
+	return AccountInfo{Index: index, Address: addr.String(), Label: label}, nil
 }
 
 // SetAccountLabel persists a human label for the active wallet's account index.

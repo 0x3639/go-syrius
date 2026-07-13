@@ -24,7 +24,7 @@ export function RenameWallet(arg1:string,arg2:string):Promise<void>;
 
 export function RevealMnemonic(arg1:string):Promise<string>;
 
-export function SelectAccount(arg1:number):Promise<void>;
+export function SelectAccount(arg1:number):Promise<app.AccountInfo>;
 
 export function SetAccountLabel(arg1:number,arg2:string):Promise<void>;
 

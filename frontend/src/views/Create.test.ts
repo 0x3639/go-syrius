@@ -16,8 +16,8 @@ const ClipboardSetText = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 const ClipboardGetText = vi.hoisted(() => vi.fn().mockResolvedValue(''))
 vi.mock('../../wailsjs/runtime/runtime', () => ({ ClipboardSetText, ClipboardGetText }))
 const GetSettings = vi.hoisted(() => vi.fn().mockResolvedValue({ autoReceive: true }))
-const SetSettings = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
-vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetSettings }))
+const SetAutoReceive = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetAutoReceive }))
 const push = vi.fn()
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 vi.mock('nom-ui', () => ({
@@ -62,7 +62,7 @@ describe('Create.vue', () => {
     expect(Unlock).toHaveBeenCalledWith('abc.dat', 'pw')
     expect(push).toHaveBeenCalledWith('/dashboard')
     // A new wallet forces auto-receive off (it was globally on).
-    expect(SetSettings).toHaveBeenCalledWith(expect.objectContaining({ autoReceive: false }))
+    expect(SetAutoReceive).toHaveBeenCalledWith(false)
   })
 
   it('copies the seed phrase to the clipboard', async () => {

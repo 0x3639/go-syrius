@@ -64,9 +64,7 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
     async toggle(activeIndex: number) {
       this.enabled = !this.enabled
       try {
-        const s = await Cfg.GetSettings()
-        s.autoReceive = this.enabled
-        await Cfg.SetSettings(s)
+        await Cfg.SetAutoReceive(this.enabled)
         if (this.enabled) await this.start(activeIndex)
         else await this.stop()
       } catch {

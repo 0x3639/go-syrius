@@ -17,8 +17,9 @@ vi.mock('../../wailsjs/go/app/NodeService', () => ({
 }))
 
 const GetSettings = vi.hoisted(() => vi.fn().mockResolvedValue({ chainId: 73404 }))
-const SetSettings = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
-vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetSettings }))
+const SetChainID = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const SetShowGovernance = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetChainID, SetShowGovernance }))
 
 const RevealMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue('alpha bravo charlie delta'))
 const ChangePassword = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
@@ -59,7 +60,8 @@ beforeEach(() => {
   RevealMnemonic.mockClear()
   RenameWallet.mockClear()
   GetSettings.mockClear()
-  SetSettings.mockClear()
+  SetChainID.mockClear()
+  SetShowGovernance.mockClear()
   GetSettings.mockResolvedValue({ chainId: 73404 })
 })
 
@@ -139,11 +141,11 @@ describe('Settings.vue', () => {
     await flush()
 
     // read-modify-write: GetSettings object merged with the entered chain id
-    expect(SetSettings).toHaveBeenCalledWith({ chainId: 1 })
+    expect(SetChainID).toHaveBeenCalledWith(1)
     expect(w.text()).toContain('Network configuration applied')
   })
 
-  it('toggling Show Governance read-modify-writes showGovernance into settings', async () => {
+  it('toggling Show Governance persists via the targeted setter', async () => {
     const w = mount(Settings)
     await flush() // onMounted: ui.init() loads showGovernance (absent → false)
 
@@ -153,7 +155,7 @@ describe('Settings.vue', () => {
     await cb.setValue(true)
     await flush()
 
-    expect(SetSettings).toHaveBeenCalledWith({ chainId: 73404, showGovernance: true })
+    expect(SetShowGovernance).toHaveBeenCalledWith(true)
   })
 
   it('renders a mismatch warning when the node chain differs from the configured chain', async () => {

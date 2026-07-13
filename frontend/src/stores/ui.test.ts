@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-const { GetSettings, SetSettings } = vi.hoisted(() => ({
+const { GetSettings, SetShowGovernance } = vi.hoisted(() => ({
   GetSettings: vi.fn(),
-  SetSettings: vi.fn(),
+  SetShowGovernance: vi.fn(),
 }))
-vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetSettings }))
+vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetShowGovernance }))
 
 import { useUiStore } from './ui'
 
@@ -13,7 +13,7 @@ describe('ui store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     GetSettings.mockReset()
-    SetSettings.mockReset()
+    SetShowGovernance.mockReset()
   })
 
   it('defaults showGovernance to false', () => {
@@ -61,6 +61,6 @@ describe('ui store', () => {
     const s = useUiStore()
     await s.setShowGovernance(true)
     expect(s.showGovernance).toBe(true)
-    expect(SetSettings).toHaveBeenCalledWith({ showGovernance: true })
+    expect(SetShowGovernance).toHaveBeenCalledWith(true)
   })
 })

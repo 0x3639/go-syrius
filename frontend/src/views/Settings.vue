@@ -40,9 +40,7 @@ const chainMismatch = computed(
 async function applyChainId() {
   chainMsg.value = ''; chainErr.value = ''
   try {
-    const s = await Cfg.GetSettings()
-    s.chainId = Number(chainId.value)
-    await Cfg.SetSettings(s)
+    await Cfg.SetChainID(Number(chainId.value))
     chainMsg.value = 'Network configuration applied'
   } catch (e: any) { chainErr.value = e?.message ?? String(e) }
 }

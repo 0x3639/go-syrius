@@ -53,9 +53,7 @@ export const useUiStore = defineStore('ui', {
     async setShowGovernance(v: boolean) {
       this.showGovernance = v
       try {
-        const s = await Cfg.GetSettings()
-        s.showGovernance = v
-        await Cfg.SetSettings(s)
+        await Cfg.SetShowGovernance(v)
       } catch {
         /* best-effort persist; the in-memory flag still updates the nav */
       }

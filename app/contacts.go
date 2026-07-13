@@ -30,41 +30,42 @@ func (c *ConfigService) AddContact(name, address string) ([]Contact, error) {
 	if _, err := types.ParseAddress(address); err != nil {
 		return nil, fmt.Errorf("invalid address: %w", err)
 	}
-	s, err := c.GetSettings()
+	var out []Contact
+	err := c.updateSettings(func(s *Settings) error {
+		replaced := false
+		for i := range s.Contacts {
+			if s.Contacts[i].Address == address {
+				s.Contacts[i].Name = name
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			s.Contacts = append(s.Contacts, Contact{Name: name, Address: address})
+		}
+		out = s.Contacts
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	replaced := false
-	for i := range s.Contacts {
-		if s.Contacts[i].Address == address {
-			s.Contacts[i].Name = name
-			replaced = true
-			break
-		}
-	}
-	if !replaced {
-		s.Contacts = append(s.Contacts, Contact{Name: name, Address: address})
-	}
-	if err := c.SetSettings(s); err != nil {
-		return nil, err
-	}
-	return s.Contacts, nil
+	return out, nil
 }
 
 // DeleteContact removes the address-book entry with the given address.
 func (c *ConfigService) DeleteContact(address string) ([]Contact, error) {
-	s, err := c.GetSettings()
-	if err != nil {
-		return nil, err
-	}
-	kept := make([]Contact, 0, len(s.Contacts))
-	for _, ct := range s.Contacts {
-		if ct.Address != address {
-			kept = append(kept, ct)
+	var kept []Contact
+	err := c.updateSettings(func(s *Settings) error {
+		kept = make([]Contact, 0, len(s.Contacts))
+		for _, ct := range s.Contacts {
+			if ct.Address != address {
+				kept = append(kept, ct)
+			}
 		}
-	}
-	s.Contacts = kept
-	if err := c.SetSettings(s); err != nil {
+		s.Contacts = kept
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	return kept, nil

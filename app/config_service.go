@@ -5,11 +5,17 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 // ConfigService resolves the data directory and persists user settings.
 type ConfigService struct {
 	ctx context.Context
+
+	// mu serializes every settings read-for-update and write. Settings are
+	// mutated concurrently (UI toggles, account switches, auto-receive follows),
+	// and unserialized get→modify→set cycles lose each other's fields.
+	mu sync.Mutex
 }
 
 func newConfigService() *ConfigService { return &ConfigService{} }
@@ -79,6 +85,13 @@ func migrateSettings(s *Settings) {
 
 // GetSettings returns persisted settings, or defaults if none exist.
 func (c *ConfigService) GetSettings() (Settings, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.getSettingsLocked()
+}
+
+// getSettingsLocked is the lock-free core of GetSettings. Callers must hold c.mu.
+func (c *ConfigService) getSettingsLocked() (Settings, error) {
 	d, err := c.dataDir()
 	if err != nil {
 		return Settings{}, err
@@ -98,8 +111,12 @@ func (c *ConfigService) GetSettings() (Settings, error) {
 	return s, nil
 }
 
-// SetSettings persists settings as JSON.
-func (c *ConfigService) SetSettings(s Settings) error {
+// setSettingsLocked persists settings as JSON atomically: temp file in the same
+// directory, fsync, then rename over settings.json — an interrupted write can
+// never leave truncated JSON behind. Callers must hold c.mu. There is no
+// exported whole-settings setter: the frontend gets targeted setters only, so
+// it can never clobber fields it doesn't own.
+func (c *ConfigService) setSettingsLocked(s Settings) error {
 	d, err := c.dataDir()
 	if err != nil {
 		return err
@@ -108,5 +125,67 @@ func (c *ConfigService) SetSettings(s Settings) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(d, "settings.json"), raw, 0o600)
+	tmp, err := os.CreateTemp(d, "settings-*.tmp")
+	if err != nil {
+		return err
+	}
+	if _, err := tmp.Write(raw); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Rename(tmp.Name(), filepath.Join(d, "settings.json")); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	return nil
+}
+
+// updateSettings applies fn to the current settings and persists the result as
+// ONE atomic read-modify-write under the mutex. An error from fn aborts without
+// writing. All internal settings mutation goes through here.
+func (c *ConfigService) updateSettings(fn func(*Settings) error) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	s, err := c.getSettingsLocked()
+	if err != nil {
+		return err
+	}
+	if err := fn(&s); err != nil {
+		return err
+	}
+	return c.setSettingsLocked(s)
+}
+
+// SetChainID persists the chain identifier the wallet builds transactions for.
+func (c *ConfigService) SetChainID(id uint64) error {
+	return c.updateSettings(func(s *Settings) error {
+		s.ChainID = id
+		return nil
+	})
+}
+
+// SetAutoReceive persists the auto-receive toggle.
+func (c *ConfigService) SetAutoReceive(v bool) error {
+	return c.updateSettings(func(s *Settings) error {
+		s.AutoReceive = v
+		return nil
+	})
+}
+
+// SetShowGovernance persists the (testnet-only) Governance tab visibility.
+func (c *ConfigService) SetShowGovernance(v bool) error {
+	return c.updateSettings(func(s *Settings) error {
+		s.ShowGovernance = v
+		return nil
+	})
 }

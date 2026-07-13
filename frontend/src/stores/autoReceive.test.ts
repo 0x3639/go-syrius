@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 const GetSettings = vi.hoisted(() => vi.fn().mockResolvedValue({ autoReceive: false }))
-const SetSettings = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
-vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetSettings }))
+const SetAutoReceive = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetAutoReceive }))
 const StartAutoReceive = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const StopAutoReceive = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('../../wailsjs/go/app/NodeService', () => ({ StartAutoReceive, StopAutoReceive }))
@@ -14,7 +14,7 @@ import { useAutoReceiveStore } from './autoReceive'
 beforeEach(() => {
   setActivePinia(createPinia())
   GetSettings.mockResolvedValue({ autoReceive: false })
-  SetSettings.mockClear()
+  SetAutoReceive.mockClear()
   StartAutoReceive.mockClear()
   StopAutoReceive.mockClear()
   onCalls.length = 0
@@ -25,7 +25,7 @@ describe('autoReceive store', () => {
     const s = useAutoReceiveStore()
     await s.toggle(0)
     expect(s.enabled).toBe(true)
-    expect(SetSettings).toHaveBeenCalledWith(expect.objectContaining({ autoReceive: true }))
+    expect(SetAutoReceive).toHaveBeenCalledWith(true)
     expect(StartAutoReceive).toHaveBeenCalled()
     await s.toggle(0)
     expect(s.enabled).toBe(false)

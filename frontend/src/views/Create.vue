@@ -72,8 +72,7 @@ async function finish() {
     try {
       const s = await Cfg.GetSettings()
       if (s.autoReceive) {
-        s.autoReceive = false
-        await Cfg.SetSettings(s)
+        await Cfg.SetAutoReceive(false)
       }
     } catch {
       /* best-effort */

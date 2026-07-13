@@ -254,12 +254,10 @@ func TestStartEmbeddedTearsDownOnConnectFailure(t *testing.T) {
 func TestConnectStartsEmbeddedWhenModePersisted(t *testing.T) {
 	n := newTestNode(t)
 	// Persist embedded mode as if a prior session selected it.
-	s, err := n.config.GetSettings()
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.NodeMode = "embedded"
-	if err := n.config.SetSettings(s); err != nil {
+	if err := n.config.updateSettings(func(s *Settings) error {
+		s.NodeMode = "embedded"
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	started := false

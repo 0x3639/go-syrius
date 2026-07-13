@@ -1,8 +1,12 @@
 package app
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 )
 
@@ -28,10 +32,12 @@ func TestSettingsRoundTripAndDefaults(t *testing.T) {
 	}
 
 	// Round-trip.
-	got.RemoteNodeURL = "ws://127.0.0.1:35998"
-	got.ActiveAccount = 3
-	if err := c.SetSettings(got); err != nil {
-		t.Fatalf("SetSettings: %v", err)
+	if err := c.updateSettings(func(s *Settings) error {
+		s.RemoteNodeURL = "ws://127.0.0.1:35998"
+		s.ActiveAccount = 3
+		return nil
+	}); err != nil {
+		t.Fatalf("updateSettings: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "settings.json")); err != nil {
 		t.Fatalf("settings.json not written: %v", err)
@@ -122,11 +128,83 @@ func TestActiveNodeURL(t *testing.T) {
 func TestMigrationIdempotent(t *testing.T) {
 	c := newTestConfig(t)
 	s1, _ := c.GetSettings()
-	if err := c.SetSettings(s1); err != nil {
+	if err := c.updateSettings(func(*Settings) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	s2, _ := c.GetSettings()
 	if s2.RemoteNodeURL != s1.RemoteNodeURL || s2.LocalNodeURL != s1.LocalNodeURL || s2.NodeMode != s1.NodeMode {
 		t.Fatalf("not idempotent: %+v vs %+v", s1, s2)
+	}
+}
+
+func TestUpdateSettingsConcurrentNoLostUpdates(t *testing.T) {
+	c := newTestConfig(t)
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_ = c.updateSettings(func(s *Settings) error {
+				if s.AccountLabels == nil {
+					s.AccountLabels = map[string]string{}
+				}
+				s.AccountLabels[fmt.Sprintf("w:%d", i)] = "x"
+				return nil
+			})
+		}(i)
+	}
+	wg.Wait()
+	s, err := c.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.AccountLabels) != 20 {
+		t.Fatalf("concurrent updates lost fields: got %d of 20 labels", len(s.AccountLabels))
+	}
+}
+
+func TestTargetedSettersPersist(t *testing.T) {
+	c := newTestConfig(t)
+	if err := c.SetChainID(3); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetAutoReceive(true); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetShowGovernance(true); err != nil {
+		t.Fatal(err)
+	}
+	s, err := c.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.ChainID != 3 || !s.AutoReceive || !s.ShowGovernance {
+		t.Fatalf("targeted setters did not persist: %+v", s)
+	}
+	// The atomic write path must not leave temp files behind.
+	d, _ := c.dataDir()
+	entries, _ := os.ReadDir(d)
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "settings-") && strings.HasSuffix(e.Name(), ".tmp") {
+			t.Fatalf("leftover temp file %s", e.Name())
+		}
+	}
+}
+
+func TestUpdateSettingsErrorAbortsWrite(t *testing.T) {
+	c := newTestConfig(t)
+	if err := c.SetChainID(7); err != nil {
+		t.Fatal(err)
+	}
+	wantErr := errors.New("nope")
+	if err := c.updateSettings(func(s *Settings) error {
+		s.ChainID = 999
+		return wantErr
+	}); err != wantErr {
+		t.Fatalf("expected fn error to propagate, got %v", err)
+	}
+	s, _ := c.GetSettings()
+	if s.ChainID != 7 {
+		t.Fatalf("an erroring update must not persist, got ChainID %d", s.ChainID)
 	}
 }

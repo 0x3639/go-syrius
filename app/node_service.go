@@ -215,12 +215,14 @@ func (n *NodeService) SetNodeMode(mode string) error {
 	if mode != "remote" && mode != "local" && mode != "embedded" {
 		return fmt.Errorf("unknown node mode %q", mode)
 	}
-	s, err := n.config.GetSettings()
-	if err != nil {
+	if err := n.config.updateSettings(func(s *Settings) error {
+		s.NodeMode = mode
+		return nil
+	}); err != nil {
 		return err
 	}
-	s.NodeMode = mode
-	if err := n.config.SetSettings(s); err != nil {
+	s, err := n.config.GetSettings()
+	if err != nil {
 		return err
 	}
 
@@ -281,19 +283,19 @@ func (n *NodeService) SetNodeURL(mode, url string) error {
 	if perr != nil || (u.Scheme != "ws" && u.Scheme != "wss") || u.Host == "" {
 		return fmt.Errorf("node url must be a ws:// or wss:// URL with a host")
 	}
-	s, err := n.config.GetSettings()
-	if err != nil {
+	activeMode := ""
+	if err := n.config.updateSettings(func(s *Settings) error {
+		if mode == "local" {
+			s.LocalNodeURL = url
+		} else {
+			s.RemoteNodeURL = url
+		}
+		activeMode = s.NodeMode
+		return nil
+	}); err != nil {
 		return err
 	}
-	if mode == "local" {
-		s.LocalNodeURL = url
-	} else {
-		s.RemoteNodeURL = url
-	}
-	if err := n.config.SetSettings(s); err != nil {
-		return err
-	}
-	if mode == s.NodeMode {
+	if mode == activeMode {
 		return n.SetNode(url)
 	}
 	return nil

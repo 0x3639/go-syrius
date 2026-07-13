@@ -18,6 +18,14 @@ export function ListContacts() {
   return window['go']['app']['ConfigService']['ListContacts']();
 }
 
-export function SetSettings(arg1) {
-  return window['go']['app']['ConfigService']['SetSettings'](arg1);
+export function SetAutoReceive(arg1) {
+  return window['go']['app']['ConfigService']['SetAutoReceive'](arg1);
+}
+
+export function SetChainID(arg1) {
+  return window['go']['app']['ConfigService']['SetChainID'](arg1);
+}
+
+export function SetShowGovernance(arg1) {
+  return window['go']['app']['ConfigService']['SetShowGovernance'](arg1);
 }

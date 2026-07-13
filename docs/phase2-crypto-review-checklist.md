@@ -79,17 +79,26 @@ until the live run is recorded.
 
 ## 5. Confirm-what-you-sign
 
-- [TEST] The confirmation preview (`SendPreview`) is rendered from the **built,
-  signed block** (`built.ToAddress/TokenStandard/Amount/Difficulty/Hash`), not
-  from the raw request — so the user confirms exactly what was signed.
-  (`TxService.PrepareSend`.)
-- [TEST] Before broadcasting, `ConfirmPublish` **re-asserts** the held block
-  still matches the originating request (to/zts/amount) and refuses to publish
-  otherwise; the Send subtest also asserts the published hash equals the
-  previewed hash. (`TxService.ConfirmPublish`.)
+- [TEST] The confirmation preview (`SendPreview`) is rendered from the **held,
+  un-PoW'd template** built by `PrepareSend` (validated to/zts/amount plus the
+  sender the wallet will sign with), never from raw form inputs. PoW — and
+  therefore the block hash — is deliberately deferred to `ConfirmPublish` so
+  the user approves the effect *before* the wallet spends seconds generating
+  plasma; the effect is re-asserted on the built block after PoW.
+  (`TxService.PrepareSend` / `TxService.prepareCall`.)
+- [TEST] Before broadcasting, `ConfirmPublish` **re-asserts** — both before and
+  after PoW — that the block matches the approved effect (sender/to/zts/amount/
+  data via `assertMatches`), that the hold identity (`holdId`) equals the one
+  the confirm dialog displayed, that the wallet session generation is unchanged
+  (Unlock/Lock/account switch all bump it), and that the active account is
+  still the approved sender. Any prepare-time policy attached to the hold (e.g.
+  governance testnet-only) is also re-asserted. (`TxService.ConfirmPublish`.)
 - [REVIEW] The held `pending` block is single-shot: cleared on publish, cancel,
   or mismatch, and guarded by a mutex so a stale or concurrent block can't be
   published. Confirm there is no path that publishes without the match check.
+- [REVIEW] Every account-block publication — send confirm *and* receive —
+  serializes under `publishMu`, so concurrent flows cannot build sibling blocks
+  against the same account frontier.
 
 ## 6. Mainnet gating
 
@@ -104,8 +113,9 @@ until the live run is recorded.
   - `AllowMainnetSend` defaults to `false` (`defaultSettings`) and is only
     toggled through an explicit, reviewed UI action;
   - `mainnetChainID` is correct for the live network.
-- [REVIEW] Decide and document whether receive should also be mainnet-gated
-  (currently `Receive` is not gated by `guard()`).
+- [REVIEW] Receive **is** mainnet-gated: `TxService.Receive` applies the same
+  `guard()` and chain-ID match as a send before building/signing, because
+  auto-receive drives it without a user confirmation click.
 
 ---
 

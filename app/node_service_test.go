@@ -1,11 +1,13 @@
 package app
 
 import (
+	"errors"
 	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/0x3639/znn-sdk-go/rpc_client"
 	"github.com/zenon-network/go-zenon/chain/nom"
@@ -402,5 +404,160 @@ func TestStartMomentumLoopSupersededIsNoop(t *testing.T) {
 	defer n.mu.RUnlock()
 	if n.stop != nil {
 		t.Fatal("a superseded loop must not install a stop channel")
+	}
+}
+
+// --- PR-03/PR-04: generation-safe teardown + degradation ---
+
+func TestDegradeConnectionTearsDownCurrentGen(t *testing.T) {
+	n := newTestNode(t)
+	n.mu.Lock()
+	n.disconnectLocked()
+	gen := n.connGen
+	n.mu.Unlock()
+	if !n.installConnection(&rpc_client.RpcClient{}, "ws://x", 42, 3, gen) {
+		t.Fatal("install should succeed")
+	}
+	if !n.degradeConnection(gen) {
+		t.Fatal("degrade of the current generation must tear down")
+	}
+	st := n.NodeStatus()
+	if st.Connected || st.Height != 0 || st.ChainID != 0 {
+		t.Fatalf("after degradation the status must be disconnected with cleared height/chain, got %+v", st)
+	}
+	if n.currentClient() != nil {
+		t.Fatal("no client may remain installed")
+	}
+	// Repeated closure/degradation of the same (now superseded) gen is a no-op —
+	// no double-close, no second teardown.
+	if n.degradeConnection(gen) {
+		t.Fatal("a second degrade of the same generation must be a no-op")
+	}
+}
+
+func TestDegradeConnectionStaleGenLeavesNewerConnection(t *testing.T) {
+	n := newTestNode(t)
+	n.mu.Lock()
+	n.disconnectLocked()
+	oldGen := n.connGen
+	n.mu.Unlock()
+
+	// A newer connection wins the slot…
+	n.mu.Lock()
+	n.disconnectLocked()
+	newGen := n.connGen
+	n.mu.Unlock()
+	fresh := &rpc_client.RpcClient{}
+	if !n.installConnection(fresh, "ws://fresh", 99, 3, newGen) {
+		t.Fatal("newer install should succeed")
+	}
+
+	// …then the OLD subscription fails/closes. It must not touch the new one.
+	if n.degradeConnection(oldGen) {
+		t.Fatal("a stale generation must not degrade the newer connection")
+	}
+	if n.currentClient() != fresh {
+		t.Fatal("the newer connection must remain installed")
+	}
+	st := n.NodeStatus()
+	if !st.Connected || st.Height != 99 || st.ChainID != 3 {
+		t.Fatalf("the newer connection's status must be untouched, got %+v", st)
+	}
+}
+
+// --- PR-05: mode transitions are one ordered operation ---
+
+func TestSetNodeModeSerialized(t *testing.T) {
+	n := newTestNode(t)
+	// Point remote at an unreachable local port so the second transition fails
+	// fast instead of dialing a real network endpoint.
+	if err := n.config.updateSettings(func(s *Settings) error {
+		s.RemoteNodeURL = "ws://127.0.0.1:1"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	n.embeddedStart = func(dataDir string) (embeddedHandle, error) {
+		close(entered)
+		<-release
+		return nil, errors.New("test: embedded start aborted")
+	}
+
+	firstDone := make(chan error, 1)
+	go func() { firstDone <- n.SetNodeMode("embedded") }()
+	<-entered // transition 1 is mid-flight inside the embedded start
+
+	secondDone := make(chan error, 1)
+	go func() { secondDone <- n.SetNodeMode("remote") }()
+	select {
+	case <-secondDone:
+		t.Fatal("a second mode transition ran while the first was mid-operation")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+	<-firstDone  // embedded start fails; error expected
+	<-secondDone // remote dial fails (unreachable); mode state must still be consistent
+
+	// The LAST transition owns persisted mode, in-memory mode, and embedded state.
+	s, err := n.config.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.NodeMode != "remote" {
+		t.Fatalf("persisted mode = %q, want remote (the last transition)", s.NodeMode)
+	}
+	if st := n.NodeStatus(); st.Mode != "remote" {
+		t.Fatalf("in-memory mode = %q, want remote", st.Mode)
+	}
+	n.mu.RLock()
+	emb := n.embedded
+	n.mu.RUnlock()
+	if emb != nil {
+		t.Fatal("no embedded handle may survive a superseding non-embedded transition")
+	}
+}
+
+func TestSupersededEmbeddedStartCannotInstall(t *testing.T) {
+	n := newTestNode(t)
+	if err := n.config.updateSettings(func(s *Settings) error {
+		s.RemoteNodeURL = "ws://127.0.0.1:1"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	n.embeddedStart = func(dataDir string) (embeddedHandle, error) {
+		close(entered)
+		<-release
+		// The embedded node "starts" successfully, but by now a newer remote
+		// transition is queued behind this one.
+		return stubHandle{url: "ws://127.0.0.1:1", dir: dataDir}, nil
+	}
+
+	firstDone := make(chan error, 1)
+	go func() { firstDone <- n.SetNodeMode("embedded") }()
+	<-entered
+	secondDone := make(chan error, 1)
+	go func() { secondDone <- n.SetNodeMode("remote") }()
+	close(release)
+	<-firstDone
+	<-secondDone
+
+	// The remote transition ran strictly AFTER embedded finished, so it owns the
+	// final state: mode remote, embedded handle stopped and gone.
+	s, _ := n.config.GetSettings()
+	if s.NodeMode != "remote" {
+		t.Fatalf("persisted mode = %q, want remote", s.NodeMode)
+	}
+	n.mu.RLock()
+	emb := n.embedded
+	n.mu.RUnlock()
+	if emb != nil {
+		t.Fatal("the superseded embedded transition's node must have been stopped by the remote transition")
 	}
 }

@@ -45,6 +45,14 @@ type NodeService struct {
 	// LAST rather than the one selected last, leaking the loser's client.
 	connGen uint64
 
+	// opMu serializes whole node-mode transitions (SetNodeMode, Connect,
+	// SetNodeURL, Disconnect, DeleteEmbeddedData). A transition is a multi-step
+	// sequence — persist mode, stop/start the embedded node, set n.mode, dial —
+	// and overlapping transitions could otherwise interleave those steps so the
+	// persisted mode, in-memory mode, embedded lifecycle, and connected URL
+	// belong to different requests. Lock order: opMu before mu, never inverse.
+	opMu sync.Mutex
+
 	receiveFn func(fromHash string) (string, error)
 	autoStop  chan struct{}
 
@@ -70,28 +78,17 @@ func (n *NodeService) SetNode(url string) error {
 	gen := n.connGen
 	n.mu.Unlock()
 
-	// stillCurrent reports whether this call still owns the connection intent.
-	// A dial can take seconds; if a newer SetNode/Disconnect ran meanwhile, this
-	// call must neither install its client nor emit status over the newer one's.
-	stillCurrent := func() bool {
-		n.mu.RLock()
-		defer n.mu.RUnlock()
-		return n.connGen == gen
-	}
-
 	client, err := rpc_client.NewRpcClient(url)
 	if err != nil {
-		if stillCurrent() {
-			n.emitStatus(false)
-		}
+		// A dial can take seconds; only emit if this call still owns the
+		// connection intent — never over a newer connection's status.
+		n.emitDisconnectedIfCurrent(gen)
 		return fmt.Errorf("connect: %w", err)
 	}
 	m, err := client.LedgerApi.GetFrontierMomentum()
 	if err != nil {
 		client.Stop()
-		if stillCurrent() {
-			n.emitStatus(false)
-		}
+		n.emitDisconnectedIfCurrent(gen)
 		return fmt.Errorf("node unreachable: %w", err)
 	}
 
@@ -100,27 +97,38 @@ func (n *NodeService) SetNode(url string) error {
 		return errors.New("connection attempt superseded by a newer request")
 	}
 
-	n.emitStatus(true)
-
 	if err := n.startMomentumLoop(gen); err != nil {
-		// Subscription failed: disconnect so we don't appear connected when no
-		// ticks will ever fire — but only if we still own the connection.
-		n.mu.Lock()
-		if n.connGen == gen {
-			n.disconnectLocked()
-		}
-		n.mu.Unlock()
-		if stillCurrent() {
-			n.emitStatus(false)
-		}
+		// Subscription failed: the connection cannot deliver ticks, so it must
+		// not stay installed OR keep reporting connected. degradeConnection
+		// tears down and emits disconnected atomically iff gen still owns the
+		// connection — a stale failure never touches a newer connection's state.
+		n.degradeConnection(gen)
 		return fmt.Errorf("subscribe to momentums: %w", err)
 	}
 	return nil
 }
 
+// degradeConnection tears down the connection installed under gen and emits a
+// disconnected status — as ONE critical section, so the emitted snapshot can
+// never interleave with (or override) a newer connection's status. Returns
+// false without touching anything when gen has been superseded.
+func (n *NodeService) degradeConnection(gen uint64) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.connGen != gen {
+		return false
+	}
+	n.disconnectLocked()
+	n.emitStatusLocked(false)
+	return true
+}
+
 // installConnection publishes a successfully dialed client as the current
-// connection iff gen is still the latest connection intent. Returns false when
-// superseded — the caller must Stop the orphaned client.
+// connection iff gen is still the latest connection intent, and emits the
+// connected status inside the same critical section (so a concurrent teardown
+// can never emit BETWEEN install and emit and be overridden by our stale
+// snapshot). Returns false when superseded — the caller must Stop the orphaned
+// client.
 func (n *NodeService) installConnection(client *rpc_client.RpcClient, url string, height, chainID, gen uint64) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -131,7 +139,36 @@ func (n *NodeService) installConnection(client *rpc_client.RpcClient, url string
 	n.url = url
 	n.height = height
 	n.chainID = chainID
+	n.emitStatusLocked(true)
 	return true
+}
+
+// emitStatusLocked emits a status snapshot composed from the CURRENT fields.
+// Callers must hold n.mu (write lock); emitting under the lock is what makes
+// status transitions atomic with the state change they describe. (No Go-side
+// event handlers exist, so EventsEmit cannot re-enter NodeService.)
+func (n *NodeService) emitStatusLocked(connected bool) {
+	if n.ctx == nil {
+		return
+	}
+	mode := n.mode
+	if mode == "" {
+		mode = "remote"
+	}
+	st := NodeStatus{Mode: mode, Connected: connected && n.client != nil, Height: n.height, ChainID: n.chainID}
+	runtime.EventsEmit(n.ctx, EventNodeStatus, st)
+}
+
+// emitDisconnectedIfCurrent emits a disconnected status only if gen is still
+// the current connection intent — a failed dial from a superseded attempt must
+// not paint a newer successful connection as disconnected.
+func (n *NodeService) emitDisconnectedIfCurrent(gen uint64) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.connGen != gen {
+		return
+	}
+	n.emitStatusLocked(false)
 }
 
 // startMomentumLoop starts the subscription goroutine and returns an error if
@@ -175,8 +212,12 @@ func (n *NodeService) startMomentumLoop(gen uint64) error {
 				return
 			case ms, ok := <-ch:
 				if !ok {
-					// Unexpected channel closure (connection died): exit instead of
-					// spinning on a closed channel.
+					// Unexpected channel closure: the connection is dead, not just
+					// quiet. If this loop still owns the current generation, tear the
+					// connection down and emit disconnected — otherwise the UI shows
+					// a healthy node whose height never advances. A superseded loop
+					// exits silently; the replacement connection owns status.
+					n.degradeConnection(gen)
 					return
 				}
 				n.mu.Lock()
@@ -225,10 +266,12 @@ func (n *NodeService) disconnectLocked() {
 
 // Disconnect closes the connection and stops the subscription.
 func (n *NodeService) Disconnect() error {
+	n.opMu.Lock()
+	defer n.opMu.Unlock()
 	n.mu.Lock()
 	n.disconnectLocked()
+	n.emitStatusLocked(false)
 	n.mu.Unlock()
-	n.emitStatus(false)
 	return nil
 }
 
@@ -272,14 +315,20 @@ func (n *NodeService) SetNodeMode(mode string) error {
 	if mode != "remote" && mode != "local" && mode != "embedded" {
 		return fmt.Errorf("unknown node mode %q", mode)
 	}
+	// One transition at a time: persist-mode, embedded stop/start, n.mode, and
+	// the connect must all belong to THIS request, never interleaved with a
+	// concurrent Apply/Connect.
+	n.opMu.Lock()
+	defer n.opMu.Unlock()
+
+	// One settings mutation captures both the persisted mode and the URL the
+	// transition will dial — no separate re-read another writer could slip into.
+	var target string
 	if err := n.config.updateSettings(func(s *Settings) error {
 		s.NodeMode = mode
+		target = s.ActiveNodeURL()
 		return nil
 	}); err != nil {
-		return err
-	}
-	s, err := n.config.GetSettings()
-	if err != nil {
 		return err
 	}
 
@@ -294,7 +343,7 @@ func (n *NodeService) SetNodeMode(mode string) error {
 	if mode == "embedded" {
 		return n.startEmbedded()
 	}
-	return n.SetNode(s.ActiveNodeURL())
+	return n.SetNode(target)
 }
 
 // startEmbedded starts the embedded node, connects to it, and starts the sync
@@ -340,6 +389,11 @@ func (n *NodeService) SetNodeURL(mode, url string) error {
 	if perr != nil || (u.Scheme != "ws" && u.Scheme != "wss") || u.Host == "" {
 		return fmt.Errorf("node url must be a ws:// or wss:// URL with a host")
 	}
+	// Serialized with mode transitions: persisting a URL and reconnecting to it
+	// is itself a transition step and must not interleave with SetNodeMode.
+	n.opMu.Lock()
+	defer n.opMu.Unlock()
+
 	activeMode := ""
 	if err := n.config.updateSettings(func(s *Settings) error {
 		if mode == "local" {
@@ -430,6 +484,10 @@ func (n *NodeService) GetEmbeddedInfo() (EmbeddedInfo, error) {
 
 // DeleteEmbeddedData removes the embedded chain DB. Refuses while running.
 func (n *NodeService) DeleteEmbeddedData() error {
+	// Serialized with mode transitions so the delete can't race an embedded
+	// start between the running-check and the removal.
+	n.opMu.Lock()
+	defer n.opMu.Unlock()
 	n.mu.RLock()
 	running := n.embedded != nil
 	n.mu.RUnlock()
@@ -456,6 +514,9 @@ func dirSize(path string) int64 {
 
 // Connect connects to the active mode's URL using persisted settings.
 func (n *NodeService) Connect() error {
+	n.opMu.Lock()
+	defer n.opMu.Unlock()
+
 	s, err := n.config.GetSettings()
 	if err != nil {
 		return err

@@ -60,10 +60,18 @@ onMounted(async () => {
   walletName.value = wallet.wallets.find((w) => w.id === wallet.active)?.name ?? ''
 })
 
+// One node transition at a time (defense in depth — the backend serializes
+// transitions authoritatively): the Apply/Start buttons disable while a
+// transition is in flight, so a success message can only belong to the
+// request that actually ran.
+const applyingNode = ref(false)
+
 async function applyNode() {
+  if (applyingNode.value) return
   nodeMsg.value = ''; nodeErr.value = ''
   // Embedded mode is gated behind an explicit warning before we ever start it.
   if (nodeMode.value === 'embedded' && loadedMode !== 'embedded') { showEmbeddedConfirm.value = true; return }
+  applyingNode.value = true
   try {
     const remoteEdited = remoteDirty.value && remoteUrl.value !== loadedRemote
     const localEdited = localDirty.value && localUrl.value !== loadedLocal
@@ -73,12 +81,15 @@ async function applyNode() {
     else if (nodeMode.value === 'remote' ? remoteEdited : localEdited) { await node.setMode(nodeMode.value) }
     nodeMsg.value = 'Node settings applied'
   } catch (e: any) { nodeErr.value = e?.message ?? String(e) }
+  finally { applyingNode.value = false }
 }
 async function confirmStartEmbedded() {
+  if (applyingNode.value) return
   nodeMsg.value = ''; nodeErr.value = ''
+  applyingNode.value = true
   try { await node.setMode('embedded'); loadedMode = 'embedded'; modeDirty.value = false; nodeMsg.value = 'Node settings applied' }
   catch (e: any) { nodeErr.value = e?.message ?? String(e) }
-  finally { showEmbeddedConfirm.value = false }
+  finally { showEmbeddedConfirm.value = false; applyingNode.value = false }
 }
 async function doDeleteEmbedded() {
   nodeErr.value = ''
@@ -199,13 +210,13 @@ function hide() { revealed.value = '' }
       <div v-if="showEmbeddedConfirm" class="rounded border border-destructive/40 bg-background p-3 space-y-2">
         <p class="text-destructive text-sm">Embedded mode runs a full Zenon node in-app: it needs several GB of disk and can take hours to fully sync. Continue?</p>
         <div class="flex gap-2">
-          <Button @click="confirmStartEmbedded">Start embedded</Button>
+          <Button :disabled="applyingNode" @click="confirmStartEmbedded">Start embedded</Button>
           <Button variant="outline" @click="showEmbeddedConfirm = false">Cancel</Button>
         </div>
       </div>
 
       <div class="flex items-center gap-3">
-        <Button @click="applyNode" aria-label="Apply node">Apply node</Button>
+        <Button :disabled="applyingNode" @click="applyNode" aria-label="Apply node">Apply node</Button>
         <Button v-if="!node.connected" variant="outline" @click="retryNode">Retry</Button>
       </div>
       <p class="text-xs text-muted-foreground">{{ node.connected ? `Connected (${node.mode}) · height ${node.height}` : `Disconnected (${node.mode})` }}</p>

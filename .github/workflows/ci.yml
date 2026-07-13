@@ -70,6 +70,11 @@ jobs:
       - name: Stub frontend/dist for //go:embed
         run: mkdir -p frontend/dist && touch frontend/dist/index.html
       - run: go test -race ./...
+      # The integration-tag suite is excluded from ordinary runs, so nothing
+      # compiles it by default — keep it building against the current bindings
+      # (it rotted silently once; round-4 review finding).
+      - name: Integration suite compiles
+        run: go test -tags integration ./internal/spike -run '^$'
 
   build-test:
     strategy:

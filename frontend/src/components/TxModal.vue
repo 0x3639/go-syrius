@@ -27,6 +27,12 @@ const { preview: p, status } = storeToRefs(tx)
       Confirm — you are approving this exact transaction (hashed &amp; signed on confirm)
     </h2>
     <p v-if="p.summary" class="text-sm text-primary">{{ p.summary }}</p>
+    <div v-if="p.fromAddress" class="flex justify-between gap-4">
+      <span class="shrink-0 text-muted-foreground">From</span>
+      <!-- The source account matters: an account switch invalidates the hold,
+           and the user must see WHICH account signs (confirm-what-you-sign). -->
+      <span class="break-all text-right font-mono">{{ p.fromAddress }}</span>
+    </div>
     <div class="flex justify-between gap-4">
       <span class="shrink-0 text-muted-foreground">To</span>
       <!-- Full address (wraps) — confirm-what-you-sign means the user verifies
@@ -47,7 +53,9 @@ const { preview: p, status } = storeToRefs(tx)
     <!-- After Confirm, PoW (the slow part) runs here. -->
     <div v-if="status === 'publishing'" class="flex items-center gap-2 pt-2 text-sm font-medium text-info">
       <LoaderCircleIcon class="animate-spin" :size="16" />
-      <span class="animate-pulse">{{ p.needsPoW ? 'Generating Plasma…' : 'Publishing…' }}</span>
+      <!-- tx:pow-progress drives the transition: "Generating" until the PoW
+           callback reports Done, then the block is being published. -->
+      <span class="animate-pulse">{{ p.needsPoW && tx.powState !== 'Done' ? 'Generating Plasma…' : 'Publishing…' }}</span>
     </div>
     <div v-else class="flex gap-2 pt-2">
       <Button class="flex-1" @click="tx.confirm()">Confirm</Button>

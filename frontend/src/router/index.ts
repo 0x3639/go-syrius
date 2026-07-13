@@ -44,8 +44,13 @@ router.beforeEach((to) => {
 })
 
 router.afterEach(() => {
-  // Discard any half-built/finished tx when navigating between screens.
-  useTxStore().reset()
+  // Discard any half-built/finished tx when navigating between screens. An
+  // awaiting hold must go through discard() so the BACKEND hold is released
+  // too — a bare reset() would leave the block held until the next prepare
+  // supersedes it.
+  const tx = useTxStore()
+  if (tx.status === 'awaiting') tx.discard()
+  else tx.reset()
 })
 
 export default router

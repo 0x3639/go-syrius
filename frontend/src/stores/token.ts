@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import * as Nom from '../../wailsjs/go/app/NomService'
+import { currentRequestEpoch } from '../lib/requestEpoch'
 import type { app } from '../../wailsjs/go/models'
 
 export const useTokenStore = defineStore('token', {
@@ -9,8 +10,11 @@ export const useTokenStore = defineStore('token', {
   }),
   actions: {
     async refresh() {
+      const epoch = currentRequestEpoch()
       try {
-        this.myTokens = await Nom.GetMyTokens()
+        const myTokens = await Nom.GetMyTokens()
+        if (epoch !== currentRequestEpoch()) return // stale: another account's data
+        this.myTokens = myTokens
       } catch { /* not connected / locked — leave as-is */ }
     },
     // Search by ZTS id, name, or symbol (backend decides which).

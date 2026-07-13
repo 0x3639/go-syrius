@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import * as Nom from '../../wailsjs/go/app/NomService'
+import { currentRequestEpoch } from '../lib/requestEpoch'
 import type { app } from '../../wailsjs/go/models'
 
 // 50,000 QSR in base units (1e8) — the Sentinel QSR collateral.
@@ -30,10 +31,15 @@ export const useSentinelStore = defineStore('sentinel', {
   },
   actions: {
     async refresh() {
+      const epoch = currentRequestEpoch()
       try {
-        this.sentinel = await Nom.GetSentinel()
-        this.depositedQsr = await Nom.GetDepositedQsr()
-        this.reward = await Nom.GetSentinelReward()
+        const sentinel = await Nom.GetSentinel()
+        const depositedQsr = await Nom.GetDepositedQsr()
+        const reward = await Nom.GetSentinelReward()
+        if (epoch !== currentRequestEpoch()) return // stale: another account's data
+        this.sentinel = sentinel
+        this.depositedQsr = depositedQsr
+        this.reward = reward
       } catch {
         /* not connected / locked — leave as-is */
       }

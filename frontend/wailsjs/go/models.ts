@@ -131,6 +131,7 @@ export namespace app {
 		}
 	}
 	export class CallPreview {
+	    fromAddress: string;
 	    toAddress: string;
 	    zts: string;
 	    symbol: string;
@@ -149,6 +150,7 @@ export namespace app {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fromAddress = source["fromAddress"];
 	        this.toAddress = source["toAddress"];
 	        this.zts = source["zts"];
 	        this.symbol = source["symbol"];
@@ -551,6 +553,7 @@ export namespace app {
 	    }
 	}
 	export class SendPreview {
+	    fromAddress: string;
 	    toAddress: string;
 	    symbol: string;
 	    zts: string;
@@ -568,6 +571,7 @@ export namespace app {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fromAddress = source["fromAddress"];
 	        this.toAddress = source["toAddress"];
 	        this.symbol = source["symbol"];
 	        this.zts = source["zts"];

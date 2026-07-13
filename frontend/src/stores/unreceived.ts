@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import * as N from '../../wailsjs/go/app/NodeService'
+import { currentRequestEpoch } from '../lib/requestEpoch'
 import * as Tx from '../../wailsjs/go/app/TxService'
 
 export type Unreceived = { fromHash: string; fromAddress: string; token: string; amount: string; decimals: number }
@@ -13,7 +14,15 @@ export const useUnreceivedStore = defineStore('unreceived', {
   }),
   actions: {
     async load() {
-      try { this.items = (await N.GetUnreceived()) as unknown as Unreceived[] } catch { this.items = [] }
+      const epoch = currentRequestEpoch()
+      try {
+        const items = (await N.GetUnreceived()) as unknown as Unreceived[]
+        if (epoch !== currentRequestEpoch()) return // stale: another account's data
+        this.items = items
+      } catch {
+        if (epoch !== currentRequestEpoch()) return
+        this.items = []
+      }
     },
     async receive(hash: string) {
       this.error = ''

@@ -15,6 +15,7 @@ import { useUnreceivedStore } from '../stores/unreceived'
 import { useUiStore } from '../stores/ui'
 import { useAutoReceiveStore } from '../stores/autoReceive'
 import { useWalletStore } from '../stores/wallet'
+import { useTxStore } from '../stores/tx'
 
 const route = useRoute()
 const price = usePriceStore()
@@ -28,22 +29,42 @@ const unreceived = useUnreceivedStore()
 const ui = useUiStore()
 const autoReceive = useAutoReceiveStore()
 const wallet = useWalletStore()
+const tx = useTxStore()
 const title = computed(() => (route.meta.title as string) ?? '')
 
 // Global bootstrap. AppShell wraps every authenticated route and unmounts only
 // on lock, so this is the single place the app re-hydrates after an unlock —
 // relocated here from the deleted Home.vue (the tab deep-link applyQuery() is
 // intentionally dropped; NetworkPage handles route.query.sub now).
+// Coalesced: momentum ticks arrive faster than seven RPC groups can resolve,
+// so overlapping calls collapse into the running one plus at most one trailing
+// re-run (the trailing run guarantees an account switch mid-refresh still
+// lands its data).
+let refreshing = false
+let refreshQueued = false
 async function refresh() {
-  await Promise.all([
-    balances.load(),
-    plasma.refresh(),
-    pillar.refreshDelegation(),
-    pillar.refreshMyPillar(),
-    accelerator.refreshVotable(),
-    txs.load(),
-    unreceived.load(),
-  ])
+  if (refreshing) {
+    refreshQueued = true
+    return
+  }
+  refreshing = true
+  try {
+    await Promise.all([
+      balances.load(),
+      plasma.refresh(),
+      pillar.refreshDelegation(),
+      pillar.refreshMyPillar(),
+      accelerator.refreshVotable(),
+      txs.load(),
+      unreceived.load(),
+    ])
+  } finally {
+    refreshing = false
+    if (refreshQueued) {
+      refreshQueued = false
+      refresh()
+    }
+  }
 }
 
 // On account switch: reset history paging, refresh data, re-point auto-receive.
@@ -60,6 +81,7 @@ watch(
 
 onMounted(async () => {
   price.start()
+  tx.initEvents() // wires tx:pow-progress so the confirm dialog shows live PoW state
   node.initEvents(refresh) // wires node:status/sync/momentum:tick + drives the sync pill + live refresh
   refresh() // initial aggregate load (balances etc.)
   ui.init() // restore persisted theme + showGovernance

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import * as Nom from '../../wailsjs/go/app/NomService'
+import { currentRequestEpoch } from '../lib/requestEpoch'
 import type { app } from '../../wailsjs/go/models'
 
 export const useAcceleratorStore = defineStore('accelerator', {
@@ -42,26 +43,39 @@ export const useAcceleratorStore = defineStore('accelerator', {
     // The active address's Active (approved, unfinished) projects — the picker
     // for requesting a phase payout. Swallows errors (locked/disconnected → []).
     async loadMyProjects() {
+      const epoch = currentRequestEpoch()
       try {
-        this.myProjects = await Nom.GetMyProjects()
+        const myProjects = await Nom.GetMyProjects()
+        if (epoch !== currentRequestEpoch()) return // stale: another account's data
+        this.myProjects = myProjects
       } catch {
+        if (epoch !== currentRequestEpoch()) return
         this.myProjects = []
       }
     },
     async loadVotablePillars() {
+      const epoch = currentRequestEpoch()
       try {
-        this.votablePillars = await Nom.GetVotablePillars()
+        const votablePillars = await Nom.GetVotablePillars()
+        if (epoch !== currentRequestEpoch()) return // stale: another account's data
+        this.votablePillars = votablePillars
       } catch {
+        if (epoch !== currentRequestEpoch()) return
         this.votablePillars = [] // locked / not connected ⇒ no voting
       }
     },
     // Votable items for the active address's pillars + active pillar count, for
     // the Vote view and the top-bar badge. Swallows errors (badge shows 0).
     async refreshVotable() {
+      const epoch = currentRequestEpoch()
       try {
-        this.votable = await Nom.GetVotableForMyPillars()
-        this.numActivePillars = await Nom.GetActivePillarCount()
+        const votable = await Nom.GetVotableForMyPillars()
+        const numActivePillars = await Nom.GetActivePillarCount()
+        if (epoch !== currentRequestEpoch()) return // stale: another account's data
+        this.votable = votable
+        this.numActivePillars = numActivePillars
       } catch {
+        if (epoch !== currentRequestEpoch()) return
         this.votable = []
       }
     },

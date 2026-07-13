@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import * as Tx from '../../wailsjs/go/app/TxService'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 import type { app } from '../../wailsjs/go/models'
 
-export type SendPreview = { toAddress: string; symbol: string; zts: string; amount: string; decimals: number; usedPlasma: number; difficulty: number; hash: string; needsPoW: boolean; summary?: string; holdId?: number }
+export type SendPreview = { fromAddress?: string; toAddress: string; symbol: string; zts: string; amount: string; decimals: number; usedPlasma: number; difficulty: number; hash: string; needsPoW: boolean; summary?: string; holdId?: number }
 export type TxStatus = 'idle'|'preparing'|'awaiting'|'publishing'|'done'|'error'
 
 // Identifies the latest prepare() call (the store is a singleton, so a module
@@ -10,10 +11,20 @@ export type TxStatus = 'idle'|'preparing'|'awaiting'|'publishing'|'done'|'error'
 // navigated away from or that a newer prepare superseded.
 let prepareToken = 0
 
+// One-shot guard so initEvents registers the runtime listener once.
+let eventsInit = false
+
 export const useTxStore = defineStore('tx', {
-  state: () => ({ status: 'idle' as TxStatus, preview: null as SendPreview | null, hash: '', error: '' }),
+  state: () => ({ status: 'idle' as TxStatus, preview: null as SendPreview | null, hash: '', error: '', powState: '' }),
   actions: {
-    reset() { prepareToken++; this.status = 'idle'; this.preview = null; this.hash = ''; this.error = '' },
+    reset() { prepareToken++; this.status = 'idle'; this.preview = null; this.hash = ''; this.error = ''; this.powState = '' },
+    // Wires the backend's tx:pow-progress push ("Generating" → "Done") so the
+    // confirm dialog can show real PoW state instead of an assumed one.
+    initEvents() {
+      if (eventsInit) return
+      eventsInit = true
+      EventsOn('tx:pow-progress', (p: any) => { this.powState = p?.state ?? '' })
+    },
     async prepare(toAddress: string, zts: string, amount: string) {
       const token = ++prepareToken
       this.status = 'preparing'; this.preview = null; this.hash = ''; this.error = ''
@@ -44,6 +55,7 @@ export const useTxStore = defineStore('tx', {
     async confirm() {
       const holdId = this.preview?.holdId ?? 0
       this.status = 'publishing'
+      this.powState = ''
       try {
         // holdId travels to the backend: ConfirmPublish refuses if the held
         // block is no longer the one this dialog displayed (confirm-what-you-

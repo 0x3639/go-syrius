@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import * as N from '../../wailsjs/go/app/NodeService'
+import { currentRequestEpoch } from '../lib/requestEpoch'
 
 export type TxRecord = {
   hash: string; direction: string; method: string; counterparty: string; token: string
@@ -44,8 +45,10 @@ export const useTxsStore = defineStore('txs', {
   actions: {
     async fetchChunk(): Promise<boolean> {
       if (!this.hasMoreBlocks) return false
+      const epoch = currentRequestEpoch()
       try {
         const r = (await N.GetTransactions(this.chunkIndex, BLOCK_FETCH)) as unknown as { records: TxRecord[]; hasMore: boolean }
+        if (epoch !== currentRequestEpoch()) return false // stale: another account's blocks
         this.buffer.push(...(r.records ?? []))
         this.hasMoreBlocks = !!r.hasMore
         this.chunkIndex++
@@ -66,6 +69,7 @@ export const useTxsStore = defineStore('txs', {
     // a fresh buffer locally and swaps it in once, so the live view never flashes
     // empty (this runs on every momentum tick).
     async load() {
+      const epoch = currentRequestEpoch()
       const fresh: TxRecord[] = []
       let idx = 0
       let more = true
@@ -81,6 +85,7 @@ export const useTxsStore = defineStore('txs', {
           break
         }
       }
+      if (epoch !== currentRequestEpoch()) return // stale: another account's history
       this.buffer = fresh
       this.chunkIndex = idx
       this.hasMoreBlocks = more

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import * as Nom from '../../wailsjs/go/app/NomService'
+import { currentRequestEpoch } from '../lib/requestEpoch'
 import type { app } from '../../wailsjs/go/models'
 
 // A pillar Register block costs ~105,000 plasma (2 * EmbeddedSimple). We gate on
@@ -51,34 +52,52 @@ export const usePillarStore = defineStore('pillar', {
   },
   actions: {
     async refreshDelegation() {
+      const epoch = currentRequestEpoch()
       try {
-        this.delegation = await Nom.GetDelegation()
+        const delegation = await Nom.GetDelegation()
+        if (epoch !== currentRequestEpoch()) return // stale: another account's data
+        this.delegation = delegation
       } catch { /* not connected / locked — leave as-is */ }
     },
     async refresh() {
+      const epoch = currentRequestEpoch()
       try {
-        this.pillars = await Nom.GetPillarList()
-        this.delegation = await Nom.GetDelegation()
-        this.reward = await Nom.GetPillarReward()
+        const pillars = await Nom.GetPillarList()
+        const delegation = await Nom.GetDelegation()
+        const reward = await Nom.GetPillarReward()
+        if (epoch !== currentRequestEpoch()) return // stale: another account's data
+        this.pillars = pillars
+        this.delegation = delegation
+        this.reward = reward
       } catch { /* not connected / locked — leave as-is */ }
     },
     // Refresh the registration view's chain state (owned pillar, deposit, cost,
     // plasma, reward).
     async refreshRegistration() {
+      const epoch = currentRequestEpoch()
       try {
-        this.myPillar = await Nom.GetMyPillar()
-        this.depositedQsr = await Nom.GetPillarDepositedQsr()
-        this.qsrCost = await Nom.GetPillarQsrCost()
-        this.plasma = await Nom.GetPlasmaInfo()
-        this.reward = await Nom.GetPillarReward()
+        const myPillar = await Nom.GetMyPillar()
+        const depositedQsr = await Nom.GetPillarDepositedQsr()
+        const qsrCost = await Nom.GetPillarQsrCost()
+        const plasma = await Nom.GetPlasmaInfo()
+        const reward = await Nom.GetPillarReward()
+        if (epoch !== currentRequestEpoch()) return // stale: another account's data
+        this.myPillar = myPillar
+        this.depositedQsr = depositedQsr
+        this.qsrCost = qsrCost
+        this.plasma = plasma
+        this.reward = reward
       } catch { /* not connected / locked — leave as-is */ }
     },
     // Lightweight owned-pillar refresh for the always-visible status strip — just
     // the owned pillar (1 RPC), independent of which tab is open. The pillar is
     // owned per-address, so this must follow account switches.
     async refreshMyPillar() {
+      const epoch = currentRequestEpoch()
       try {
-        this.myPillar = await Nom.GetMyPillar()
+        const myPillar = await Nom.GetMyPillar()
+        if (epoch !== currentRequestEpoch()) return // stale: another account's data
+        this.myPillar = myPillar
       } catch { /* not connected / locked — leave as-is */ }
     },
     // Start polling for a just-published step to settle on-chain, then advance.

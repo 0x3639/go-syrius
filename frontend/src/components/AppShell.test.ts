@@ -27,6 +27,7 @@ import { useUnreceivedStore } from '../stores/unreceived'
 import { useUiStore } from '../stores/ui'
 import { useAutoReceiveStore } from '../stores/autoReceive'
 import { useWalletStore } from '../stores/wallet'
+import { useTxStore } from '../stores/tx'
 
 // Stub every bootstrap action so the integration runs end-to-end (we do NOT mock
 // AppShell's bootstrap away — that's the regression this suite must catch) while
@@ -42,8 +43,10 @@ function stubStores() {
   const ui = useUiStore()
   const autoReceive = useAutoReceiveStore()
   const wallet = useWalletStore()
+  const tx = useTxStore()
 
   vi.spyOn(node, 'initEvents').mockImplementation(() => {})
+  vi.spyOn(tx, 'initEvents').mockImplementation(() => {})
   vi.spyOn(balances, 'load').mockResolvedValue(undefined as any)
   vi.spyOn(plasma, 'refresh').mockResolvedValue(undefined as any)
   vi.spyOn(pillar, 'refreshDelegation').mockResolvedValue(undefined as any)

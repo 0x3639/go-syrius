@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import * as W from '../../wailsjs/go/app/WalletService'
+import { bumpRequestEpoch } from '../lib/requestEpoch'
 
 export type AccountInfo = { index: number; address: string; label: string }
 // WalletMeta mirrors the Go app.WalletMeta returned by ListWallets. `id` is the
@@ -20,6 +21,7 @@ export const useWalletStore = defineStore('wallet', {
     },
     async unlock(id: string, password: string) {
       await W.Unlock(id, password)
+      bumpRequestEpoch() // a new session: discard responses from the old one
       this.active = id
       this.locked = false
       await this.loadAccounts()
@@ -35,6 +37,7 @@ export const useWalletStore = defineStore('wallet', {
       // Re-lock the keystore in the Go backend, not just the UI — otherwise the
       // wallet shows locked while the backend keystore stays decrypted.
       W.Lock().catch(() => {})
+      bumpRequestEpoch()
       this.locked = true
       this.active = ''
       this.accounts = []
@@ -45,6 +48,9 @@ export const useWalletStore = defineStore('wallet', {
     },
     async select(index: number) {
       await W.SelectAccount(index)
+      // The backend just switched accounts: any account-scoped response still
+      // in flight belongs to the previous account and must not be committed.
+      bumpRequestEpoch()
       this.activeIndex = index
     },
     async setLabel(index: number, label: string) {

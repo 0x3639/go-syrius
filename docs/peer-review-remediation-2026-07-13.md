@@ -449,3 +449,23 @@ The re-review of the remediation found 2 P1 and 3 P2 issues, fixed in
 All gates re-run and green: go test (+ race), vet, 296 frontend tests,
 typecheck, build, govulncheck allowlist gate, gosec 0, `pnpm audit --prod`
 clean, `git diff --check` clean.
+
+
+## Round 4 addendum (2026-07-13)
+
+The five production fixes were confirmed correct; two test/acceptance issues
+remained, fixed in `f5d1887`:
+
+- [x] P2 — the integration-tag suite (`internal/spike`) compiles against the
+      current bindings: ImportKeystore(name), ID-keyed Unlock, two-value
+      SelectAccount, SetNodeURL instead of the (now unexported) raw connector,
+      ConfirmPublish(preview.HoldID); prepare-time hash/difficulty assertions
+      replaced with an on-chain Difficulty>0 check after confirmation.
+      `go test -tags integration ./internal/spike -run '^$'` passes.
+- [x] P2 — the persist-failure selection test injects a portable write failure
+      (data dir redirected to a child of a regular file inside the persist
+      hook) instead of Unix directory permissions, so it holds on
+      windows-latest too.
+
+Live-node integration tests remain PENDING a configured testnet endpoint with
+the `embedded` RPC namespace.

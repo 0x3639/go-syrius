@@ -421,3 +421,31 @@ Before this handoff was written, the branch passed:
 Those passing gates do not exercise the logical interleavings or payload
 visibility problems described above. Live-node integration tests were not run
 because they require a configured Zenon endpoint.
+
+
+## Round 3 addendum (2026-07-13)
+
+The re-review of the remediation found 2 P1 and 3 P2 issues, fixed in
+`2ae4d94` (P1s) and `de6803c` (P2s):
+
+- [x] P1 — wallet lifecycle serializes with selection: Lock/Unlock acquire the
+      selection mutex around their session swap (KDF stays outside); the
+      frontend adds a wallet-session token that discards selection responses
+      and queued intents from before an unlock/lock.
+- [x] P1 — `liquidity.unlockStakeEntries` removed from the propose catalog and
+      fail-closed in the builder: a governance action cannot carry the token
+      standard the method selects its target with (ExecuteAction always emits
+      a zero-amount ZNN block), so the proposal could never perform the
+      displayed intent.
+- [x] P2 — SelectAccount persist-or-fail: settings read/persist failures fail
+      the call with the signer unchanged; persistence commits before the
+      in-memory transition.
+- [x] P2 — the raw node connector is unexported (`setNode`) and off the
+      binding surface; it runs only inside opMu-protected transitions.
+- [x] P2 — proposal metadata decodes from the outer Governance.ProposeAction
+      envelope of the exact held template (byte round-trip enforced,
+      destination/data cross-checked against the built payload).
+
+All gates re-run and green: go test (+ race), vet, 296 frontend tests,
+typecheck, build, govulncheck allowlist gate, gosec 0, `pnpm audit --prod`
+clean, `git diff --check` clean.

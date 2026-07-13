@@ -154,6 +154,14 @@ func buildApp(t *testing.T, env testEnv, accountIndex int) (*app.App, *rpc_clien
 
 	a := app.New()
 
+	// Persist the expected (testnet) chain id: TxService builds blocks for the
+	// CONFIGURED chain, and an unset value normalizes to mainnet (1) — every
+	// publish would then fail the chain check against the testnet node that
+	// assertTestnet just verified.
+	if err := a.Config.SetChainID(env.expectChainID); err != nil {
+		t.Fatalf("Config.SetChainID(%d): %v", env.expectChainID, err)
+	}
+
 	// Import the keystore into the app's wallets dir under the temp data dir,
 	// then unlock it through the real WalletService. Unlock is keyed by the
 	// wallet ID (the uuid keystore filename the import assigned).

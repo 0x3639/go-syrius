@@ -469,3 +469,19 @@ remained, fixed in `f5d1887`:
 
 Live-node integration tests remain PENDING a configured testnet endpoint with
 the `embedded` RPC namespace.
+
+
+## Round 5 addendum (2026-07-13)
+
+Rounds 3–4 fixes confirmed correct; one live-setup issue remained, fixed in
+`1a9ab0e`:
+
+- [x] P2 — the live-test app persists the expected testnet chain id
+      (`Config.SetChainID(env.expectChainID)`) so TxService no longer builds
+      blocks for the mainnet default and ConfirmPublish's chain check passes
+      against the verified testnet node.
+
+Remaining before mainnet enablement (unchanged, not blockers for this merge):
+a live testnet run of the integration suite (needs an endpoint with the
+`embedded` RPC namespace plus the funded keystore) and the manual GUI testnet
+acceptance for the write flows.

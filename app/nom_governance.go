@@ -131,7 +131,8 @@ func (s *NomService) PrepareGovernanceVote(id, pillarName string, vote uint8) (C
 	template := client.GovernanceApi.VoteByName(action.CurrentVoteId, name, vote)
 	label := map[uint8]string{embedded.VoteYes: "yes", embedded.VoteNo: "no", embedded.VoteAbstain: "abstain"}[vote]
 	return s.tx.prepareCall(template,
-		callExpect{to: types.GovernanceContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
+		callExpect{to: types.GovernanceContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...),
+			policy: s.requireTestnet},
 		fmt.Sprintf("Vote %s on governance action %q (round %d) as %s", label, action.Name, action.Round+1, name))
 }
 
@@ -157,7 +158,14 @@ func (s *NomService) PrepareExecuteAction(id string) (CallPreview, error) {
 	}
 	d := actionDTO(a)
 	template := client.GovernanceApi.ExecuteAction(h)
+	// The real effect of an execute is the destination call the action carries;
+	// surface its payload so the user confirms more than a bare contract name.
+	payload := "no payload"
+	if d.Data != "" {
+		payload = fmt.Sprintf("payload %s", d.Data)
+	}
 	return s.tx.prepareCall(template,
-		callExpect{to: types.GovernanceContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Execute governance action %q (calls %s)", d.Name, d.Destination))
+		callExpect{to: types.GovernanceContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...),
+			policy: s.requireTestnet},
+		fmt.Sprintf("Execute governance action %q — calls %s (%s)", d.Name, d.Destination, payload))
 }

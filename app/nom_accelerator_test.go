@@ -239,8 +239,8 @@ func TestBuildVotableItems(t *testing.T) {
 		Votes: &embedded.VoteBreakdown{Total: 1, Yes: 1, No: 0},
 	}
 	expiredProj := &embedded.Project{
-		Id:                types.HexToHashPanic("02" + strings32),
-		Name:              "ExpiredAZ", Status: 0,
+		Id:   types.HexToHashPanic("02" + strings32),
+		Name: "ExpiredAZ", Status: 0,
 		CreationTimestamp: now - int64(constants.AcceleratorProjectVotingPeriod) - 1,
 		Votes:             &embedded.VoteBreakdown{},
 	}

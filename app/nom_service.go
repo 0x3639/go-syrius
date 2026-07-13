@@ -1005,7 +1005,28 @@ func (s *NomService) PrepareIssueToken(name, symbol, domain, totalSupply, maxSup
 	template := client.TokenApi.IssueToken(name, symbol, domain, total, max, uint8(decimals), isMintable, isBurnable, isUtility)
 	return s.tx.prepareCall(template,
 		callExpect{to: types.TokenContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Issue token %s", symbol))
+		fmt.Sprintf("Issue token %q (%s) — total supply %s, max supply %s, %d decimals, %s",
+			name, symbol, formatBaseAmount(total.String(), decimals), formatBaseAmount(max.String(), decimals),
+			decimals, tokenFlagsSummary(isMintable, isBurnable, isUtility)))
+}
+
+// tokenFlagsSummary renders the token capability flags for the confirm dialog —
+// they are consequential (mintability governs future supply; disabling is
+// one-way) so the user must see them before signing.
+func tokenFlagsSummary(isMintable, isBurnable, isUtility bool) string {
+	mint := "non-mintable (fixed supply)"
+	if isMintable {
+		mint = "mintable"
+	}
+	burn := "non-burnable"
+	if isBurnable {
+		burn = "burnable"
+	}
+	out := mint + ", " + burn
+	if isUtility {
+		out += ", utility"
+	}
+	return out
 }
 
 // PrepareMint builds a Mint template (owner-only on-chain). Inputs validated first.
@@ -1069,7 +1090,17 @@ func (s *NomService) PrepareUpdateToken(zts, newOwner string, isMintable, isBurn
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.TokenApi.UpdateToken(parsedZts, owner, isMintable, isBurnable)
+	// The summary must surface the full material effect: the (possibly new)
+	// owner and the mint/burn flags — disabling either is IRREVERSIBLE on-chain.
+	mint, burn := "no", "no"
+	if isMintable {
+		mint = "yes"
+	}
+	if isBurnable {
+		burn = "yes"
+	}
 	return s.tx.prepareCall(template,
 		callExpect{to: types.TokenContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Update token %s", parsedZts.String()))
+		fmt.Sprintf("Update token %s — owner %s, mintable %s, burnable %s (disabling mint or burn is permanent)",
+			parsedZts.String(), owner.String(), mint, burn))
 }

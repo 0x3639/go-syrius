@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"regexp"
 	"strings"
-	"time"
 
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
 	"github.com/zenon-network/go-zenon/common/types"
@@ -311,7 +310,8 @@ func (s *NomService) PrepareCreateProject(name, description, url, znnNeeded, qsr
 	template := client.AcceleratorApi.CreateProject(name, description, url, znn, qsr)
 	return s.tx.prepareCall(template,
 		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Create project %q (1 ZNN fee)", name))
+		fmt.Sprintf("Create project %q — requesting %s ZNN / %s QSR, %s (1 ZNN fee)",
+			name, formatBaseAmount(znn.String(), 8), formatBaseAmount(qsr.String(), 8), url))
 }
 
 // PrepareAddPhase builds an AddPhase template for an existing project. Project
@@ -332,7 +332,8 @@ func (s *NomService) PrepareAddPhase(projectId, name, description, url, znnNeede
 	template := client.AcceleratorApi.AddPhase(h, name, description, url, znn, qsr)
 	return s.tx.prepareCall(template,
 		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Add phase %q to project %s", name, projectId))
+		fmt.Sprintf("Add phase %q to project %s — requesting %s ZNN / %s QSR",
+			name, projectId, formatBaseAmount(znn.String(), 8), formatBaseAmount(qsr.String(), 8)))
 }
 
 // PrepareUpdatePhase builds an UpdatePhase template. On-chain UpdatePhase is
@@ -355,7 +356,8 @@ func (s *NomService) PrepareUpdatePhase(projectId, name, description, url, znnNe
 	template := client.AcceleratorApi.UpdatePhase(h, name, description, url, znn, qsr)
 	return s.tx.prepareCall(template,
 		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Update current phase of project %s", projectId))
+		fmt.Sprintf("Update current phase of project %s to %q — requesting %s ZNN / %s QSR",
+			projectId, name, formatBaseAmount(znn.String(), 8), formatBaseAmount(qsr.String(), 8)))
 }
 
 // annotateMyVotes records, for one pillar, its vote on each item (or -1 = not
@@ -425,7 +427,14 @@ func (s *NomService) GetVotableForMyPillars() ([]VotableItem, error) {
 		pageIndex++
 	}
 
-	items := buildVotableItems(all, time.Now().Unix())
+	// Chain time, not wall-clock: the voting window is enforced on-chain against
+	// momentum timestamps, so local clock skew must not hide valid votes or show
+	// expired ones (mirrors the staking maturity check).
+	m, err := client.LedgerApi.GetFrontierMomentum()
+	if err != nil {
+		return nil, err
+	}
+	items := buildVotableItems(all, frontierUnix(m))
 	if len(items) == 0 {
 		return items, nil
 	}

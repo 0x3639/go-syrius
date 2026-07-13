@@ -633,6 +633,7 @@ func (s *NomService) PrepareProposeAction(name, description, url, kind string, p
 		}
 	}
 	return s.tx.prepareCall(template,
-		callExpect{to: types.GovernanceContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
+		callExpect{to: types.GovernanceContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...),
+			policy: s.requireTestnet},
 		fmt.Sprintf("Propose %q (1 ZNN) — %s calls %s", name, label, payload.Destination.String()))
 }

@@ -473,13 +473,13 @@ func TestValidatePillarName(t *testing.T) {
 		}
 	}
 	invalid := []string{
-		"",                // empty
-		"-leading",        // leading separator
-		"trailing-",       // trailing separator
-		"double--dash",    // consecutive separators
-		"has space",       // space
-		"bad!",            // symbol
-		"a",               // too short? (1 char IS allowed) -- see note
+		"",             // empty
+		"-leading",     // leading separator
+		"trailing-",    // trailing separator
+		"double--dash", // consecutive separators
+		"has space",    // space
+		"bad!",         // symbol
+		"a",            // too short? (1 char IS allowed) -- see note
 	}
 	// NOTE: single-char "a" IS valid per the regex; drop it from the invalid set.
 	invalid = invalid[:len(invalid)-1]
@@ -598,5 +598,17 @@ func TestPillarRegisterTemplateTokenStandards(t *testing.T) {
 		if b.Amount == nil || b.Amount.Sign() != 0 {
 			t.Fatalf("%s: amount=%v want 0", name, b.Amount)
 		}
+	}
+}
+
+func TestTokenFlagsSummary(t *testing.T) {
+	if got := tokenFlagsSummary(true, true, true); got != "mintable, burnable, utility" {
+		t.Fatalf("all flags: %q", got)
+	}
+	if got := tokenFlagsSummary(false, false, false); got != "non-mintable (fixed supply), non-burnable" {
+		t.Fatalf("no flags: %q", got)
+	}
+	if got := tokenFlagsSummary(true, false, false); got != "mintable, non-burnable" {
+		t.Fatalf("mint only: %q", got)
 	}
 }

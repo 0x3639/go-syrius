@@ -328,6 +328,12 @@ func (t *TxService) ConfirmPublish(holdId uint64) (string, error) {
 // prepareCall builds, PoWs, and signs an embedded-contract call template (without
 // publishing), holding it for ConfirmPublish. Reuses the Send guard/PoW path.
 func (t *TxService) prepareCall(template *nom.AccountBlock, expect callExpect, summary string) (CallPreview, error) {
+	return t.prepareCallWithEffect(template, expect, summary, nil)
+}
+
+// prepareCallWithEffect is prepareCall plus a decoded TransactionEffect for the
+// confirm dialog (used by flows whose material parameters live in ABI data).
+func (t *TxService) prepareCallWithEffect(template *nom.AccountBlock, expect callExpect, summary string, effect *TransactionEffect) (CallPreview, error) {
 	if err := t.guard(); err != nil {
 		return CallPreview{}, err
 	}
@@ -365,6 +371,7 @@ func (t *TxService) prepareCall(template *nom.AccountBlock, expect callExpect, s
 		Amount:      template.Amount.String(),
 		Decimals:    resolveDecimals(template.TokenStandard.String(), clientTokenDecimals(client)),
 		Summary:     summary,
+		Effect:      effect,
 		NeedsPoW:    needsPoW,
 		HoldID:      holdID,
 		// UsedPlasma / Difficulty / Hash are filled by ConfirmPublish's PoW.

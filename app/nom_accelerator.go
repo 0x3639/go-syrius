@@ -308,10 +308,18 @@ func (s *NomService) PrepareCreateProject(name, description, url, znnNeeded, qsr
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.AcceleratorApi.CreateProject(name, description, url, znn, qsr)
-	return s.tx.prepareCall(template,
+	// Decode the exact template payload into structured confirmation fields
+	// (name, full description, URL, requested funds); fail closed on any
+	// decode divergence so the dialog never shows a partial record.
+	effect, err := decodeContractCall(types.AcceleratorContract, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact project effect: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Create project %q — requesting %s ZNN / %s QSR, %s (1 ZNN fee)",
-			name, formatBaseAmount(znn.String(), 8), formatBaseAmount(qsr.String(), 8), url))
+		fmt.Sprintf("Create project %q — requesting %s ZNN / %s QSR (1 ZNN fee)",
+			name, formatBaseAmount(znn.String(), 8), formatBaseAmount(qsr.String(), 8)),
+		effect)
 }
 
 // PrepareAddPhase builds an AddPhase template for an existing project. Project
@@ -330,10 +338,15 @@ func (s *NomService) PrepareAddPhase(projectId, name, description, url, znnNeede
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.AcceleratorApi.AddPhase(h, name, description, url, znn, qsr)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(types.AcceleratorContract, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact phase effect: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
 		fmt.Sprintf("Add phase %q to project %s — requesting %s ZNN / %s QSR",
-			name, projectId, formatBaseAmount(znn.String(), 8), formatBaseAmount(qsr.String(), 8)))
+			name, projectId, formatBaseAmount(znn.String(), 8), formatBaseAmount(qsr.String(), 8)),
+		effect)
 }
 
 // PrepareUpdatePhase builds an UpdatePhase template. On-chain UpdatePhase is
@@ -354,10 +367,15 @@ func (s *NomService) PrepareUpdatePhase(projectId, name, description, url, znnNe
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.AcceleratorApi.UpdatePhase(h, name, description, url, znn, qsr)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(types.AcceleratorContract, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact phase effect: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
 		fmt.Sprintf("Update current phase of project %s to %q — requesting %s ZNN / %s QSR",
-			projectId, name, formatBaseAmount(znn.String(), 8), formatBaseAmount(qsr.String(), 8)))
+			projectId, name, formatBaseAmount(znn.String(), 8), formatBaseAmount(qsr.String(), 8)),
+		effect)
 }
 
 // annotateMyVotes records, for one pillar, its vote on each item (or -1 = not

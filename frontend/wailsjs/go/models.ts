@@ -130,6 +130,36 @@ export namespace app {
 		    return a;
 		}
 	}
+	export class EffectField {
+	    label: string;
+	    value: string;
+
+	    static createFrom(source: any = {}) {
+	        return new EffectField(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.value = source["value"];
+	    }
+	}
+	export class TransactionEffect {
+	    contract: string;
+	    method: string;
+	    fields: EffectField[];
+
+	    static createFrom(source: any = {}) {
+	        return new TransactionEffect(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.contract = source["contract"];
+	        this.method = source["method"];
+	        this.fields = source["fields"];
+	    }
+	}
 	export class CallPreview {
 	    fromAddress: string;
 	    toAddress: string;
@@ -139,6 +169,7 @@ export namespace app {
 	    decimals: number;
 	    hash: string;
 	    summary: string;
+	    effect?: TransactionEffect;
 	    usedPlasma: number;
 	    difficulty: number;
 	    needsPoW: boolean;
@@ -158,6 +189,7 @@ export namespace app {
 	        this.decimals = source["decimals"];
 	        this.hash = source["hash"];
 	        this.summary = source["summary"];
+	        this.effect = source["effect"];
 	        this.usedPlasma = source["usedPlasma"];
 	        this.difficulty = source["difficulty"];
 	        this.needsPoW = source["needsPoW"];

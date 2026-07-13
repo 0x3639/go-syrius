@@ -27,6 +27,18 @@ const { preview: p, status } = storeToRefs(tx)
       Confirm — you are approving this exact transaction (hashed &amp; signed on confirm)
     </h2>
     <p v-if="p.summary" class="text-sm text-primary">{{ p.summary }}</p>
+    <!-- Decoded effect: every material ABI parameter of the held call, decoded
+         backend-side from the exact payload bytes (confirm-what-you-sign).
+         Values wrap in full — a truncated address or amount cannot be verified. -->
+    <div v-if="p.effect" class="space-y-1 rounded border border-border/60 p-3" data-testid="tx-effect">
+      <p class="text-xs font-medium text-muted-foreground">
+        Decoded effect — {{ p.effect.contract }}.{{ p.effect.method }}
+      </p>
+      <div v-for="f in p.effect.fields" :key="f.label" class="flex justify-between gap-4 text-sm">
+        <span class="shrink-0 text-muted-foreground">{{ f.label }}</span>
+        <span class="break-all whitespace-pre-wrap text-right font-mono">{{ f.value }}</span>
+      </div>
+    </div>
     <div v-if="p.fromAddress" class="flex justify-between gap-4">
       <span class="shrink-0 text-muted-foreground">From</span>
       <!-- The source account matters: an account switch invalidates the hold,

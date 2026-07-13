@@ -137,3 +137,66 @@ describe('TxModal (confirm-what-you-sign)', () => {
     expect(w.text()).toContain('Generating Plasma')
   })
 })
+
+describe('TxModal decoded effect (governance/accelerator)', () => {
+  it('renders every decoded effect field with FULL untruncated values', () => {
+    const tx = useTxStore()
+    const admin = 'z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz'
+    const bigAmount = '123456789012345678901234567890'
+    const longDesc = 'véry lông déscription — '.repeat(10) + '🚀 end'
+    const longUrl = 'https://forum.zenon.org/some/very/long/path?with=query&and=more'
+    tx.preview = {
+      toAddress: 'z1gov',
+      amount: '100000000',
+      zts: 'zts1znn',
+      symbol: 'ZNN',
+      needsPoW: false,
+      difficulty: 0,
+      hash: '',
+      usedPlasma: 0,
+      summary: 'Propose "x" (1 ZNN) — Bridge — Change Administrator calls Bridge.ChangeAdministrator',
+      effect: {
+        contract: 'Bridge',
+        method: 'ChangeAdministrator',
+        fields: [
+          { label: 'Proposal description', value: longDesc },
+          { label: 'Proposal URL', value: longUrl },
+          { label: 'administrator', value: admin },
+          { label: 'minAmount', value: bigAmount },
+        ],
+      },
+    } as any
+    tx.status = 'awaiting'
+
+    const w = mount(TxModal)
+    const effect = w.find('[data-testid="tx-effect"]')
+    expect(effect.exists()).toBe(true)
+    // The decoded action is named and every value appears in full.
+    expect(effect.text()).toContain('Bridge.ChangeAdministrator')
+    expect(effect.text()).toContain(admin)
+    expect(effect.text()).toContain(bigAmount)
+    expect(effect.text()).toContain(longDesc)
+    expect(effect.text()).toContain(longUrl)
+    // Values wrap instead of truncating: the value spans carry break-all.
+    const valueSpans = effect.findAll('span.break-all')
+    expect(valueSpans.length).toBe(4)
+  })
+
+  it('shows no effect section for plain sends (no decoded payload)', () => {
+    const tx = useTxStore()
+    tx.preview = {
+      toAddress: 'z1abc',
+      amount: '100000000',
+      zts: 'zts1znn',
+      symbol: 'ZNN',
+      needsPoW: false,
+      difficulty: 0,
+      hash: '',
+      usedPlasma: 0,
+    } as any
+    tx.status = 'awaiting'
+
+    const w = mount(TxModal)
+    expect(w.find('[data-testid="tx-effect"]').exists()).toBe(false)
+  })
+})

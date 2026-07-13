@@ -170,6 +170,21 @@ type SendPreview struct {
 	HoldID      uint64 `json:"holdId"` // identity of the backend hold; lets a cancel target exactly this block
 }
 
+// EffectField is one decoded parameter of a held block's contract call.
+type EffectField struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// TransactionEffect is the decoded, human-verifiable effect of a contract
+// call, derived from the exact ABI payload the held block encodes — never
+// assembled from raw form inputs (confirm-what-you-sign).
+type TransactionEffect struct {
+	Contract string        `json:"contract"`
+	Method   string        `json:"method"`
+	Fields   []EffectField `json:"fields"`
+}
+
 // CallPreview is the confirm-what-you-sign preview for an embedded-contract call,
 // rendered from the built, signed block plus a human action summary.
 type CallPreview struct {
@@ -181,10 +196,13 @@ type CallPreview struct {
 	Decimals    int    `json:"decimals"`
 	Hash        string `json:"hash"`
 	Summary     string `json:"summary"`
-	UsedPlasma  uint64 `json:"usedPlasma"`
-	Difficulty  uint64 `json:"difficulty"`
-	NeedsPoW    bool   `json:"needsPoW"`
-	HoldID      uint64 `json:"holdId"` // identity of the backend hold; lets a cancel target exactly this block
+	// Effect carries the decoded parameters of the call when the flow decodes
+	// them (governance proposals/executions, accelerator writes).
+	Effect     *TransactionEffect `json:"effect,omitempty"`
+	UsedPlasma uint64             `json:"usedPlasma"`
+	Difficulty uint64             `json:"difficulty"`
+	NeedsPoW   bool               `json:"needsPoW"`
+	HoldID     uint64             `json:"holdId"` // identity of the backend hold; lets a cancel target exactly this block
 }
 
 // PlasmaInfo is the active address's plasma snapshot.

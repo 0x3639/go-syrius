@@ -158,14 +158,27 @@ func (s *NomService) PrepareExecuteAction(id string) (CallPreview, error) {
 	}
 	d := actionDTO(a)
 	template := client.GovernanceApi.ExecuteAction(h)
-	// The real effect of an execute is the destination call the action carries;
-	// surface its payload so the user confirms more than a bare contract name.
-	payload := "no payload"
-	if d.Data != "" {
-		payload = fmt.Sprintf("payload %s", d.Data)
+	// The real effect of an execute is the destination call the action carries.
+	// Decode it into structured confirmation fields and FAIL CLOSED if it cannot
+	// be decoded — opaque bytes are exact but not human-verifiable, and an
+	// execute the user cannot verify must not reach the confirm dialog.
+	actionData, err := a.DecodedData()
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot decode the action payload: %w", err)
 	}
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(a.Destination, actionData)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact effect of action %q: %w", d.Name, err)
+	}
+	effect.Fields = append([]EffectField{
+		{Label: "Action name", Value: d.Name},
+		{Label: "Action description", Value: d.Description},
+		{Label: "Action URL", Value: d.Url},
+		{Label: "Destination", Value: d.Destination},
+	}, effect.Fields...)
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.GovernanceContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...),
 			policy: s.requireTestnet},
-		fmt.Sprintf("Execute governance action %q — calls %s (%s)", d.Name, d.Destination, payload))
+		fmt.Sprintf("Execute governance action %q — calls %s.%s", d.Name, effect.Contract, effect.Method),
+		effect)
 }

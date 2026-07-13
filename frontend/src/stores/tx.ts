@@ -3,7 +3,9 @@ import * as Tx from '../../wailsjs/go/app/TxService'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import type { app } from '../../wailsjs/go/models'
 
-export type SendPreview = { fromAddress?: string; toAddress: string; symbol: string; zts: string; amount: string; decimals: number; usedPlasma: number; difficulty: number; hash: string; needsPoW: boolean; summary?: string; holdId?: number }
+export type EffectField = { label: string; value: string }
+export type TransactionEffect = { contract: string; method: string; fields: EffectField[] }
+export type SendPreview = { fromAddress?: string; toAddress: string; symbol: string; zts: string; amount: string; decimals: number; usedPlasma: number; difficulty: number; hash: string; needsPoW: boolean; summary?: string; holdId?: number; effect?: TransactionEffect | null }
 export type TxStatus = 'idle'|'preparing'|'awaiting'|'publishing'|'done'|'error'
 
 // Identifies the latest prepare() call (the store is a singleton, so a module

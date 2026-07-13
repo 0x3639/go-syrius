@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"math/big"
@@ -632,8 +633,28 @@ func (s *NomService) PrepareProposeAction(name, description, url, kind string, p
 			break
 		}
 	}
-	return s.tx.prepareCall(template,
+	// Decode the EXACT action payload the proposal carries into structured
+	// confirmation fields. Fail closed: a proposal whose material parameters
+	// cannot be rendered must not reach the confirm dialog with a bare label.
+	payloadData, err := base64.StdEncoding.DecodeString(payload.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot decode the proposal payload: %w", err)
+	}
+	effect, err := decodeContractCall(payload.Destination, payloadData)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact proposal effect: %w", err)
+	}
+	// The proposal metadata is part of the signed action record; show it with
+	// the decoded parameters.
+	effect.Fields = append([]EffectField{
+		{Label: "Proposal name", Value: name},
+		{Label: "Proposal description", Value: description},
+		{Label: "Proposal URL", Value: url},
+		{Label: "Destination", Value: payload.Destination.String()},
+	}, effect.Fields...)
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.GovernanceContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...),
 			policy: s.requireTestnet},
-		fmt.Sprintf("Propose %q (1 ZNN) — %s calls %s", name, label, payload.Destination.String()))
+		fmt.Sprintf("Propose %q (1 ZNN) — %s calls %s.%s", name, label, effect.Contract, effect.Method),
+		effect)
 }

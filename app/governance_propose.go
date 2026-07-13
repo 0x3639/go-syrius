@@ -259,9 +259,13 @@ func proposeKinds() []ProposeKindDTO {
 		{Kind: "liquidity.setIsHalted", Label: "Liquidity — Set Halted", Group: "Liquidity", Fields: []ProposeFieldDTO{
 			{Key: "value", Label: "Halted", Type: "bool", Placeholder: "", Required: true},
 		}},
-		{Kind: "liquidity.unlockStakeEntries", Label: "Liquidity — Unlock Stake Entries", Group: "Liquidity", Fields: []ProposeFieldDTO{
-			{Key: "zts", Label: "Token standard (ZTS)", Type: "text", Placeholder: "zts1…", Required: true},
-		}},
+		// NOTE: "liquidity.unlockStakeEntries" was REMOVED (round-3 review P1).
+		// The on-chain UnlockLiquidityStakeEntries method takes no ABI arguments
+		// — it selects its token via the block's TokenStandard — but a governance
+		// action carries only destination+data and ExecuteAction always emits a
+		// zero-amount ZNN block. The proposal could therefore never perform the
+		// displayed intent and would waste the 1 ZNN fee. Re-add only if the
+		// governance protocol learns to carry a token standard.
 		{Kind: "liquidity.setAdditionalReward", Label: "Liquidity — Set Additional Reward", Group: "Liquidity", Fields: []ProposeFieldDTO{
 			{Key: "znnReward", Label: "ZNN reward", Type: "amount", Placeholder: "0", Required: true},
 			{Key: "qsrAmount", Label: "QSR amount", Type: "amount", Placeholder: "0", Required: true},
@@ -553,11 +557,11 @@ func buildProposalPayloadWith(api *embedded.GovernanceApi, kind string, p map[st
 		}
 		return api.PayloadLiquiditySetIsHalted(v), nil
 	case "liquidity.unlockStakeEntries":
-		z, err := parseZtsParam(p, "zts")
-		if err != nil {
-			return embedded.ProposalPayload{}, err
-		}
-		return api.PayloadLiquidityUnlockStakeEntries(z), nil
+		// Fail closed (kind removed from the catalog): the governance envelope
+		// cannot carry the token standard this method selects its target with,
+		// so the executed action would always operate on ZNN regardless of the
+		// user's input. See the catalog note in proposeKinds.
+		return embedded.ProposalPayload{}, errors.New("liquidity.unlockStakeEntries cannot be proposed: a governance action cannot carry the token standard this method requires")
 	case "liquidity.setAdditionalReward":
 		znn, err := parseBigIntParam(p, "znnReward")
 		if err != nil {

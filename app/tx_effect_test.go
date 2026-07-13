@@ -84,13 +84,6 @@ func proposeKindSample(t *testing.T, kind string) (params map[string]string, wan
 			[]string{znn + ", " + qsr, "7000, 3000", "4000, 6000", "100, " + effBigAmount}
 	case "liquidity.setIsHalted":
 		return map[string]string{"value": "true"}, []string{"true"}
-	case "liquidity.unlockStakeEntries":
-		// NOTE: the on-chain UnlockLiquidityStakeEntries method takes NO ABI
-		// arguments — the SDK helper puts the zts on the wrapped template's
-		// TokenStandard, which a ProposalPayload (destination+data only) does
-		// not carry. The decoded effect is truthfully empty; the zts form field
-		// never reaches the chain through this propose kind.
-		return map[string]string{"zts": znn}, nil
 	case "liquidity.setAdditionalReward":
 		return map[string]string{"znnReward": "100000000", "qsrAmount": "1000000000"},
 			[]string{"100000000", "1000000000"}

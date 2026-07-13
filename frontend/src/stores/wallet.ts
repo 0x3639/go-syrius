@@ -15,6 +15,11 @@ export type WalletMeta = { id: string; name: string; baseAddress: string }
 let selecting = false
 let queuedIndex: number | null = null
 
+// Identifies the wallet session. Bumped on every unlock/lock; a selection
+// response that resolves after the wallet changed belongs to the PREVIOUS
+// wallet and must not be committed (nor may its queued follow-ups run).
+let walletSession = 0
+
 export const useWalletStore = defineStore('wallet', {
   // `active` holds the active wallet's id (keystore filename), not its name.
   state: () => ({ locked: true, wallets: [] as WalletMeta[], active: '', accounts: [] as AccountInfo[], activeIndex: 0 }),
@@ -28,6 +33,8 @@ export const useWalletStore = defineStore('wallet', {
     },
     async unlock(id: string, password: string) {
       await W.Unlock(id, password)
+      walletSession++ // selections in flight belong to the previous wallet
+      queuedIndex = null
       bumpRequestEpoch() // a new session: discard responses from the old one
       this.active = id
       this.locked = false
@@ -44,6 +51,8 @@ export const useWalletStore = defineStore('wallet', {
       // Re-lock the keystore in the Go backend, not just the UI — otherwise the
       // wallet shows locked while the backend keystore stays decrypted.
       W.Lock().catch(() => {})
+      walletSession++
+      queuedIndex = null
       bumpRequestEpoch()
       this.locked = true
       this.active = ''
@@ -64,9 +73,11 @@ export const useWalletStore = defineStore('wallet', {
         while (next !== null) {
           const target = next
           next = null
+          const session = walletSession
           // The backend returns the AUTHORITATIVE selection; render that, not
           // the assumption that the requested index won.
           const info = (await W.SelectAccount(target)) as unknown as AccountInfo | undefined
+          if (session !== walletSession) return // wallet changed mid-selection: stale
           // The backend just switched accounts: any account-scoped response
           // still in flight belongs to the previous account.
           bumpRequestEpoch()

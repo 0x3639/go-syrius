@@ -59,10 +59,12 @@ type WalletService struct {
 	onSessionChange func()
 
 	// selMu serializes the COMPLETE account-selection operation — validation,
-	// active-index mutation, session invalidation, and persistence — so two
-	// overlapping selections can never leave the backend signer, the persisted
-	// selection, and the frontend disagreeing. It is separate from w.mu on
-	// purpose: other wallet methods must not block on settings disk I/O.
+	// persistence, active-index mutation, and session invalidation — AND the
+	// keystore/session swaps in Unlock and Lock, so a wallet-lifecycle change
+	// can never interleave a selection mid-operation (a paused selection could
+	// otherwise resolve against a different wallet than it validated). It is
+	// separate from w.mu on purpose: other wallet methods must not block on
+	// settings disk I/O, and Unlock's slow KDF runs before taking it.
 	selMu sync.Mutex
 
 	// beforeSelectPersist, when non-nil, runs between a selection's in-memory
@@ -310,6 +312,11 @@ func (w *WalletService) Unlock(name, password string) error {
 	if err != nil {
 		return errors.New("incorrect password")
 	}
+	// The session swap serializes with account selection (selMu): an in-flight
+	// selection completes fully before the wallet changes underneath it. The
+	// slow KDF above deliberately runs outside the lock.
+	w.selMu.Lock()
+	defer w.selMu.Unlock()
 	w.mu.Lock()
 	if w.keystore != nil {
 		// Unlocking over an already-unlocked wallet: zero the prior decrypted
@@ -361,6 +368,10 @@ func (w *WalletService) ChangePassword(name, oldPassword, newPassword string) er
 
 // Lock zeroes and drops the decrypted keystore.
 func (w *WalletService) Lock() error {
+	// Serialize with account selection (see selMu): a selection paused before
+	// persistence must complete before the session it validated against ends.
+	w.selMu.Lock()
+	defer w.selMu.Unlock()
 	w.mu.Lock()
 	if w.keystore != nil {
 		w.keystore.Zero()

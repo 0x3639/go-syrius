@@ -571,3 +571,107 @@ func TestSelectAccountReturnsAuthoritativeSelection(t *testing.T) {
 		t.Fatalf("returned address %q does not match the active signer address %q", info.Address, addr.String())
 	}
 }
+
+// TestLockWaitsForInFlightSelection: the wallet-lifecycle session swap must
+// serialize with a selection that is mid-operation — otherwise a selection
+// paused before persistence can resolve against a different session than it
+// validated (round-3 review P1).
+func TestLockWaitsForInFlightSelection(t *testing.T) {
+	w := newTestWalletService(t)
+	unlockTestWallet(t, w)
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	w.beforeSelectPersist = func() {
+		once.Do(func() {
+			close(entered)
+			<-release
+		})
+	}
+
+	selDone := make(chan error, 1)
+	go func() {
+		_, err := w.SelectAccount(1)
+		selDone <- err
+	}()
+	<-entered // the selection is paused mid-operation
+
+	lockDone := make(chan error, 1)
+	go func() { lockDone <- w.Lock() }()
+	select {
+	case <-lockDone:
+		t.Fatal("Lock completed while a selection was mid-operation; the session swap must wait")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+	if err := <-selDone; err != nil {
+		t.Fatalf("SelectAccount: %v", err)
+	}
+	if err := <-lockDone; err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+	// The lock ran strictly AFTER the selection completed.
+	w.mu.Lock()
+	locked := w.keystore == nil
+	w.mu.Unlock()
+	if !locked {
+		t.Fatal("wallet must be locked after Lock")
+	}
+}
+
+// TestUnlockSerializesWithSelection: an unlock issued while a selection is
+// paused must apply strictly after it, leaving the NEW session's defaults
+// (account 0) as the final backend state.
+func TestUnlockSerializesWithSelection(t *testing.T) {
+	w := newTestWalletService(t)
+	m, err := w.GenerateMnemonic()
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := w.ImportMnemonic("lifecycle", "pw", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Unlock(meta.ID, "pw"); err != nil {
+		t.Fatal(err)
+	}
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	w.beforeSelectPersist = func() {
+		once.Do(func() {
+			close(entered)
+			<-release
+		})
+	}
+
+	selDone := make(chan error, 1)
+	go func() {
+		_, err := w.SelectAccount(2)
+		selDone <- err
+	}()
+	<-entered
+
+	unlockDone := make(chan error, 1)
+	go func() { unlockDone <- w.Unlock(meta.ID, "pw") }()
+	// Give the unlock time to finish its KDF and reach the session swap, then
+	// release the paused selection. Serialization means the swap applied AFTER
+	// the selection, so the final active index is the new session's 0.
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	if err := <-selDone; err != nil {
+		t.Fatalf("SelectAccount: %v", err)
+	}
+	if err := <-unlockDone; err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+	w.mu.Lock()
+	active := w.active
+	w.mu.Unlock()
+	if active != 0 {
+		t.Fatalf("after a serialized re-unlock the active index must be the new session's 0, got %d", active)
+	}
+}

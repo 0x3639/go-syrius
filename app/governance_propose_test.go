@@ -135,7 +135,6 @@ func TestBuildProposalPayload_LiquidityKinds(t *testing.T) {
 		{"liquidity.fund", map[string]string{"znnReward": "10", "qsrReward": "20"}, api.PayloadLiquidityFund(big.NewInt(10), big.NewInt(20))},
 		{"liquidity.burnZnn", map[string]string{"burnAmount": "5"}, api.PayloadLiquidityBurnZnn(big.NewInt(5))},
 		{"liquidity.setIsHalted", map[string]string{"value": "true"}, api.PayloadLiquiditySetIsHalted(true)},
-		{"liquidity.unlockStakeEntries", map[string]string{"zts": "zts1znnxxxxxxxxxxxxx9z4ulx"}, api.PayloadLiquidityUnlockStakeEntries(types.ParseZTSPanic("zts1znnxxxxxxxxxxxxx9z4ulx"))},
 		{"liquidity.setAdditionalReward", map[string]string{"znnReward": "1", "qsrAmount": "2"}, api.PayloadLiquiditySetAdditionalReward(big.NewInt(1), big.NewInt(2))},
 		{"liquidity.changeAdministrator", map[string]string{"administrator": types.SporkContract.String()}, api.PayloadLiquidityChangeAdministrator(types.SporkContract)},
 		{"liquidity.nominateGuardians", map[string]string{"guardians": types.SporkContract.String() + "," + types.PillarContract.String()}, api.PayloadLiquidityNominateGuardians([]types.Address{types.SporkContract, types.PillarContract})},
@@ -175,7 +174,7 @@ func TestProposeKinds_IncludesAllLiquidity(t *testing.T) {
 	for _, k := range proposeKinds() {
 		have[k.Kind] = true
 	}
-	for _, want := range []string{"liquidity.fund", "liquidity.burnZnn", "liquidity.setTokenTuple", "liquidity.setIsHalted", "liquidity.unlockStakeEntries", "liquidity.setAdditionalReward", "liquidity.changeAdministrator", "liquidity.nominateGuardians", "liquidity.emergency"} {
+	for _, want := range []string{"liquidity.fund", "liquidity.burnZnn", "liquidity.setTokenTuple", "liquidity.setIsHalted", "liquidity.setAdditionalReward", "liquidity.changeAdministrator", "liquidity.nominateGuardians", "liquidity.emergency"} {
 		if !have[want] {
 			t.Fatalf("missing liquidity kind %q", want)
 		}
@@ -201,5 +200,21 @@ func TestBuildProposalPayload_SporkLengthBounds(t *testing.T) {
 	// a name WITH SPACES within bounds → ok
 	if _, err := buildProposalPayloadWith(api, "spork.create", map[string]string{"name": "My Test Spork", "description": "ok"}); err != nil {
 		t.Fatalf("valid spork name with spaces must succeed: %v", err)
+	}
+}
+
+// TestUnlockStakeEntriesKindRemoved: round-3 review P1 — the governance
+// envelope cannot carry the token standard UnlockLiquidityStakeEntries selects
+// its target with, so the kind must be absent from the catalog and refuse to
+// build (never silently propose a ZNN-targeting action the user didn't ask for).
+func TestUnlockStakeEntriesKindRemoved(t *testing.T) {
+	for _, k := range proposeKinds() {
+		if k.Kind == "liquidity.unlockStakeEntries" {
+			t.Fatal("liquidity.unlockStakeEntries must not be offered in the propose catalog")
+		}
+	}
+	_, err := buildProposalPayloadWith(nil, "liquidity.unlockStakeEntries", map[string]string{"zts": "zts1znnxxxxxxxxxxxxx9z4ulx"})
+	if err == nil {
+		t.Fatal("building the removed kind must fail closed")
 	}
 }

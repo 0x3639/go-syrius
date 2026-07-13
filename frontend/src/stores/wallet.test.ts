@@ -101,3 +101,50 @@ describe('select — overlapping selections resolve to the latest intent', () =>
     expect(store.activeIndex).toBe(5)
   })
 })
+
+describe('select — wallet-session token rejects stale responses', () => {
+  it('discards a selection that resolves after the wallet changed', async () => {
+    const { useWalletStore } = await import('./wallet')
+    const W = await import('../../wailsjs/go/app/WalletService')
+    ;(W.SelectAccount as any).mockClear()
+    const store = useWalletStore()
+    store.locked = false
+
+    // A selection for the OLD wallet hangs at the backend…
+    let resolveSelect!: (v: unknown) => void
+    ;(W.SelectAccount as any).mockReturnValueOnce(new Promise((r) => { resolveSelect = r }))
+    const pending = store.select(4)
+
+    // …the user unlocks a different wallet meanwhile (activeIndex resets to 0)…
+    await store.unlock('Other.dat', 'pw')
+    expect(store.activeIndex).toBe(0)
+
+    // …then the old wallet's selection finally resolves. It must NOT be
+    // committed: the backend signer is account 0 of the NEW wallet.
+    resolveSelect({ index: 4, address: 'z1oldwallet4', label: '' })
+    await pending
+    expect(store.activeIndex).toBe(0)
+  })
+
+  it('drops queued selections from before the wallet change', async () => {
+    const { useWalletStore } = await import('./wallet')
+    const W = await import('../../wailsjs/go/app/WalletService')
+    ;(W.SelectAccount as any).mockClear()
+    const store = useWalletStore()
+    store.locked = false
+
+    let resolveSelect!: (v: unknown) => void
+    ;(W.SelectAccount as any).mockReturnValueOnce(new Promise((r) => { resolveSelect = r }))
+    const first = store.select(1)
+    const second = store.select(2) // queued behind the in-flight call
+
+    await store.unlock('Other.dat', 'pw')
+    resolveSelect({ index: 1, address: 'z1old1', label: '' })
+    await Promise.all([first, second])
+
+    // Neither the stale response nor the queued pre-unlock intent applied.
+    expect(store.activeIndex).toBe(0)
+    const calls = (W.SelectAccount as any).mock.calls.map((c: unknown[]) => c[0])
+    expect(calls).toEqual([1])
+  })
+})

@@ -3,6 +3,8 @@
 A start-to-finish plan to reimplement the Zenon `syrius` wallet (currently Flutter/Dart) as a Go + Wails desktop application.
 
 > **Status (2026-07-01):** Phases 0–5 and 7a are shipped and merged to `main`; Phase 6 (Ledger) is deferred; 7b–7f remain. Per-phase acceptance records live in `docs/phase*-acceptance.md` — the phase checklists below are the original spec, kept as written rather than re-ticked. The frontend was migrated from the Svelte scaffold to **Vue 3 + Pinia + nom-ui** (merged `a9c2880`, 2026-06-25); stack references below have been updated, and CLAUDE.md "Working order" tracks current status.
+>
+> **Dependency note (2026-07-14):** `znn-sdk-go` is pinned to **v0.2.1**. The tagged stable SDK does not expose the testnet governance extension previously consumed from a pseudo-version, so that narrow RPC/template adapter now lives under `internal/governance` and reuses the SDK's public transport and embedded-contract APIs.
 
 ---
 
@@ -27,7 +29,7 @@ This is one of the cases where Wails is a genuinely strong fit, not merely a pos
 | Layer | Choice | Rationale |
 |---|---|---|
 | Shell | **Wails v2** (stable) | v3 is alpha; a wallet handling real funds should not sit on an alpha framework |
-| Backend | Go 1.22+, `znn-sdk-go`, `go-zenon` | Already-built, tested SDK + native node |
+| Backend | Go 1.25.12+, `znn-sdk-go` v0.2.1, `go-zenon` | Already-built, tested SDK + native node |
 | Frontend | **Vue 3 + TypeScript + Vite** (originally scaffolded in Svelte; migrated 2026-06-25) | Light, reactive; pairs with the nom-ui Vue component library for blockchain primitives |
 | Styling | Tailwind CSS 4 | Fast iteration; matches a modern wallet aesthetic |
 | State | Pinia | Simple reactive stores synced to Go events |
@@ -314,7 +316,7 @@ ListProjects / Donate / …
 1. **Wallet-file compatibility: yes.** Read & write syrius-compatible keystores so users migrate seamlessly and can run both wallets. (Phase 0 proves it.)
 2. **Frontend framework: Vue 3 + TS** (revised — originally Svelte-TS; migrated 2026-06-25 to adopt the nom-ui Vue component library for blockchain UI primitives).
 3. **Wails v2, not v3.** Stability over features for a funds-handling app.
-4. **SDK as a vendored dependency you control.** Since `znn-sdk-go` is yours, pin it and evolve it alongside the app; fixes flow both ways.
+4. **SDK as a pinned dependency you control.** Since `znn-sdk-go` is yours, pin tagged releases and evolve it alongside the app; fixes flow both ways. Testnet governance remains an app-local adapter until it becomes part of the stable SDK surface.
 5. **Ledger: defer to post-v1** unless hardware support is a launch requirement. It's the single biggest schedule risk and cleanly separable.
 6. **Signing lives only in Go**, behind a `Signer` interface with `software` and (later) `ledger` implementations.
 

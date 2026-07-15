@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/0x3639/go-syrius/internal/governance"
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
 	"github.com/zenon-network/go-zenon/common/types"
 )
 
-// actionDTO maps an SDK governance Action (flat client struct: the on-chain
+// actionDTO maps an app-local governance Action (flat client struct: the on-chain
 // fields plus the node's computed current-round fields) to the wire DTO.
 // Nil-safe. Reuses voteBreakdownDTO from nom_accelerator.go.
-func actionDTO(a *embedded.Action) ActionDTO {
+func actionDTO(a *governance.Action) ActionDTO {
 	if a == nil {
 		return ActionDTO{}
 	}
@@ -61,11 +62,11 @@ func (s *NomService) GetActions(pageIndex, pageSize uint32) (ActionListDTO, erro
 	if pageSize == 0 || pageSize > 50 {
 		pageSize = 50
 	}
-	client := s.node.currentClient()
-	if client == nil {
+	api := s.node.currentGovernance()
+	if api == nil {
 		return ActionListDTO{}, errors.New("not connected")
 	}
-	list, err := client.GovernanceApi.GetAllActions(pageIndex, pageSize)
+	list, err := api.GetAllActions(pageIndex, pageSize)
 	if err != nil {
 		return ActionListDTO{}, err
 	}
@@ -82,11 +83,11 @@ func (s *NomService) GetAction(id string) (ActionDTO, error) {
 	if err != nil {
 		return ActionDTO{}, fmt.Errorf("invalid action id: %w", err)
 	}
-	client := s.node.currentClient()
-	if client == nil {
+	api := s.node.currentGovernance()
+	if api == nil {
 		return ActionDTO{}, errors.New("not connected")
 	}
-	a, err := client.GovernanceApi.GetActionById(h)
+	a, err := api.GetActionById(h)
 	if err != nil {
 		return ActionDTO{}, err
 	}
@@ -111,8 +112,8 @@ func (s *NomService) PrepareGovernanceVote(id, pillarName string, vote uint8) (C
 	if vote != embedded.VoteYes && vote != embedded.VoteNo && vote != embedded.VoteAbstain {
 		return CallPreview{}, errors.New("vote must be yes, no, or abstain")
 	}
-	client := s.node.currentClient()
-	if client == nil {
+	api := s.node.currentGovernance()
+	if api == nil {
 		return CallPreview{}, errors.New("not connected")
 	}
 	// Votes are keyed by the action's CURRENT-round votable hash (CurrentVoteId),
@@ -121,14 +122,14 @@ func (s *NomService) PrepareGovernanceVote(id, pillarName string, vote uint8) (C
 	// hash and a vote against it is rejected on-chain. Fetch the live action and
 	// vote on its CurrentVoteId so the vote always targets the open round (also
 	// avoids a stale id if the round advanced since the UI loaded the action).
-	action, err := client.GovernanceApi.GetActionById(h)
+	action, err := api.GetActionById(h)
 	if err != nil {
 		return CallPreview{}, err
 	}
 	if action.CurrentVoteId.IsZero() {
 		return CallPreview{}, errors.New("action is not open for voting")
 	}
-	template := client.GovernanceApi.VoteByName(action.CurrentVoteId, name, vote)
+	template := api.VoteByName(action.CurrentVoteId, name, vote)
 	label := map[uint8]string{embedded.VoteYes: "yes", embedded.VoteNo: "no", embedded.VoteAbstain: "abstain"}[vote]
 	return s.tx.prepareCall(template,
 		callExpect{to: types.GovernanceContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...),
@@ -148,16 +149,16 @@ func (s *NomService) PrepareExecuteAction(id string) (CallPreview, error) {
 	if err != nil {
 		return CallPreview{}, fmt.Errorf("invalid action id: %w", err)
 	}
-	client := s.node.currentClient()
-	if client == nil {
+	api := s.node.currentGovernance()
+	if api == nil {
 		return CallPreview{}, errors.New("not connected")
 	}
-	a, err := client.GovernanceApi.GetActionById(h)
+	a, err := api.GetActionById(h)
 	if err != nil {
 		return CallPreview{}, err
 	}
 	d := actionDTO(a)
-	template := client.GovernanceApi.ExecuteAction(h)
+	template := api.ExecuteAction(h)
 	// The real effect of an execute is the destination call the action carries.
 	// Decode it into structured confirmation fields and FAIL CLOSED if it cannot
 	// be decoded — opaque bytes are exact but not human-verifiable, and an

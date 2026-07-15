@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	"github.com/0x3639/go-syrius/internal/governance"
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
 	"github.com/zenon-network/go-zenon/common/types"
 )
@@ -12,7 +13,7 @@ func TestActionDTO_MapsFieldsAndVotes(t *testing.T) {
 	// The SDK client Action has FLAT fields (it is NOT the go-zenon server
 	// Action that embeds *definition.ActionVariable).
 	voteId := types.HexToHashPanic("aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899")
-	a := &embedded.Action{
+	a := &governance.Action{
 		Id:                    id,
 		Owner:                 types.GovernanceContract,
 		Name:                  "Act",
@@ -113,7 +114,7 @@ func TestPrepareExecuteAction_Validation(t *testing.T) {
 // Build the SDK templates directly to catch a pack-panic at construction
 // (the lesson from the v0.1.19 UpdatePhase regression).
 func TestGovernanceWriteTemplates_NoPanic(t *testing.T) {
-	api := embedded.NewGovernanceApi(nil)
+	api := governance.NewAPI(nil)
 	h := types.HexToHashPanic("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
 	vote := api.VoteByName(h, "P1", embedded.VoteYes)
 	if vote.ToAddress != types.GovernanceContract || vote.TokenStandard != types.ZnnTokenStandard || vote.Amount.Sign() != 0 {

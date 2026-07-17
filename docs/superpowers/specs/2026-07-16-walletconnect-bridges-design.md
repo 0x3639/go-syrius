@@ -190,3 +190,27 @@ retry improvement:
    clears, instead of relying on the dapp to redeliver. The journal remains the
    durable source of truth; the queue is drained on every request-clearing path
    and purged on session end/expiry.
+
+#### Round-6 review fixes (2026-07-17)
+
+A sixth pass found the round-5 lookup-failure handling and replay queue still
+had gaps:
+
+1. **[P1] Failed journal lookups are now actively retried.** SignClient
+   suppresses same-id `session_request` re-emission for a client's lifetime, so
+   "leave it unanswered and let the dapp redeliver" would not actually retry —
+   the request could expire and the dapp reissue under a NEW id (bypassing the
+   journal identity) while the original block may have published. The znn_send
+   flow is extracted into a shared `resolveZnnSend`; a lookup throw now retains
+   the request and schedules bounded backoff retries of the SAME-id lookup,
+   stopping at the request's expiry or a max attempt count. A resolved retry
+   delivers the original outcome (published → deliver, unknown → reconcile,
+   none → fresh) under the original id.
+2. **[P2] Slot release and queue drain are centralized.** `drainPendingReplays`
+   now loops so multiple queued published results all deliver; the
+   fresh-preparation `finally` drains after releasing its marker (so a replay
+   queued behind a preparation that ends without a modal still surfaces); and
+   approval-time expiry drains too. The delivery retain-vs-queue decision now
+   accounts for an in-flight preparation (not just a displayed request), and
+   marker identity is compared by token rather than object identity (Pinia
+   wraps stored markers in a reactive proxy).

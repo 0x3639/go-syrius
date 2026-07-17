@@ -824,6 +824,113 @@ describe('WalletConnect request handling', () => {
     expect(wc.request).toBeNull()
   })
 
+  it('retries a failed journal lookup and delivers the resolved result', async () => {
+    // Round-6 finding P1: an unanswered lookup failure must be actively
+    // retried (SignClient suppresses same-id redelivery until restart), so the
+    // original block's outcome resolves before the dapp times out.
+    unlock()
+    const wc = useWalletConnectStore()
+    h.lookup.mockRejectedValueOnce(new Error('cannot read the publication journal: disk error'))
+
+    await wc.handleRequest(sendEvent(90, 'retry-topic'))
+    expect(h.respond).not.toHaveBeenCalled()
+
+    // The journal becomes readable; the retained request retries the SAME id.
+    h.lookup.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'retried-hash' }, publishedHash: 'retried-hash' })
+    await wc.retryFailedLookup('retry-topic', 90)
+
+    await vi.waitFor(() => expect(h.ack).toHaveBeenCalledWith('retry-topic', 90))
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      topic: 'retry-topic',
+      response: expect.objectContaining({ result: { hash: 'retried-hash' } }),
+    }))
+  })
+
+  it('stops retrying a failed lookup once the request expiry has passed', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    h.lookup.mockRejectedValueOnce(new Error('disk error'))
+    // expiryTimestamp already in the past (epoch+1s).
+    await wc.handleRequest(sendEvent(91, 'expired-retry', 1))
+
+    h.lookup.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'x' } })
+    await wc.retryFailedLookup('expired-retry', 91)
+
+    // Past expiry: give up — never re-run the lookup or publish/deliver.
+    expect(h.lookup).toHaveBeenCalledTimes(1)
+    expect(h.respond).not.toHaveBeenCalled()
+  })
+
+  it('continues draining after a queued published result is delivered', async () => {
+    // Round-6 finding P2c: multiple queued published results must all deliver.
+    unlock()
+    const wc = useWalletConnectStore()
+    wc.request = {
+      topic: 'displayed', id: 700, dapp: 'D', preview: { ...preview, holdId: 9 },
+      status: 'awaiting', error: '', publishedResult: null, publishedHash: '',
+      sessionEnded: false, verifiedOrigin: '', validation: 'UNKNOWN', isScam: false,
+    } as any
+    h.lookup.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'q1' }, publishedHash: 'q1' })
+    h.respond.mockRejectedValueOnce(new Error('busy'))
+    await wc.handleRequest(sendEvent(71, 'q1-topic'))
+    h.lookup.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'q2' }, publishedHash: 'q2' })
+    h.respond.mockRejectedValueOnce(new Error('busy'))
+    await wc.handleRequest(sendEvent(72, 'q2-topic'))
+
+    h.respond.mockResolvedValue(undefined)
+    await wc.rejectRequest()
+
+    await vi.waitFor(() => {
+      expect(h.ack).toHaveBeenCalledWith('q1-topic', 71)
+      expect(h.ack).toHaveBeenCalledWith('q2-topic', 72)
+    })
+  })
+
+  it('drains a queued replay when an in-flight preparation clears without a modal', async () => {
+    // Round-6 finding P2a: a replay queued behind a preparation that then fails
+    // (no modal) must surface once the preparing slot is released.
+    unlock()
+    const wc = useWalletConnectStore()
+    let failPrepare!: (e: Error) => void
+    h.lookup.mockResolvedValueOnce({ outcome: 'none' })
+    h.prepare.mockReturnValueOnce(new Promise((_, reject) => { failPrepare = reject }))
+    const p = wc.handleRequest(sendEvent(80, 'prep-topic'))
+    await vi.waitFor(() => expect(wc.preparingRequest?.id).toBe(80))
+
+    // A published replay arrives while preparing → its delivery attempt fails
+    // (slot busy), so it is queued rather than shown.
+    h.lookup.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'qp' }, publishedHash: 'qp' })
+    h.respond.mockRejectedValueOnce(new Error('busy'))
+    await wc.handleRequest(sendEvent(81, 'qp-topic'))
+    expect(wc.request).toBeNull()
+
+    // The preparation fails without a modal; the finally must drain the queue.
+    h.respond.mockResolvedValue(undefined)
+    failPrepare(new Error('not connected'))
+    await p
+
+    await vi.waitFor(() => expect(h.ack).toHaveBeenCalledWith('qp-topic', 81))
+  })
+
+  it('drains a queued replay after approval-time expiry drops the request', async () => {
+    // Round-6 finding P2b.
+    unlock()
+    const wc = useWalletConnectStore()
+    wc.request = {
+      topic: 'displayed', id: 700, dapp: 'D', preview: { ...preview, holdId: 3 },
+      status: 'awaiting', error: '', publishedResult: null, publishedHash: '',
+      sessionEnded: false, expiryTimestamp: 1, verifiedOrigin: '', validation: 'UNKNOWN', isScam: false,
+    } as any
+    h.lookup.mockResolvedValueOnce({ outcome: 'unknown', preview: { ...preview, holdId: 0 }, publishedHash: 'maybe' })
+    await wc.handleRequest(sendEvent(71, 'unknown-q'))
+    expect(wc.request?.id).toBe(700)
+
+    await wc.approveRequest() // expiryTimestamp:1 is long past → drop + drain
+
+    await vi.waitFor(() => expect(wc.request?.id).toBe(71))
+    expect(wc.request?.status).toBe('unknown')
+  })
+
   it('surfaces a queued replay once the displayed request clears', async () => {
     // Round-5 finding P2: a published replay that fails to deliver while busy
     // is queued and delivered when the modal clears, not left to redelivery.

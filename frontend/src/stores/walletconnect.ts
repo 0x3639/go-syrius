@@ -82,6 +82,18 @@ const lookupMarkers = new Map<string, LookupMarker>()
 type PendingReplay = { topic: string; id: number; replay: WalletConnectPrepareOutcome; verify: WalletConnectVerify }
 const pendingReplays: PendingReplay[] = []
 
+// A znn_send whose journal lookup failed (read / IPC error). Its true outcome
+// is unknown — the block may already be published — so it is left unanswered
+// and actively re-looked-up (SignClient suppresses same-id redelivery until a
+// client restart, so we cannot rely on the dapp to re-send). Retries are
+// bounded by the request's expiry and a max attempt count.
+type FailedLookup = { topic: string; id: number; requestParams: any; expiryTimestamp?: number; verify: WalletConnectVerify; attempts: number }
+const failedLookups = new Map<string, FailedLookup>()
+const MAX_LOOKUP_RETRIES = 6
+function lookupRetryDelayMs(attempts: number): number {
+  return Math.min(1500 * 2 ** attempts, 20000)
+}
+
 function enqueuePendingReplay(entry: PendingReplay) {
   const key = `${entry.topic}#${entry.id}`
   const existing = pendingReplays.findIndex((r) => `${r.topic}#${r.id}` === key)
@@ -94,6 +106,7 @@ function enqueuePendingReplay(entry: PendingReplay) {
 export function __resetWalletConnectModuleState() {
   lookupMarkers.clear()
   pendingReplays.length = 0
+  failedLookups.clear()
 }
 
 function messageOf(error: unknown): string {
@@ -421,6 +434,21 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         await this.failRequest(topic, id, 4200, `Unsupported method ${method}`)
         return
       }
+      const sendExpiry = Number(params?.request?.expiryTimestamp)
+      await this.resolveZnnSend(
+        topic,
+        id,
+        params?.request?.params,
+        Number.isFinite(sendExpiry) && sendExpiry > 0 ? sendExpiry : undefined,
+        verify,
+        0,
+      )
+    },
+    // resolveZnnSend runs the journal-lookup-then-prepare flow for a znn_send.
+    // It is shared by handleRequest and the failed-lookup retry, so a request
+    // whose lookup transiently failed resolves identically once the journal is
+    // readable again. `attempts` is the retry count (0 on first arrival).
+    async resolveZnnSend(topic: string, id: number, requestParams: any, expiryTimestamp: number | undefined, verify: WalletConnectVerify, attempts: number) {
       // Journal replay resolution comes FIRST — before the scam, existing-
       // request, and busy-tx gates below — so a redelivered published or
       // unknown outcome (funds may already have moved) is never turned into an
@@ -430,26 +458,38 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       // Track this request through the lookup await so a session_request_expire
       // / session_delete arriving mid-lookup is not lost — otherwise an expired
       // request could still fall through to a fresh, approvable hold.
-      const lookupKey = `${topic}#${id}`
+      const key = `${topic}#${id}`
       const lookupMarker: LookupMarker = { topic, id, ended: false }
-      lookupMarkers.set(lookupKey, lookupMarker)
+      lookupMarkers.set(key, lookupMarker)
       let replay: WalletConnectPrepareOutcome
       try {
         replay = await Tx.LookupWalletConnectPublication(
-          { ...(params.request.params as any), topic, requestId: id } as any,
+          { ...(requestParams as any), topic, requestId: id } as any,
         ) as unknown as WalletConnectPrepareOutcome
       } catch (error) {
         // A lookup THROW is a journal read / IPC failure: the true outcome is
-        // UNKNOWN — the block may already be published. Do NOT answer the dapp:
-        // any JSON-RPC response (even an error) could make it retry under a NEW
-        // id and bypass the journal identity, risking a duplicate publication.
-        // Leave it unanswered and locally retryable — a redelivery under the
-        // SAME id re-runs the (idempotent, journal-checked) lookup.
-        lookupMarkers.delete(lookupKey)
-        this.error = `Could not resolve a WalletConnect request's status (${messageOf(error)}); leaving it unanswered so it can be retried safely.`
+        // UNKNOWN — the block may already be published. Do NOT answer the dapp
+        // (any JSON-RPC response could make it retry under a NEW id and bypass
+        // the journal identity, risking a duplicate). Retain the request and
+        // actively retry the SAME-id lookup until it resolves or the request
+        // expires, since SignClient will not re-emit the same id on its own.
+        lookupMarkers.delete(key)
+        if (lookupMarker.ended || (expiryTimestamp && Date.now() >= expiryTimestamp * 1000)) {
+          failedLookups.delete(key)
+          return
+        }
+        if (attempts >= MAX_LOOKUP_RETRIES) {
+          failedLookups.delete(key)
+          this.error = `Could not resolve a WalletConnect request's status after several attempts (${messageOf(error)}); it was left unanswered to avoid a duplicate.`
+          return
+        }
+        failedLookups.set(key, { topic, id, requestParams, expiryTimestamp, verify, attempts })
+        this.error = `Could not resolve a WalletConnect request's status (${messageOf(error)}); retrying.`
+        this.scheduleLookupRetry(topic, id)
         return
       }
-      lookupMarkers.delete(lookupKey)
+      failedLookups.delete(key)
+      lookupMarkers.delete(key)
       if (lookupMarker.ended) {
         // The request expired or its session ended during the lookup. The relay
         // has dropped it, so never create a hold or respond — the journal (if
@@ -506,6 +546,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         await this.failRequest(topic, id, 5000, 'Request blocked: WalletConnect Verify flagged this dapp as a known scam')
         return
       }
+      const wallet = useWalletStore()
       const preparing: WalletConnectPreparingRequest = {
         token: ++preparingRequestToken,
         topic,
@@ -517,7 +558,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       this.preparingRequest = preparing
       try {
         const result = await Tx.PrepareWalletConnectSend(
-          { ...(params.request.params as any), topic, requestId: id } as any,
+          { ...(requestParams as any), topic, requestId: id } as any,
         ) as unknown as WalletConnectPrepareOutcome
         // A journal record could appear between lookup and prepare (a race);
         // Prepare re-checks the journal, so honor a replay result here too.
@@ -554,7 +595,6 @@ export const useWalletConnectStore = defineStore('walletconnect', {
           return
         }
         const session = this.sessions.find((item) => item.topic === topic)
-        const expiry = Number(params?.request?.expiryTimestamp)
         this.request = {
           topic,
           id,
@@ -565,7 +605,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
           publishedResult: null,
           publishedHash: '',
           sessionEnded: false,
-          expiryTimestamp: Number.isFinite(expiry) && expiry > 0 ? expiry : undefined,
+          expiryTimestamp,
           ...verify,
         }
         this.error = ''
@@ -581,8 +621,32 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         }
         await this.failRequest(topic, id, -32602, messageOf(error))
       } finally {
-        if (this.preparingRequest?.token === preparing.token) this.preparingRequest = null
+        // Centralized slot release: clearing the preparation marker always
+        // drains any replay that was queued behind it, even when this
+        // preparation ended without ever creating a modal.
+        if (this.preparingRequest?.token === preparing.token) {
+          this.preparingRequest = null
+          void this.drainPendingReplays()
+        }
       }
+    },
+    scheduleLookupRetry(topic: string, id: number) {
+      const key = `${topic}#${id}`
+      const entry = failedLookups.get(key)
+      if (!entry) return
+      setTimeout(() => { void this.retryFailedLookup(topic, id) }, lookupRetryDelayMs(entry.attempts))
+    },
+    async retryFailedLookup(topic: string, id: number) {
+      const key = `${topic}#${id}`
+      const entry = failedLookups.get(key)
+      if (!entry) return
+      failedLookups.delete(key)
+      if (entry.expiryTimestamp && Date.now() >= entry.expiryTimestamp * 1000) {
+        // The relay has dropped the expired request; stop retrying. Anything
+        // that did publish stays recorded in the journal.
+        return
+      }
+      await this.resolveZnnSend(entry.topic, entry.id, entry.requestParams, entry.expiryTimestamp, entry.verify, entry.attempts + 1)
     },
     // deliverReplayPublished delivers a journaled published result (nothing is
     // signed) and acks only once the dapp has it. It claims the shared slot
@@ -606,7 +670,13 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       } catch {
         const sessionEnded = marker?.sessionEnded ?? false
         const label = replay.publishedHash ? ` ${replay.publishedHash}` : ''
-        if (!this.request) {
+        // Retain a modal only when the slot is genuinely free (our own marker
+        // aside). An in-flight preparation occupying `preparingRequest`, or an
+        // already-displayed request, must never be displaced — queue instead.
+        // Compare by token: Pinia wraps the stored marker in a reactive proxy,
+        // so object-identity (`=== marker`) would never match.
+        const slotFree = !this.request && (!this.preparingRequest || this.preparingRequest.token === marker?.token)
+        if (slotFree) {
           const session = this.sessions.find((item) => item.topic === topic)
           this.request = {
             topic,
@@ -623,38 +693,46 @@ export const useWalletConnectStore = defineStore('walletconnect', {
             ...verify,
           }
         } else {
-          // Another request occupies the modal: keep the journal record (it is
+          // Another request occupies the slot: keep the journal record (it is
           // duplicate protection and survives) and queue the result to surface
           // when the slot clears, instead of relying on the dapp to redeliver.
           enqueuePendingReplay({ topic, id, replay, verify })
           this.error = `Transaction${label} was published, but the dapp could not be notified yet. Do not submit it again.`
         }
       } finally {
-        if (marker && this.preparingRequest === marker) this.preparingRequest = null
+        if (marker && this.preparingRequest?.token === marker.token) this.preparingRequest = null
       }
     },
     // drainPendingReplays surfaces the next queued replay once the modal and
     // preparation slot are both free. The journal remains the durable source of
     // truth; this is a promptness optimization over waiting for redelivery.
     async drainPendingReplays() {
-      if (this.request || this.preparingRequest) return
-      const next = pendingReplays.shift()
-      if (!next) return
-      if (next.replay.outcome === 'published' && next.replay.published) {
-        await this.deliverReplayPublished(next.topic, next.id, next.replay, next.verify)
-      } else if (next.replay.outcome === 'unknown') {
-        const session = this.sessions.find((item) => item.topic === next.topic)
-        this.request = {
-          topic: next.topic,
-          id: next.id,
-          dapp: session?.name ?? 'Connected dapp',
-          preview: (next.replay.preview ?? {}) as SendPreview,
-          status: 'unknown',
-          error: '',
-          publishedResult: null,
-          publishedHash: next.replay.publishedHash ?? '',
-          sessionEnded: false,
-          ...next.verify,
+      // Loop so several queued published results all deliver: a successful
+      // published delivery leaves the slot free, so continue with the next
+      // entry until one occupies the slot (unknown / delivery-error) or the
+      // queue empties.
+      while (!this.request && !this.preparingRequest) {
+        const next = pendingReplays.shift()
+        if (!next) return
+        if (next.replay.outcome === 'published' && next.replay.published) {
+          await this.deliverReplayPublished(next.topic, next.id, next.replay, next.verify)
+          continue
+        }
+        if (next.replay.outcome === 'unknown') {
+          const session = this.sessions.find((item) => item.topic === next.topic)
+          this.request = {
+            topic: next.topic,
+            id: next.id,
+            dapp: session?.name ?? 'Connected dapp',
+            preview: (next.replay.preview ?? {}) as SendPreview,
+            status: 'unknown',
+            error: '',
+            publishedResult: null,
+            publishedHash: next.replay.publishedHash ?? '',
+            sessionEnded: false,
+            ...next.verify,
+          }
+          return
         }
       }
     },
@@ -669,6 +747,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         this.error = 'The WalletConnect request expired before it was approved'
         const holdID = current.preview.holdId ?? 0
         if (holdID) await Tx.CancelPending(holdID).catch(() => {})
+        void this.drainPendingReplays()
         return
       }
       current.status = 'publishing'

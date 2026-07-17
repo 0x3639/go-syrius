@@ -27,6 +27,7 @@ const error = ref('')
 type Source = {
   label: string
   reward: Reward
+  qsrOnly?: boolean
   collect: () => Promise<app.CallPreview>
 }
 
@@ -42,6 +43,7 @@ const sources = computed<Source[]>(() => [
   {
     label: 'Staking',
     reward: stakeReward.value ?? ZERO,
+    qsrOnly: true,
     collect: () => Nom.PrepareCollectReward(),
   },
   {
@@ -51,8 +53,10 @@ const sources = computed<Source[]>(() => [
   },
 ])
 
-function hasReward(r: Reward): boolean {
-  return r.znn !== '0' || r.qsr !== '0'
+function hasReward(source: Source): boolean {
+  return source.qsrOnly
+    ? source.reward.qsr !== '0'
+    : source.reward.znn !== '0' || source.reward.qsr !== '0'
 }
 
 function refreshAll() {
@@ -91,14 +95,17 @@ watch(
         :key="s.label"
         class="flex items-center justify-between gap-4 border-b border-border/60 py-2 last:border-b-0"
       >
-        <div class="text-sm">
+        <div class="text-sm" :data-testid="`reward-${s.label.toLowerCase()}`">
           <p class="font-medium text-foreground">{{ s.label }}</p>
           <p class="font-mono text-xs text-muted-foreground">
-            {{ formatAmount(s.reward.znn, 8) }} ZNN / {{ formatAmount(s.reward.qsr, 8) }} QSR
+            <template v-if="s.qsrOnly">{{ formatAmount(s.reward.qsr, 8) }} QSR</template>
+            <template v-else>
+              {{ formatAmount(s.reward.znn, 8) }} ZNN / {{ formatAmount(s.reward.qsr, 8) }} QSR
+            </template>
           </p>
         </div>
         <Button
-          :disabled="!hasReward(s.reward)"
+          :disabled="!hasReward(s)"
           :aria-label="`collect ${s.label}`"
           @click="collect(s)"
         >Collect</Button>

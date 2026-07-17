@@ -17,9 +17,10 @@ const amount = ref('')
 const months = ref('1')
 const error = ref('')
 
-const rewardZero = computed(
-  () => !reward.value || (reward.value.znn === '0' && reward.value.qsr === '0'),
-)
+// The Stake contract rewards QSR only. RewardInfo is shared with pillar and
+// sentinel APIs (which can return both assets), so this panel intentionally
+// ignores its always-zero ZNN field.
+const rewardZero = computed(() => !reward.value || reward.value.qsr === '0')
 const entries = computed(() => stakeInfo.value?.entries ?? [])
 
 // NoM-confirm pattern: prepare the call, then hand the preview to the global
@@ -69,12 +70,12 @@ watch(
     <section class="space-y-3 rounded-lg border border-border bg-card p-4">
       <div class="flex items-center justify-between">
         <h2 class="text-sm font-medium text-foreground">Uncollected reward</h2>
-        <span v-if="reward" class="text-sm text-muted-foreground"
-          >{{ formatAmount(reward.znn, 8) }} ZNN · {{ formatAmount(reward.qsr, 8) }} QSR</span
-        >
+        <span v-if="reward" class="font-mono text-sm text-muted-foreground">
+          {{ formatAmount(reward.qsr, 8) }} QSR
+        </span>
       </div>
       <Button variant="outline" class="w-full" :disabled="rewardZero" @click="collect"
-        >Collect Reward</Button
+        >Collect reward</Button
       >
     </section>
 

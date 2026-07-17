@@ -199,4 +199,31 @@ describe('TxModal decoded effect (governance/accelerator)', () => {
     const w = mount(TxModal)
     expect(w.find('[data-testid="tx-effect"]').exists()).toBe(false)
   })
+
+  it('identifies Stake.CollectReward as QSR-only and labels 0 ZNN as the contract-call value', () => {
+    const tx = useTxStore()
+    tx.preview = {
+      toAddress: 'z1qxemdeddedxstakexxxxxxxxxxxxxxxxjv8v62',
+      amount: '0',
+      zts: 'zts1znnxxxxxxxxxxxxx9z4ulx',
+      symbol: 'ZNN',
+      decimals: 8,
+      needsPoW: false,
+      difficulty: 0,
+      hash: '',
+      usedPlasma: 0,
+      summary: 'Collect staking rewards — QSR only',
+      effect: { contract: 'Stake', method: 'CollectReward', fields: [] },
+    } as any
+    tx.status = 'awaiting'
+
+    const w = mount(TxModal)
+
+    expect(w.get('[data-testid="tx-effect"]').text()).toContain('Stake.CollectReward')
+    expect(w.get('[data-testid="staking-reward-asset"]').text()).toContain('QSR only')
+    expect(w.text()).toContain('Contract call value')
+    expect(w.text()).toContain('0 ZNN')
+    expect(w.text()).toContain('no tokens sent')
+    expect(w.text()).not.toContain('Amount0 ZNN')
+  })
 })

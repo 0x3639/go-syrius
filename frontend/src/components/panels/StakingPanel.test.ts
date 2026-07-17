@@ -31,7 +31,7 @@ vi.mock('../../../wailsjs/go/app/NomService', () => ({
 
 import * as Nom from '../../../wailsjs/go/app/NomService'
 
-const REWARD = { znn: '100000000', qsr: '0' }
+const REWARD = { znn: '0', qsr: '16000000000000' }
 const STAKE_INFO = { totalAmount: '0', entries: [] }
 
 function setup() {
@@ -62,6 +62,17 @@ afterEach(() => {
 })
 
 describe('StakingPanel', () => {
+  it('shows only the QSR staking reward and enables collection', async () => {
+    setup()
+    const w = render()
+    await w.vm.$nextTick()
+
+    const reward = w.get('section:nth-of-type(1)')
+    expect(reward.text()).toContain('160,000 QSR')
+    expect(reward.text()).not.toContain('ZNN')
+    expect(reward.get('button').attributes('disabled')).toBeUndefined()
+  })
+
   it('entering an amount + duration and clicking Stake calls PrepareStake(<base-units>, <duration>) then tx.awaitConfirm', async () => {
     const { awaitConfirm } = setup()
     const w = render()

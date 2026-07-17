@@ -29,7 +29,8 @@ vi.mock('../../../wailsjs/go/app/NomService', () => ({
 
 import * as Nom from '../../../wailsjs/go/app/NomService'
 
-const REWARD = { znn: '100000000', qsr: '0' }
+const DUAL_REWARD = { znn: '100000000', qsr: '200000000' }
+const STAKE_REWARD = { znn: '0', qsr: '16000000000000' }
 
 function setup() {
   setActivePinia(createPinia())
@@ -43,9 +44,9 @@ function setup() {
   vi.spyOn(sentinel, 'refresh').mockResolvedValue()
   const awaitConfirm = vi.spyOn(tx, 'awaitConfirm').mockImplementation(() => {})
   // Seed rewards so every Collect button is enabled.
-  stake.reward = { ...REWARD } as never
-  pillar.reward = { ...REWARD } as never
-  sentinel.reward = { ...REWARD } as never
+  stake.reward = { ...STAKE_REWARD } as never
+  pillar.reward = { ...DUAL_REWARD } as never
+  sentinel.reward = { ...DUAL_REWARD } as never
   return { stake, pillar, sentinel, tx, awaitConfirm }
 }
 
@@ -72,6 +73,20 @@ afterEach(() => {
 })
 
 describe('RewardsPanel', () => {
+  it('shows staking as QSR-only while retaining both assets for other reward sources', async () => {
+    setup()
+    const w = render()
+    await w.vm.$nextTick()
+
+    const staking = w.get('[data-testid="reward-staking"]')
+    expect(staking.text()).toContain('160,000 QSR')
+    expect(staking.text()).not.toContain('ZNN')
+
+    const delegation = w.get('[data-testid="reward-delegation"]')
+    expect(delegation.text()).toContain('1 ZNN')
+    expect(delegation.text()).toContain('2 QSR')
+  })
+
   it('collecting Delegation calls PrepareCollectPillarReward then tx.awaitConfirm(preview)', async () => {
     const { awaitConfirm } = setup()
     const w = render()
@@ -108,9 +123,9 @@ describe('RewardsPanel', () => {
     expect(awaitConfirm).toHaveBeenCalledWith(sentinelPreview)
   })
 
-  it('disables a Collect button when its reward is zero', async () => {
+  it('disables staking collection when QSR is zero even if the shared DTO has ZNN', async () => {
     const { stake } = setup()
-    stake.reward = { znn: '0', qsr: '0' } as never
+    stake.reward = { znn: '100000000', qsr: '0' } as never
     const w = render()
     await w.vm.$nextTick()
     expect(btnFor(w, 'Staking').attributes('disabled')).toBeDefined()

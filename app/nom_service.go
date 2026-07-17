@@ -277,16 +277,22 @@ func (s *NomService) PrepareCancelStake(id string) (CallPreview, error) {
 		fmt.Sprintf("Cancel stake %s", id))
 }
 
-// PrepareCollectReward builds a CollectReward template (claims accrued ZNN/QSR).
+// PrepareCollectReward builds the zero-value Stake.CollectReward call that
+// claims accrued QSR. Staking never yields ZNN; the template's ZNN token
+// standard is only the SDK/protocol carrier for this zero-value contract call.
 func (s *NomService) PrepareCollectReward() (CallPreview, error) {
 	client := s.node.currentClient()
 	if client == nil {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.StakeApi.CollectReward()
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact staking reward call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.StakeContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		"Collect staking rewards")
+		"Collect staking rewards — QSR only", effect)
 }
 
 // fusionEntryDTO maps an SDK FusionEntry, deriving revocability from the frontier height.

@@ -133,11 +133,11 @@ export namespace app {
 	export class EffectField {
 	    label: string;
 	    value: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new EffectField(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.label = source["label"];
@@ -148,17 +148,35 @@ export namespace app {
 	    contract: string;
 	    method: string;
 	    fields: EffectField[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new TransactionEffect(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.contract = source["contract"];
 	        this.method = source["method"];
-	        this.fields = source["fields"];
+	        this.fields = this.convertValues(source["fields"], EffectField);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class CallPreview {
 	    fromAddress: string;
@@ -189,12 +207,30 @@ export namespace app {
 	        this.decimals = source["decimals"];
 	        this.hash = source["hash"];
 	        this.summary = source["summary"];
-	        this.effect = source["effect"];
+	        this.effect = this.convertValues(source["effect"], TransactionEffect);
 	        this.usedPlasma = source["usedPlasma"];
 	        this.difficulty = source["difficulty"];
 	        this.needsPoW = source["needsPoW"];
 	        this.holdId = source["holdId"];
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class Contact {
 	    name: string;
@@ -226,6 +262,7 @@ export namespace app {
 	        this.weight = source["weight"];
 	    }
 	}
+	
 	export class EmbeddedInfo {
 	    running: boolean;
 	    dataDir: string;
@@ -812,6 +849,7 @@ export namespace app {
 	        this.isUtility = source["isUtility"];
 	    }
 	}
+	
 	export class TxRecord {
 	    hash: string;
 	    direction: string;

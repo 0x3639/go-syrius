@@ -51,11 +51,22 @@ const { preview: p, status } = storeToRefs(tx)
            the exact recipient, not a truncation. -->
       <span class="break-all text-right font-mono">{{ p.toAddress }}</span>
     </div>
-    <div class="flex justify-between">
-      <span class="text-muted-foreground">Amount</span>
-      <span class="font-mono"
-        >{{ formatAmountExact(p.amount, p.decimals ?? 8) }} {{ p.symbol || p.zts }}</span
-      >
+    <div
+      v-if="p.effect?.contract === 'Stake' && p.effect?.method === 'CollectReward'"
+      class="flex justify-between gap-4"
+      data-testid="staking-reward-asset"
+    >
+      <span class="text-muted-foreground">Reward asset</span>
+      <span class="font-mono">QSR only</span>
+    </div>
+    <div class="flex justify-between gap-4">
+      <span class="text-muted-foreground">{{ p.summary ? 'Contract call value' : 'Amount' }}</span>
+      <span class="text-right font-mono">
+        {{ formatAmountExact(p.amount, p.decimals ?? 8) }} {{ p.symbol || p.zts }}
+        <span v-if="p.summary && p.amount === '0'" class="font-sans text-muted-foreground">
+          (no tokens sent)
+        </span>
+      </span>
     </div>
     <div class="flex justify-between">
       <span class="text-muted-foreground">Fee</span>

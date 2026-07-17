@@ -177,6 +177,23 @@ func TestDecodeContractCallFailsClosed(t *testing.T) {
 	}
 }
 
+// The staking confirmation identifies the exact empty-argument ABI call before
+// the frontend explains its protocol outcome (QSR-only rewards). This keeps the
+// friendly explanation anchored to the held Stake.CollectReward payload.
+func TestDecodeStakeCollectReward(t *testing.T) {
+	template := embedded.NewStakeApi(nil).CollectReward()
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if effect.Contract != "Stake" || effect.Method != "CollectReward" {
+		t.Fatalf("effect = %s.%s, want Stake.CollectReward", effect.Contract, effect.Method)
+	}
+	if len(effect.Fields) != 0 {
+		t.Fatalf("CollectReward has no ABI arguments, got fields %+v", effect.Fields)
+	}
+}
+
 // TestDecodeAcceleratorTemplates decodes the exact templates the accelerator
 // prepare paths hold, proving name, full description, URL, and base-unit
 // amounts all surface (PR-06). Unicode + long strings included.

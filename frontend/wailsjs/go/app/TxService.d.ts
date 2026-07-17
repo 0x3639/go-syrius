@@ -6,7 +6,11 @@ export function CancelPending(arg1:number):Promise<void>;
 
 export function ConfirmPublish(arg1:number):Promise<string>;
 
+export function ConfirmWalletConnectPublish(arg1:number):Promise<Record<string, any>>;
+
 export function PrepareSend(arg1:app.SendRequest):Promise<app.SendPreview>;
+
+export function PrepareWalletConnectSend(arg1:app.WalletConnectSendRequest):Promise<app.CallPreview>;
 
 export function Receive(arg1:string):Promise<string>;
 

@@ -205,6 +205,28 @@ type CallPreview struct {
 	HoldID     uint64             `json:"holdId"` // identity of the backend hold; lets a cancel target exactly this block
 }
 
+// WalletConnectAccountBlockInput is the immutable intent subset of the
+// TypeScript SDK AccountBlockTemplate JSON supplied by a WalletConnect dapp.
+// Chain-state, PoW, hash, and signature fields are intentionally absent: Go
+// reconstructs and finalizes those values from the connected node and keypair.
+type WalletConnectAccountBlockInput struct {
+	Version         uint64 `json:"version"`
+	ChainIdentifier uint64 `json:"chainIdentifier"`
+	BlockType       uint64 `json:"blockType"`
+	Address         string `json:"address"`
+	ToAddress       string `json:"toAddress"`
+	Amount          string `json:"amount"`
+	TokenStandard   string `json:"tokenStandard"`
+	Data            string `json:"data"` // canonical standard base64
+}
+
+// WalletConnectSendRequest is the frozen znn_send envelope used by both
+// 0x3639/bridge-dapp and nom-bridge.
+type WalletConnectSendRequest struct {
+	FromAddress  string                         `json:"fromAddress"`
+	AccountBlock WalletConnectAccountBlockInput `json:"accountBlock"`
+}
+
 // PlasmaInfo is the active address's plasma snapshot.
 type PlasmaInfo struct {
 	QsrFused      string `json:"qsrFused"`

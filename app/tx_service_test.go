@@ -21,6 +21,15 @@ func newTestTxService(t *testing.T) *TxService {
 	return newTxService(cfg, w, n)
 }
 
+func mustHoldPending(t *testing.T, tx *TxService, block *nom.AccountBlock, expect callExpect, gen uint64) uint64 {
+	t.Helper()
+	id, err := tx.holdPending(block, expect, gen)
+	if err != nil {
+		t.Fatalf("holdPending: %v", err)
+	}
+	return id
+}
+
 func TestPrepareSendRejectsBadAddress(t *testing.T) {
 	tx := newTestTxService(t)
 	if _, err := tx.PrepareSend(SendRequest{ToAddress: "not-an-address", Zts: types.ZnnTokenStandard.String(), Amount: "1"}); err == nil {
@@ -59,7 +68,7 @@ func TestConfirmPublishRejectsTamperedBlock(t *testing.T) {
 func TestConfirmPublishFailsClosedOnZeroHoldID(t *testing.T) {
 	tx := newTestTxService(t)
 	unlockTestWallet(t, tx.wallet)
-	tx.holdPending(&nom.AccountBlock{
+	mustHoldPending(t, tx, &nom.AccountBlock{
 		ToAddress:     types.ParseAddressPanic("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"),
 		Amount:        big.NewInt(1),
 		TokenStandard: types.ZnnTokenStandard,
@@ -89,7 +98,7 @@ func TestConfirmPublishMatchingHoldIDPassesTheGate(t *testing.T) {
 		TokenStandard:   types.ZnnTokenStandard,
 		ChainIdentifier: 3,
 	}
-	id := tx.holdPending(block, callExpect{from: from, to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}, tx.wallet.sessionGen())
+	id := mustHoldPending(t, tx, block, callExpect{from: from, to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}, tx.wallet.sessionGen())
 	// Offline test: the confirm must get PAST the identity gate and fail later
 	// on the missing node connection — a gate regression that refuses valid
 	// matching ids (bricking every real publish) fails here.
@@ -109,10 +118,9 @@ func TestConfirmPublishRejectsMismatchedHoldID(t *testing.T) {
 	tx := newTestTxService(t)
 	unlockTestWallet(t, tx.wallet)
 	// Hold a block as holdId 1; the caller confirms against a preview for a
-	// DIFFERENT hold (e.g. a slower prepare replaced the slot after the dialog
-	// was displayed). Confirm-what-you-sign: must refuse, must NOT clear the
-	// (valid, newer) hold.
-	tx.holdPending(&nom.AccountBlock{
+	// DIFFERENT hold (e.g. stale frontend state). Confirm-what-you-sign: must
+	// refuse and must NOT clear the valid held block.
+	mustHoldPending(t, tx, &nom.AccountBlock{
 		ToAddress:     types.ParseAddressPanic("z1qqjnwjjpnue8xmmpanz6csze6tcmtzzdtfsww7"),
 		Amount:        big.NewInt(1),
 		TokenStandard: types.ZnnTokenStandard,
@@ -129,7 +137,7 @@ func TestConfirmPublishRejectsMismatchedHoldID(t *testing.T) {
 func TestCancelPendingIdentityChecked(t *testing.T) {
 	tx := newTestTxService(t)
 	unlockTestWallet(t, tx.wallet)
-	id := tx.holdPending(&nom.AccountBlock{TokenStandard: types.ZnnTokenStandard, Amount: big.NewInt(1)}, callExpect{}, tx.wallet.sessionGen())
+	id := mustHoldPending(t, tx, &nom.AccountBlock{TokenStandard: types.ZnnTokenStandard, Amount: big.NewInt(1)}, callExpect{}, tx.wallet.sessionGen())
 	// A stale cancel (different id) must not release the hold…
 	if err := tx.CancelPending(id + 100); err != nil {
 		t.Fatalf("CancelPending: %v", err)
@@ -143,6 +151,19 @@ func TestCancelPendingIdentityChecked(t *testing.T) {
 	}
 	if tx.pending != nil {
 		t.Fatal("matching cancel must release the hold")
+	}
+}
+
+func TestHoldPendingRefusesToReplaceExistingConfirmation(t *testing.T) {
+	tx := newTestTxService(t)
+	first := &nom.AccountBlock{TokenStandard: types.ZnnTokenStandard, Amount: big.NewInt(1)}
+	firstID := mustHoldPending(t, tx, first, callExpect{}, 1)
+	second := &nom.AccountBlock{TokenStandard: types.QsrTokenStandard, Amount: big.NewInt(2)}
+	if _, err := tx.holdPending(second, callExpect{}, 2); err == nil || !strings.Contains(err.Error(), "awaiting confirmation") {
+		t.Fatalf("expected occupied-slot refusal, got %v", err)
+	}
+	if tx.pending != first || tx.pendingHoldID != firstID || tx.pendingGen != 1 {
+		t.Fatal("a racing prepare replaced the transaction already shown for confirmation")
 	}
 }
 
@@ -382,7 +403,7 @@ func TestConfirmPublishRejectsAccountSwitch(t *testing.T) {
 	from, _ := tx.wallet.activeAddress()
 	const addr = "z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"
 	exTo, _ := types.ParseAddress(addr)
-	id := tx.holdPending(&nom.AccountBlock{
+	id := mustHoldPending(t, tx, &nom.AccountBlock{
 		Address:         from,
 		ToAddress:       types.ParseAddressPanic(addr),
 		Amount:          big.NewInt(1),
@@ -411,7 +432,7 @@ func TestConfirmPublishRejectsSenderMismatch(t *testing.T) {
 	// The hold was prepared for a DIFFERENT sender than the active account
 	// (gen unchanged — this exercises the address comparison specifically).
 	other := types.ParseAddressPanic("z1qqjnwjjpnue8xmmpanz6csze6tcmtzzdtfsww7")
-	id := tx.holdPending(&nom.AccountBlock{
+	id := mustHoldPending(t, tx, &nom.AccountBlock{
 		Address:         other,
 		ToAddress:       other,
 		Amount:          big.NewInt(1),
@@ -454,7 +475,7 @@ func TestConfirmPublishReassertsPolicy(t *testing.T) {
 	tx.node.chainID = 3
 	from, _ := tx.wallet.activeAddress()
 	policyErr := errors.New("governance is testnet-only")
-	id := tx.holdPending(&nom.AccountBlock{
+	id := mustHoldPending(t, tx, &nom.AccountBlock{
 		Address:       from,
 		ToAddress:     from,
 		Amount:        big.NewInt(0),

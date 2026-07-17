@@ -10,6 +10,8 @@ export function GetSettings():Promise<app.Settings>;
 
 export function ListContacts():Promise<Array<app.Contact>>;
 
+export function SetAllowMainnetSend(arg1:boolean):Promise<void>;
+
 export function SetAutoReceive(arg1:boolean):Promise<void>;
 
 export function SetChainID(arg1:number):Promise<void>;

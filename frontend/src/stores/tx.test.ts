@@ -5,7 +5,12 @@ const ConfirmPublish = vi.hoisted(() => vi.fn())
 const CancelPending = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('../../wailsjs/go/app/TxService', () => ({ PrepareSend, ConfirmPublish, CancelPending }))
 import { useTxStore } from './tx'
-beforeEach(() => { setActivePinia(createPinia()); PrepareSend.mockReset(); ConfirmPublish.mockReset() })
+beforeEach(() => {
+  setActivePinia(createPinia())
+  PrepareSend.mockReset()
+  ConfirmPublish.mockReset()
+  CancelPending.mockReset().mockResolvedValue(undefined)
+})
 describe('tx store (confirm-what-you-sign)', () => {
   it('prepare seats the built-block preview', async () => {
     PrepareSend.mockResolvedValue({ toAddress: 'z1', amount: '150000000', zts: 'zts1znn', needsPoW: true, difficulty: 1, hash: 'h' })
@@ -30,6 +35,18 @@ describe('tx store (confirm-what-you-sign)', () => {
     // Identity-checked: the backend can only release THIS hold — a newer
     // Prepare that wins a race against the RPC is untouchable.
     expect(CancelPending).toHaveBeenCalledWith(7)
+  })
+
+  it('discard releases a retryable error-state hold before resetting', () => {
+    const s = useTxStore()
+    s.preview = { summary: 'send', holdId: 8 } as any
+    s.status = 'error'
+    s.error = 'not connected'
+
+    s.discard()
+
+    expect(s.status).toBe('idle')
+    expect(CancelPending).toHaveBeenCalledWith(8)
   })
 
   it('a real broadcast ALWAYS surfaces, even after a mid-publish reset', async () => {
@@ -117,7 +134,7 @@ describe('tx store (confirm-what-you-sign)', () => {
     expect(s.error).toBe('')
   })
 
-  it('discard is a no-op outside awaiting', () => {
+  it('discard is a no-op outside awaiting and error', () => {
     const s = useTxStore()
     s.status = 'publishing'
     CancelPending.mockClear()

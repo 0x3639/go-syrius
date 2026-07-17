@@ -81,7 +81,7 @@ describe('NomConfirm (global panel confirm)', () => {
   it('closing while awaiting calls tx.discard', async () => {
     const tx = useTxStore()
     tx.awaitConfirm(PREVIEW)
-    const discard = vi.spyOn(tx, 'discard').mockImplementation(() => {})
+    const discard = vi.spyOn(tx, 'discard').mockResolvedValue(undefined)
     const reset = vi.spyOn(tx, 'reset')
 
     const w = mount(NomConfirm)
@@ -95,7 +95,7 @@ describe('NomConfirm (global panel confirm)', () => {
   it('closing while done calls tx.reset', async () => {
     const tx = useTxStore()
     tx.status = 'done'
-    const discard = vi.spyOn(tx, 'discard').mockImplementation(() => {})
+    const discard = vi.spyOn(tx, 'discard').mockResolvedValue(undefined)
     const reset = vi.spyOn(tx, 'reset')
 
     const w = mount(NomConfirm)
@@ -115,10 +115,12 @@ describe('NomConfirm (global panel confirm)', () => {
     expect(w.find('[data-test="dialog"]').attributes('data-open')).toBe('true')
     expect(w.text()).toContain('no pending block')
 
-    // closing from error just clears the state
+    // A retryable confirm error may still own its backend hold.
+    const discard = vi.spyOn(tx, 'discard').mockResolvedValue(undefined)
     const reset = vi.spyOn(tx, 'reset')
     w.findComponent({ name: 'Dialog' }).vm.$emit('update:open', false)
     await w.vm.$nextTick()
-    expect(reset).toHaveBeenCalled()
+    expect(discard).toHaveBeenCalled()
+    expect(reset).not.toHaveBeenCalled()
   })
 })

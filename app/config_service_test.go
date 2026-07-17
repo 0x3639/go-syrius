@@ -171,6 +171,9 @@ func TestTargetedSettersPersist(t *testing.T) {
 	if err := c.SetAutoReceive(true); err != nil {
 		t.Fatal(err)
 	}
+	if err := c.SetAllowMainnetSend(true); err != nil {
+		t.Fatal(err)
+	}
 	if err := c.SetShowGovernance(true); err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +181,7 @@ func TestTargetedSettersPersist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.ChainID != 3 || !s.AutoReceive || !s.ShowGovernance {
+	if s.ChainID != 3 || !s.AutoReceive || !s.AllowMainnetSend || !s.ShowGovernance {
 		t.Fatalf("targeted setters did not persist: %+v", s)
 	}
 	// The atomic write path must not leave temp files behind.

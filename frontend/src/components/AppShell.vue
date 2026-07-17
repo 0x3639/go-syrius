@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import Sidebar from './Sidebar.vue'
 import TopBar from './TopBar.vue'
 import NomConfirm from './NomConfirm.vue'
+import WalletConnectRequest from './WalletConnectRequest.vue'
 import { usePriceStore } from '../stores/price'
 import { useNodeStore } from '../stores/node'
 import { useBalancesStore } from '../stores/balances'
@@ -16,6 +17,7 @@ import { useUiStore } from '../stores/ui'
 import { useAutoReceiveStore } from '../stores/autoReceive'
 import { useWalletStore } from '../stores/wallet'
 import { useTxStore } from '../stores/tx'
+import { useWalletConnectStore } from '../stores/walletconnect'
 
 const route = useRoute()
 const price = usePriceStore()
@@ -30,6 +32,7 @@ const ui = useUiStore()
 const autoReceive = useAutoReceiveStore()
 const wallet = useWalletStore()
 const tx = useTxStore()
+const walletConnect = useWalletConnectStore()
 const title = computed(() => (route.meta.title as string) ?? '')
 
 // Global bootstrap. AppShell wraps every authenticated route and unmounts only
@@ -72,6 +75,7 @@ async function onActiveChange(i: number) {
   txs.resetPage()
   refresh()
   await autoReceive.followAccount(i)
+  await walletConnect.updateAccount(wallet.activeAddress())
 }
 
 watch(
@@ -86,10 +90,19 @@ onMounted(async () => {
   refresh() // initial aggregate load (balances etc.)
   ui.init() // restore persisted theme + showGovernance
   await autoReceive.init(wallet.activeIndex)
+  if (walletConnect.projectId()) {
+    try {
+      await walletConnect.ensureClient()
+      // Restored WalletConnect sessions can still advertise the account from
+      // before an app restart. Reconcile them immediately after unlock.
+      await walletConnect.updateAccount(wallet.activeAddress())
+    } catch { /* relay initialization remains retryable from the WC screen */ }
+  }
 })
 onBeforeUnmount(() => {
   price.stop()
   node.clearTick() // stop momentum-driven refreshes while locked
+  walletConnect.walletLocked().catch(() => {})
 })
 </script>
 
@@ -110,5 +123,6 @@ onBeforeUnmount(() => {
          route, which drives its own inline TxModal/TxResult (avoids a double
          dialog on the same tx status). -->
     <NomConfirm v-if="route.name !== 'transfer'" />
+    <WalletConnectRequest />
   </div>
 </template>

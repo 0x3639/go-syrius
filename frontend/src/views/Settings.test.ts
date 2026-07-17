@@ -18,8 +18,9 @@ vi.mock('../../wailsjs/go/app/NodeService', () => ({
 
 const GetSettings = vi.hoisted(() => vi.fn().mockResolvedValue({ chainId: 73404 }))
 const SetChainID = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const SetAllowMainnetSend = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const SetShowGovernance = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
-vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetChainID, SetShowGovernance }))
+vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetChainID, SetAllowMainnetSend, SetShowGovernance }))
 
 const RevealMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue('alpha bravo charlie delta'))
 const ChangePassword = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
@@ -43,7 +44,7 @@ vi.mock('nom-ui', () => ({
     props: ['modelValue', 'type'],
     template: '<input :type="type" :aria-label="$attrs[\'aria-label\']" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
   },
-  Button: { props: ['disabled'], template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot/></button>' },
+  Button: { props: ['disabled'], emits: ['click'], template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot/></button>' },
 }))
 
 import Settings from './Settings.vue'
@@ -61,6 +62,7 @@ beforeEach(() => {
   RenameWallet.mockClear()
   GetSettings.mockClear()
   SetChainID.mockClear()
+  SetAllowMainnetSend.mockReset().mockResolvedValue(undefined)
   SetShowGovernance.mockClear()
   GetSettings.mockResolvedValue({ chainId: 73404 })
 })
@@ -156,6 +158,51 @@ describe('Settings.vue', () => {
     await flush()
 
     expect(SetShowGovernance).toHaveBeenCalledWith(true)
+  })
+
+  it('requires an explicit warning confirmation before enabling mainnet transactions', async () => {
+    const w = mount(Settings)
+    await flush()
+
+    const checkbox = w.find('input[aria-label="enable mainnet transactions"]')
+    await checkbox.trigger('click')
+    expect(SetAllowMainnetSend).not.toHaveBeenCalled()
+    expect((w.find('input[aria-label="enable mainnet transactions"]').element as HTMLInputElement).checked).toBe(false)
+    expect(w.text()).toContain('Mainnet transactions use real ZNN')
+
+    await w.find('button[aria-label="Confirm mainnet transactions"]').trigger('click')
+    await flush()
+    expect(SetAllowMainnetSend).toHaveBeenCalledWith(true)
+    expect((checkbox.element as HTMLInputElement).checked).toBe(true)
+    expect(w.text()).toContain('Mainnet transactions enabled')
+  })
+
+  it('keeps the mainnet checkbox disabled when the warning is cancelled', async () => {
+    const w = mount(Settings)
+    await flush()
+    const checkbox = w.find('input[aria-label="enable mainnet transactions"]')
+
+    await checkbox.trigger('click')
+    await w.findAll('button').find((b) => b.text() === 'Cancel')!.trigger('click')
+
+    expect(SetAllowMainnetSend).not.toHaveBeenCalled()
+    expect((checkbox.element as HTMLInputElement).checked).toBe(false)
+    expect(w.text()).not.toContain('Mainnet transactions use real ZNN')
+  })
+
+  it('restores the persisted mainnet checkbox state when enabling fails', async () => {
+    SetAllowMainnetSend.mockRejectedValueOnce(new Error('settings write failed'))
+    const w = mount(Settings)
+    await flush()
+    const checkbox = w.find('input[aria-label="enable mainnet transactions"]')
+
+    await checkbox.trigger('click')
+    await w.find('button[aria-label="Confirm mainnet transactions"]').trigger('click')
+    await flush()
+
+    expect((w.vm as any).allowMainnetSend).toBe(false)
+    expect((w.find('input[aria-label="enable mainnet transactions"]').element as HTMLInputElement).checked).toBe(false)
+    expect(w.text()).toContain('settings write failed')
   })
 
   it('renders a mismatch warning when the node chain differs from the configured chain', async () => {

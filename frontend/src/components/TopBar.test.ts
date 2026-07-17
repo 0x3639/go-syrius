@@ -8,6 +8,7 @@ vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }), useRoute: (
 import TopBar from './TopBar.vue'
 import { useWalletStore } from '../stores/wallet'
 import { useAutoReceiveStore } from '../stores/autoReceive'
+import { useWalletConnectStore } from '../stores/walletconnect'
 
 const stubs = { AccountSlotPicker: true }
 
@@ -45,6 +46,28 @@ describe('TopBar', () => {
     const w = mount(TopBar, { props: { title: 'Dashboard' }, global: { stubs } })
     await w.find('button[aria-label="Auto-receive off"]').trigger('click')
     expect(toggle).toHaveBeenCalledWith(3)
+  })
+
+  it('shows WalletConnect in muted state when disconnected', () => {
+    const w = mount(TopBar, { props: { title: 'Dashboard' }, global: { stubs } })
+    const button = w.find('button[aria-label="WalletConnect"]')
+    expect(button.exists()).toBe(true)
+    expect(button.classes()).toContain('text-muted-foreground')
+  })
+
+  it('shows WalletConnect in green when a dapp is connected', () => {
+    const walletConnect = useWalletConnectStore()
+    walletConnect.sessions = [{
+      topic: 'topic-1',
+      name: 'Zenon Bridge',
+      url: 'https://bridge.0x3639.com',
+      icon: '',
+      accounts: ['zenon:1:z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz'],
+    }]
+    const w = mount(TopBar, { props: { title: 'Dashboard' }, global: { stubs } })
+    const button = w.find('button[aria-label="WalletConnect connected"]')
+    expect(button.exists()).toBe(true)
+    expect(button.classes()).toContain('text-success')
   })
 
   // TopBar only renders inside AppShell (unlocked); the lock button is always live.

@@ -174,6 +174,16 @@ func (c *ConfigService) SetChainID(id uint64) error {
 	})
 }
 
+// SetAllowMainnetSend persists the explicit opt-in for signing and publishing
+// transactions on chain 1. The TxService guard remains authoritative; this
+// setter only records the user's decision.
+func (c *ConfigService) SetAllowMainnetSend(v bool) error {
+	return c.updateSettings(func(s *Settings) error {
+		s.AllowMainnetSend = v
+		return nil
+	})
+}
+
 // SetAutoReceive persists the auto-receive toggle.
 func (c *ConfigService) SetAutoReceive(v bool) error {
 	return c.updateSettings(func(s *Settings) error {

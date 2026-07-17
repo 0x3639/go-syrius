@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'nom-ui'
 import {
   SunIcon, MoonIcon, ZapIcon, ArrowDownCircleIcon, RocketIcon, LockIcon,
-  Building2Icon,
+  Building2Icon, LinkIcon,
 } from '@lucide/vue'
 import { useWalletStore } from '../stores/wallet'
 import { usePlasmaStore } from '../stores/plasma'
@@ -13,6 +13,7 @@ import { useAcceleratorStore } from '../stores/accelerator'
 import { useAutoReceiveStore } from '../stores/autoReceive'
 import { useUnreceivedStore } from '../stores/unreceived'
 import { useUiStore } from '../stores/ui'
+import { useWalletConnectStore } from '../stores/walletconnect'
 import { plasmaLevel, plasmaColorClass } from '../lib/plasma'
 import AccountSlotPicker from './AccountSlotPicker.vue'
 
@@ -28,6 +29,7 @@ const accelerator = useAcceleratorStore()
 const autoReceive = useAutoReceiveStore()
 const unreceived = useUnreceivedStore()
 const ui = useUiStore()
+const walletConnect = useWalletConnectStore()
 
 const plasmaLvl = computed(() => plasmaLevel(plasma.info?.currentPlasma ?? 0))
 const plasmaColor = computed(() => plasmaColorClass(plasmaLvl.value))
@@ -82,6 +84,17 @@ watch(
           class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.625rem] font-semibold text-primary-foreground">
           {{ unreceived.items.length }}
         </span>
+      </button>
+
+      <button type="button"
+        :aria-label="walletConnect.sessions.length > 0 ? 'WalletConnect connected' : 'WalletConnect'"
+        :title="walletConnect.sessions.length > 0
+          ? `WalletConnect: ${walletConnect.sessions.length} connected dapp(s)`
+          : 'WalletConnect: not connected'"
+        class="grid h-8.5 w-8.5 place-items-center rounded-md transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+        :class="walletConnect.sessions.length > 0 ? 'text-success' : 'text-muted-foreground'"
+        @click="router.push('/walletconnect')">
+        <LinkIcon :size="16" />
       </button>
 
       <button v-if="pillar.ownsPillar" type="button" aria-label="Your pillar"

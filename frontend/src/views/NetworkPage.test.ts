@@ -70,7 +70,7 @@ describe('NetworkPage', () => {
     const tx = useTxStore()
     tx.status = 'awaiting' // a built governance block is held, dialog open
     // discard() leaves 'awaiting' synchronously, then releases the held block.
-    const discard = vi.spyOn(tx, 'discard').mockImplementation(() => {})
+    const discard = vi.spyOn(tx, 'discard').mockResolvedValue(undefined)
     const w = mount(NetworkPage, { global: { stubs } })
     expect(w.find('.gov-stub').exists()).toBe(true)
 
@@ -85,7 +85,7 @@ describe('NetworkPage', () => {
     const ui = useUiStore(); ui.showGovernance = true
     const node = useNodeStore(); node.chainId = 2
     const tx = useTxStore()
-    const discard = vi.spyOn(tx, 'discard').mockImplementation(() => {})
+    const discard = vi.spyOn(tx, 'discard').mockResolvedValue(undefined)
     const w = mount(NetworkPage, { global: { stubs } })
 
     node.chainId = 1 // gate slams while a Prepare RPC is still in flight
@@ -103,7 +103,7 @@ describe('NetworkPage', () => {
     const node = useNodeStore(); node.chainId = 2
     const tx = useTxStore()
     tx.status = 'publishing' // ConfirmPublish already in flight
-    const discard = vi.spyOn(tx, 'discard').mockImplementation(() => {})
+    const discard = vi.spyOn(tx, 'discard').mockResolvedValue(undefined)
     const reset = vi.spyOn(tx, 'reset')
     const w = mount(NetworkPage, { global: { stubs } })
 

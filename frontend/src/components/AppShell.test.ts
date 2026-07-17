@@ -28,6 +28,7 @@ import { useUiStore } from '../stores/ui'
 import { useAutoReceiveStore } from '../stores/autoReceive'
 import { useWalletStore } from '../stores/wallet'
 import { useTxStore } from '../stores/tx'
+import { useWalletConnectStore } from '../stores/walletconnect'
 
 // Stub every bootstrap action so the integration runs end-to-end (we do NOT mock
 // AppShell's bootstrap away — that's the regression this suite must catch) while
@@ -44,6 +45,7 @@ function stubStores() {
   const autoReceive = useAutoReceiveStore()
   const wallet = useWalletStore()
   const tx = useTxStore()
+  const walletConnect = useWalletConnectStore()
 
   vi.spyOn(node, 'initEvents').mockImplementation(() => {})
   vi.spyOn(tx, 'initEvents').mockImplementation(() => {})
@@ -58,8 +60,11 @@ function stubStores() {
   vi.spyOn(ui, 'init').mockResolvedValue(undefined as any)
   vi.spyOn(autoReceive, 'init').mockResolvedValue(undefined as any)
   vi.spyOn(autoReceive, 'followAccount').mockResolvedValue(undefined as any)
+  vi.spyOn(walletConnect, 'projectId').mockReturnValue('test-project-id')
+  vi.spyOn(walletConnect, 'ensureClient').mockResolvedValue({} as any)
+  vi.spyOn(walletConnect, 'updateAccount').mockResolvedValue(undefined as any)
 
-  return { node, balances, txs, autoReceive, wallet }
+  return { node, balances, txs, autoReceive, wallet, walletConnect }
 }
 
 function mountShell() {
@@ -93,7 +98,8 @@ describe('AppShell', () => {
   })
 
   it('refreshes data and re-points auto-receive when the active account changes', async () => {
-    const { balances, txs, autoReceive, wallet } = stubStores()
+    const { balances, txs, autoReceive, wallet, walletConnect } = stubStores()
+    wallet.accounts = [{ index: 2, address: 'z1qnew', label: '' }]
     mountShell()
     // initial mount load
     expect(balances.load).toHaveBeenCalledTimes(1)
@@ -105,5 +111,19 @@ describe('AppShell', () => {
     expect(txs.resetPage).toHaveBeenCalled()
     expect(balances.load).toHaveBeenCalledTimes(2)
     expect(autoReceive.followAccount).toHaveBeenCalledWith(2)
+    expect(walletConnect.updateAccount).toHaveBeenCalledWith('z1qnew')
+  })
+
+  it('reconciles restored WalletConnect sessions with the active account after unlock', async () => {
+    const { wallet, walletConnect } = stubStores()
+    wallet.locked = false
+    wallet.accounts = [{ index: 0, address: 'z1qactive', label: '' }]
+
+    mountShell()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(walletConnect.ensureClient).toHaveBeenCalledOnce()
+    expect(walletConnect.updateAccount).toHaveBeenCalledWith('z1qactive')
   })
 })

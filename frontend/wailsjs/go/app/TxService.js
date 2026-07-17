@@ -10,8 +10,16 @@ export function ConfirmPublish(arg1) {
   return window['go']['app']['TxService']['ConfirmPublish'](arg1);
 }
 
+export function ConfirmWalletConnectPublish(arg1) {
+  return window['go']['app']['TxService']['ConfirmWalletConnectPublish'](arg1);
+}
+
 export function PrepareSend(arg1) {
   return window['go']['app']['TxService']['PrepareSend'](arg1);
+}
+
+export function PrepareWalletConnectSend(arg1) {
+  return window['go']['app']['TxService']['PrepareWalletConnectSend'](arg1);
 }
 
 export function Receive(arg1) {

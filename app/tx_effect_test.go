@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/0x3639/go-syrius/internal/governance"
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
 	"github.com/zenon-network/go-zenon/common/types"
 )
@@ -100,7 +101,7 @@ func proposeKindSample(t *testing.T, kind string) (params map[string]string, wan
 // value (full addresses, full big-int amounts, explicit booleans, joined
 // lists). This is the confirm-what-you-sign gate for governance proposals.
 func TestDecodeEveryProposeKind(t *testing.T) {
-	api := embedded.NewGovernanceApi(nil) // payload helpers are pure template builders
+	api := governance.NewAPI(nil) // payload helpers are pure template builders
 	for _, k := range proposeKinds() {
 		k := k
 		t.Run(k.Kind, func(t *testing.T) {
@@ -141,7 +142,7 @@ func TestDecodeEveryProposeKind(t *testing.T) {
 }
 
 func TestDecodeContractCallFailsClosed(t *testing.T) {
-	api := embedded.NewGovernanceApi(nil)
+	api := governance.NewAPI(nil)
 	good, err := buildProposalPayloadWith(api, "bridge.changeAdministrator", map[string]string{"administrator": effAddr1})
 	if err != nil {
 		t.Fatal(err)
@@ -246,7 +247,7 @@ func mustBig(t *testing.T, s string) *big.Int {
 // TestDecodeProposeEnvelope: proposal metadata rendered in the confirmation
 // must come from the exact held ProposeAction template (round-3 review P2).
 func TestDecodeProposeEnvelope(t *testing.T) {
-	gov := embedded.NewGovernanceApi(nil)
+	gov := governance.NewAPI(nil)
 	payload, err := buildProposalPayloadWith(gov, "bridge.changeAdministrator", map[string]string{"administrator": effAddr1})
 	if err != nil {
 		t.Fatal(err)

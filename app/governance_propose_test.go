@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
+	"github.com/0x3639/go-syrius/internal/governance"
 	"github.com/zenon-network/go-zenon/common/types"
 )
 
@@ -34,8 +34,8 @@ func TestGetProposeKinds_HasSporkNotCustom(t *testing.T) {
 }
 
 func TestBuildProposalPayload_SporkCreate(t *testing.T) {
-	api := embedded.NewGovernanceApi(nil)
-	// build directly via the SDK helper to confirm our dispatcher mirrors it
+	api := governance.NewAPI(nil)
+	// Build directly via the compatibility helper to confirm our dispatcher mirrors it.
 	want := api.PayloadSporkCreate("MySpork", "desc")
 	got, err := buildProposalPayloadWith(api, "spork.create", map[string]string{"name": "MySpork", "description": "desc"})
 	if err != nil {
@@ -47,7 +47,7 @@ func TestBuildProposalPayload_SporkCreate(t *testing.T) {
 }
 
 func TestBuildProposalPayload_CustomRemoved(t *testing.T) {
-	api := embedded.NewGovernanceApi(nil)
+	api := governance.NewAPI(nil)
 	// custom was dropped for the testnet release → now an unknown kind.
 	if _, err := buildProposalPayloadWith(api, "custom", map[string]string{"destination": types.SporkContract.String(), "data": "AAEC"}); err == nil {
 		t.Fatal("custom kind must be rejected (dropped for release)")
@@ -55,7 +55,7 @@ func TestBuildProposalPayload_CustomRemoved(t *testing.T) {
 }
 
 func TestBuildProposalPayload_UnknownKind(t *testing.T) {
-	api := embedded.NewGovernanceApi(nil)
+	api := governance.NewAPI(nil)
 	if _, err := buildProposalPayloadWith(api, "bogus.kind", map[string]string{}); err == nil {
 		t.Fatal("unknown kind must error")
 	}
@@ -76,11 +76,11 @@ func TestPrepareProposeAction_Validation(t *testing.T) {
 }
 
 func TestBuildProposalPayload_BridgeKinds(t *testing.T) {
-	api := embedded.NewGovernanceApi(nil)
+	api := governance.NewAPI(nil)
 	cases := []struct {
 		kind   string
 		params map[string]string
-		want   embedded.ProposalPayload
+		want   governance.ProposalPayload
 	}{
 		{"bridge.addNetwork", map[string]string{"networkClass": "1", "chainId": "2", "name": "eth", "contractAddress": "0xabc", "metadata": "{}"}, api.PayloadBridgeAddNetwork(1, 2, "eth", "0xabc", "{}")},
 		{"bridge.removeNetwork", map[string]string{"networkClass": "1", "chainId": "2"}, api.PayloadBridgeRemoveNetwork(1, 2)},
@@ -126,11 +126,11 @@ func TestProposeKinds_IncludesAllBridge(t *testing.T) {
 }
 
 func TestBuildProposalPayload_LiquidityKinds(t *testing.T) {
-	api := embedded.NewGovernanceApi(nil)
+	api := governance.NewAPI(nil)
 	cases := []struct {
 		kind   string
 		params map[string]string
-		want   embedded.ProposalPayload
+		want   governance.ProposalPayload
 	}{
 		{"liquidity.fund", map[string]string{"znnReward": "10", "qsrReward": "20"}, api.PayloadLiquidityFund(big.NewInt(10), big.NewInt(20))},
 		{"liquidity.burnZnn", map[string]string{"burnAmount": "5"}, api.PayloadLiquidityBurnZnn(big.NewInt(5))},
@@ -156,7 +156,7 @@ func TestBuildProposalPayload_LiquidityKinds(t *testing.T) {
 }
 
 func TestBuildProposalPayload_SetTokenTuple_LengthMismatch(t *testing.T) {
-	api := embedded.NewGovernanceApi(nil)
+	api := governance.NewAPI(nil)
 	// 2 token standards but 1 znnPercentage → must error before the SDK call
 	_, err := buildProposalPayloadWith(api, "liquidity.setTokenTuple", map[string]string{
 		"tokenStandards": "zts1znnxxxxxxxxxxxxx9z4ulx,zts1qsrxxxxxxxxxxxxxjv8v62",
@@ -182,7 +182,7 @@ func TestProposeKinds_IncludesAllLiquidity(t *testing.T) {
 }
 
 func TestBuildProposalPayload_SporkLengthBounds(t *testing.T) {
-	api := embedded.NewGovernanceApi(nil)
+	api := governance.NewAPI(nil)
 	// name shorter than 5 → error
 	if _, err := buildProposalPayloadWith(api, "spork.create", map[string]string{"name": "abc", "description": "ok"}); err == nil {
 		t.Fatal("spork name < 5 chars must error")

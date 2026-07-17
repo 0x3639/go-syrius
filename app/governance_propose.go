@@ -8,8 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
-	rpc_client "github.com/0x3639/znn-sdk-go/rpc_client"
+	"github.com/0x3639/go-syrius/internal/governance"
 	"github.com/zenon-network/go-zenon/common/types"
 )
 
@@ -314,119 +313,119 @@ func validateFieldLengths(kind string, p map[string]string) error {
 	return nil
 }
 
-func buildProposalPayloadWith(api *embedded.GovernanceApi, kind string, p map[string]string) (embedded.ProposalPayload, error) {
+func buildProposalPayloadWith(api *governance.API, kind string, p map[string]string) (governance.ProposalPayload, error) {
 	if err := validateFieldLengths(kind, p); err != nil {
-		return embedded.ProposalPayload{}, err
+		return governance.ProposalPayload{}, err
 	}
 	switch kind {
 	case "spork.create":
 		name, err := reqParam(p, "name")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		desc, err := reqParam(p, "description")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadSporkCreate(name, desc), nil
 	case "spork.activate":
 		id, err := parseHashParam(p, "id")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadSporkActivate(id), nil
 	case "bridge.addNetwork":
 		nc, err := parseU32Param(p, "networkClass")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		cid, err := parseU32Param(p, "chainId")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		name, err := reqParam(p, "name")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		ca, err := reqParam(p, "contractAddress")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeAddNetwork(nc, cid, name, ca, optParam(p, "metadata")), nil
 	case "bridge.removeNetwork":
 		nc, err := parseU32Param(p, "networkClass")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		cid, err := parseU32Param(p, "chainId")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeRemoveNetwork(nc, cid), nil
 	case "bridge.setTokenPair":
 		nc, err := parseU32Param(p, "networkClass")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		cid, err := parseU32Param(p, "chainId")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		zts, err := parseZtsParam(p, "tokenStandard")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		ta, err := reqParam(p, "tokenAddress")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		bridgeable, err := parseBoolParam(p, "bridgeable")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		redeemable, err := parseBoolParam(p, "redeemable")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		owned, err := parseBoolParam(p, "owned")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		minAmt, err := parseBigIntParam(p, "minAmount")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		fee, err := parseU32Param(p, "fee")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		rd, err := parseU32Param(p, "redeemDelay")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeSetTokenPair(nc, cid, zts, ta, bridgeable, redeemable, owned, minAmt, fee, rd, optParam(p, "metadata")), nil
 	case "bridge.removeTokenPair":
 		nc, err := parseU32Param(p, "networkClass")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		cid, err := parseU32Param(p, "chainId")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		zts, err := parseZtsParam(p, "tokenStandard")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		ta, err := reqParam(p, "tokenAddress")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeRemoveTokenPair(nc, cid, zts, ta), nil
 	case "bridge.halt":
 		sig, err := reqParam(p, "signature")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeHalt(sig), nil
 	case "bridge.unhalt":
@@ -436,124 +435,124 @@ func buildProposalPayloadWith(api *embedded.GovernanceApi, kind string, p map[st
 	case "bridge.changeAdministrator":
 		a, err := parseAddrParam(p, "administrator")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeChangeAdministrator(a), nil
 	case "bridge.changeTssECDSAPubKey":
 		pk, err := reqParam(p, "pubKey")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		sig, err := reqParam(p, "signature")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		ns, err := reqParam(p, "newSignature")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeChangeTssECDSAPubKey(pk, sig, ns), nil
 	case "bridge.setAllowKeygen":
 		b, err := parseBoolParam(p, "allowKeygen")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeSetAllowKeygen(b), nil
 	case "bridge.setOrchestratorInfo":
 		ws, err := parseU64Param(p, "windowSize")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		kt, err := parseU32Param(p, "keyGenThreshold")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		cf, err := parseU32Param(p, "confirmationsToFinality")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		et, err := parseU32Param(p, "estimatedMomentumTime")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeSetOrchestratorInfo(ws, kt, cf, et), nil
 	case "bridge.setMetadata":
 		m, err := reqParam(p, "metadata")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeSetMetadata(m), nil
 	case "bridge.setNetworkMetadata":
 		nc, err := parseU32Param(p, "networkClass")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		cid, err := parseU32Param(p, "chainId")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		m, err := reqParam(p, "metadata")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeSetNetworkMetadata(nc, cid, m), nil
 	case "bridge.revokeUnwrapRequest":
 		h, err := parseHashParam(p, "transactionHash")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		li, err := parseU32Param(p, "logIndex")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeRevokeUnwrapRequest(h, li), nil
 	case "bridge.nominateGuardians":
 		gs, err := parseAddrList(p, "guardians")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadBridgeNominateGuardians(gs), nil
 	case "liquidity.fund":
 		znn, err := parseBigIntParam(p, "znnReward")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		qsr, err := parseBigIntParam(p, "qsrReward")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadLiquidityFund(znn, qsr), nil
 	case "liquidity.burnZnn":
 		amt, err := parseBigIntParam(p, "burnAmount")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadLiquidityBurnZnn(amt), nil
 	case "liquidity.setTokenTuple":
 		zs, err := parseStrList(p, "tokenStandards")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		zp, err := parseU32List(p, "znnPercentages")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		qp, err := parseU32List(p, "qsrPercentages")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		ma, err := parseBigIntList(p, "minAmounts")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		if len(zs) != len(zp) || len(zs) != len(qp) || len(zs) != len(ma) {
-			return embedded.ProposalPayload{}, errors.New("setTokenTuple lists (tokenStandards, znnPercentages, qsrPercentages, minAmounts) must all have the same length")
+			return governance.ProposalPayload{}, errors.New("setTokenTuple lists (tokenStandards, znnPercentages, qsrPercentages, minAmounts) must all have the same length")
 		}
 		return api.PayloadLiquiditySetTokenTuple(zs, zp, qp, ma), nil
 	case "liquidity.setIsHalted":
 		v, err := parseBoolParam(p, "value")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadLiquiditySetIsHalted(v), nil
 	case "liquidity.unlockStakeEntries":
@@ -561,37 +560,37 @@ func buildProposalPayloadWith(api *embedded.GovernanceApi, kind string, p map[st
 		// cannot carry the token standard this method selects its target with,
 		// so the executed action would always operate on ZNN regardless of the
 		// user's input. See the catalog note in proposeKinds.
-		return embedded.ProposalPayload{}, errors.New("liquidity.unlockStakeEntries cannot be proposed: a governance action cannot carry the token standard this method requires")
+		return governance.ProposalPayload{}, errors.New("liquidity.unlockStakeEntries cannot be proposed: a governance action cannot carry the token standard this method requires")
 	case "liquidity.setAdditionalReward":
 		znn, err := parseBigIntParam(p, "znnReward")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		qsr, err := parseBigIntParam(p, "qsrAmount")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadLiquiditySetAdditionalReward(znn, qsr), nil
 	case "liquidity.changeAdministrator":
 		a, err := parseAddrParam(p, "administrator")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadLiquidityChangeAdministrator(a), nil
 	case "liquidity.nominateGuardians":
 		gs, err := parseAddrList(p, "guardians")
 		if err != nil {
-			return embedded.ProposalPayload{}, err
+			return governance.ProposalPayload{}, err
 		}
 		return api.PayloadLiquidityNominateGuardians(gs), nil
 	case "liquidity.emergency":
 		return api.PayloadLiquidityEmergency(), nil
 	}
-	return embedded.ProposalPayload{}, fmt.Errorf("unknown action kind %q", kind)
+	return governance.ProposalPayload{}, fmt.Errorf("unknown action kind %q", kind)
 }
 
-func buildProposalPayload(client *rpc_client.RpcClient, kind string, p map[string]string) (embedded.ProposalPayload, error) {
-	return buildProposalPayloadWith(client.GovernanceApi, kind, p)
+func buildProposalPayload(api *governance.API, kind string, p map[string]string) (governance.ProposalPayload, error) {
+	return buildProposalPayloadWith(api, kind, p)
 }
 
 // ---- bound methods ----
@@ -621,15 +620,15 @@ func (s *NomService) PrepareProposeAction(name, description, url, kind string, p
 	if url == "" || !acceleratorURLRe.MatchString(url) {
 		return CallPreview{}, errors.New("invalid URL")
 	}
-	client := s.node.currentClient()
-	if client == nil {
+	api := s.node.currentGovernance()
+	if api == nil {
 		return CallPreview{}, errors.New("not connected")
 	}
-	payload, err := buildProposalPayload(client, kind, params)
+	payload, err := buildProposalPayload(api, kind, params)
 	if err != nil {
 		return CallPreview{}, err
 	}
-	template := client.GovernanceApi.ProposeAction(name, description, url, payload.Destination, payload.Data)
+	template := api.ProposeAction(name, description, url, payload.Destination, payload.Data)
 	label := kind
 	for _, k := range proposeKinds() {
 		if k.Kind == kind {

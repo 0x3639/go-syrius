@@ -76,7 +76,7 @@ function messageOf(error: unknown): string {
 const OUTCOME_UNKNOWN_MARKER = 'walletconnect publication outcome unknown'
 
 type WalletConnectPrepareOutcome = {
-  outcome: 'prepare' | 'published' | 'unknown'
+  outcome: 'prepare' | 'published' | 'unknown' | 'conflict' | 'none'
   preview?: SendPreview
   published?: unknown
   publishedHash?: string
@@ -395,44 +395,39 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       // Journal replay resolution comes FIRST — before the scam, existing-
       // request, and busy-tx gates below — so a redelivered published or
       // unknown outcome (funds may already have moved) is never turned into an
-      // ordinary rejection. The lookup is journal-only: it creates no hold, so
-      // a fresh scam/duplicate request still hits the gates that follow. A
-      // `preparing` marker is registered so session_delete / expire can mark
-      // THIS request even during the replay delivery's respond() await.
-      const preparing: WalletConnectPreparingRequest = {
-        token: ++preparingRequestToken,
-        topic,
-        id,
-        sessionEnded: false,
-        cancelMessage: '',
-        cancelCode: 5000,
-      }
-      const priorRequest = this.request
-      const priorPreparing = this.preparingRequest
-      this.preparingRequest = preparing
+      // ordinary rejection. The lookup is journal-only: it creates no hold AND
+      // does NOT touch the shared `preparingRequest` slot, so an earlier
+      // in-flight preparation keeps receiving its own session/expiry events.
       let replay: WalletConnectPrepareOutcome
       try {
         replay = await Tx.LookupWalletConnectPublication(
           { ...(params.request.params as any), topic, requestId: id } as any,
         ) as unknown as WalletConnectPrepareOutcome
       } catch (error) {
-        // A reused id with a different intent (or a journal read error): fail
-        // closed. No funds move on this path.
-        if (this.preparingRequest === preparing) this.preparingRequest = priorPreparing
-        await this.failRequest(topic, id, 5000, messageOf(error))
+        // A lookup THROW is a journal read/IPC failure: the true outcome is
+        // UNKNOWN (the block may be published), so answer with a retryable
+        // operational error, never a definite user-style rejection.
+        await this.failRequest(topic, id, -32000, `Cannot resolve this request's status: ${messageOf(error)}`)
+        return
+      }
+      if (replay.outcome === 'conflict') {
+        // A reused request id carrying a different intent: a safe, definite
+        // refusal of the NEW intent (which was never approved).
+        await this.failRequest(topic, id, 5000, 'This WalletConnect request id was already used for a different transaction')
         return
       }
       if (replay.outcome === 'published' && replay.published) {
-        try {
-          await this.deliverReplayPublished(preparing, replay, verify)
-        } finally {
-          if (this.preparingRequest === preparing) this.preparingRequest = priorPreparing
-        }
+        await this.deliverReplayPublished(topic, id, replay, verify)
         return
       }
       if (replay.outcome === 'unknown') {
-        if (this.preparingRequest === preparing) this.preparingRequest = priorPreparing
-        if (preparing.sessionEnded) return
+        // Never displace an already-displayed request or an in-flight
+        // preparation — that would orphan its backend hold. The journal record
+        // survives, so a later redelivery surfaces this once the wallet is free.
+        if (this.request || this.preparingRequest) {
+          this.error = 'A WalletConnect transaction with an unresolved status is pending; finish the current request to review it.'
+          return
+        }
         const session = this.sessions.find((item) => item.topic === topic)
         this.request = {
           topic,
@@ -443,14 +438,13 @@ export const useWalletConnectStore = defineStore('walletconnect', {
           error: '',
           publishedResult: null,
           publishedHash: replay.publishedHash ?? '',
-          sessionEnded: preparing.sessionEnded,
+          sessionEnded: false,
           ...verify,
         }
         return
       }
-      // outcome 'none' → a fresh request. Restore the pre-lookup state and
-      // apply the policy gates that replays are allowed to skip.
-      this.preparingRequest = priorPreparing
+      // outcome 'none' → a fresh request: apply the policy gates that replays
+      // are allowed to skip, then claim the shared slot.
       if (this.request || this.preparingRequest) {
         await this.failRequest(topic, id, -32000, 'Another WalletConnect request is awaiting approval')
         return
@@ -464,7 +458,14 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         await this.failRequest(topic, id, 5000, 'Request blocked: WalletConnect Verify flagged this dapp as a known scam')
         return
       }
-      void priorRequest
+      const preparing: WalletConnectPreparingRequest = {
+        token: ++preparingRequestToken,
+        topic,
+        id,
+        sessionEnded: false,
+        cancelMessage: '',
+        cancelCode: 5000,
+      }
       this.preparingRequest = preparing
       try {
         const result = await Tx.PrepareWalletConnectSend(
@@ -473,7 +474,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         // A journal record could appear between lookup and prepare (a race);
         // Prepare re-checks the journal, so honor a replay result here too.
         if (result.outcome === 'published' && result.published) {
-          await this.deliverReplayPublished(preparing, result, verify)
+          await this.deliverReplayPublished(topic, id, result, verify)
           return
         }
         if (result.outcome === 'unknown') {
@@ -536,43 +537,50 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       }
     },
     // deliverReplayPublished delivers a journaled published result (nothing is
-    // signed) and acks only once the dapp has it. On a delivery failure it
-    // retains the standard retryable delivery-error request, carrying
-    // preparing.sessionEnded so a session that died during respond() never
-    // leaves a live retry button (round-3 finding 3).
-    async deliverReplayPublished(preparing: WalletConnectPreparingRequest, replay: WalletConnectPrepareOutcome, verify: WalletConnectVerify) {
-      const { topic, id } = preparing
-      if (preparing.sessionEnded) {
-        // The session ended before we could deliver; keep the journal record
-        // (it survives for a future redelivery) and surface an ended state.
-        this.retainReplayDeliveryError(preparing, replay, verify, true)
-        return
-      }
+    // signed) and acks only once the dapp has it. It claims the shared slot
+    // ONLY when it is free, so session_delete / expire during the respond()
+    // await can mark THIS delivery (round-3 finding 3) without displacing an
+    // in-flight preparation. On a delivery failure it retains the standard
+    // retryable delivery-error request when the wallet is idle, but when
+    // another request is displayed it never clobbers it (round-4 finding P2):
+    // the journal record survives for a later redelivery, and the failure is
+    // surfaced non-destructively.
+    async deliverReplayPublished(topic: string, id: number, replay: WalletConnectPrepareOutcome, verify: WalletConnectVerify) {
+      const free = !this.request && !this.preparingRequest
+      const marker: WalletConnectPreparingRequest | null = free
+        ? { token: ++preparingRequestToken, topic, id, sessionEnded: false, cancelMessage: '', cancelCode: 5000 }
+        : null
+      if (marker) this.preparingRequest = marker
       try {
         const c = await this.ensureClient()
         await c.respond({ topic, response: resultResponse(id, replay.published) })
         await Tx.AckWalletConnectResult(topic, id).catch(() => {})
       } catch {
-        this.retainReplayDeliveryError(preparing, replay, verify, preparing.sessionEnded)
-      }
-    },
-    retainReplayDeliveryError(preparing: WalletConnectPreparingRequest, replay: WalletConnectPrepareOutcome, verify: WalletConnectVerify, sessionEnded: boolean) {
-      const { topic, id } = preparing
-      const session = this.sessions.find((item) => item.topic === topic)
-      const label = replay.publishedHash ? ` ${replay.publishedHash}` : ''
-      this.request = {
-        topic,
-        id,
-        dapp: session?.name ?? 'Connected dapp',
-        preview: (replay.preview ?? {}) as SendPreview,
-        status: 'delivery-error',
-        error: sessionEnded
-          ? `Transaction${label} was published, but the dapp session ended before it could be notified. Do not submit it again.`
-          : `Transaction${label} was published, but the dapp could not be notified. Do not submit it again.`,
-        publishedResult: replay.published,
-        publishedHash: replay.publishedHash ?? '',
-        sessionEnded,
-        ...verify,
+        const sessionEnded = marker?.sessionEnded ?? false
+        const label = replay.publishedHash ? ` ${replay.publishedHash}` : ''
+        if (!this.request) {
+          const session = this.sessions.find((item) => item.topic === topic)
+          this.request = {
+            topic,
+            id,
+            dapp: session?.name ?? 'Connected dapp',
+            preview: (replay.preview ?? {}) as SendPreview,
+            status: 'delivery-error',
+            error: sessionEnded
+              ? `Transaction${label} was published, but the dapp session ended before it could be notified. Do not submit it again.`
+              : `Transaction${label} was published, but the dapp could not be notified. Do not submit it again.`,
+            publishedResult: replay.published,
+            publishedHash: replay.publishedHash ?? '',
+            sessionEnded,
+            ...verify,
+          }
+        } else {
+          // Another request occupies the modal: keep the journal record (it is
+          // duplicate protection and survives) and inform without displacing it.
+          this.error = `Transaction${label} was published, but the dapp could not be notified yet. Do not submit it again.`
+        }
+      } finally {
+        if (marker && this.preparingRequest === marker) this.preparingRequest = null
       }
     },
     async approveRequest() {

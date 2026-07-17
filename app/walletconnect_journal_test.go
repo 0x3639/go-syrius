@@ -516,11 +516,17 @@ func TestLookupWalletConnectPublicationIsGateless(t *testing.T) {
 		t.Fatalf("unjournaled lookup = %+v, %v; want none, nil", res, err)
 	}
 
-	// Reused id + different intent fails closed.
+	// Reused id + different intent is a resolved "conflict" outcome, NOT a Go
+	// error — a journal READ failure must stay distinguishable from a
+	// deliberate reuse refusal so the frontend can classify each correctly.
 	tampered := req
 	tampered.AccountBlock.Amount = "999"
-	if _, err := tx.LookupWalletConnectPublication(tampered); err == nil || !strings.Contains(err.Error(), "different") {
-		t.Fatalf("got %v, want reused-identity refusal", err)
+	res, err = tx.LookupWalletConnectPublication(tampered)
+	if err != nil {
+		t.Fatalf("reused-intent lookup must not be a Go error: %v", err)
+	}
+	if res.Outcome != "conflict" {
+		t.Fatalf("reused-intent lookup outcome = %q, want conflict", res.Outcome)
 	}
 }
 

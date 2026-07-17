@@ -145,3 +145,25 @@ A third review pass surfaced one remaining P1 and two P2 edge cases, all fixed:
    `session_delete`/expire that lands while a replayed result's `respond()` is
    in flight now carries `sessionEnded` into the retained delivery-error state
    (with the ended-session message), so no retry button targets a dead session.
+
+#### Round-4 review fixes (2026-07-17)
+
+A fourth review pass found three race/classification edge cases in the
+round-3 replay path, all fixed:
+
+1. **[P1] Lookup no longer hijacks the shared `preparingRequest` slot.** The
+   journal lookup runs without mutating `preparingRequest`, so an earlier
+   in-flight preparation keeps receiving its own `session_delete` / expiry
+   events. Replay delivery claims the slot only when it is free (to track a
+   session that ends during its `respond()`), and never while another request
+   is in flight.
+2. **[P1] A journal-read failure is unknown, not a rejection.** Reused-id /
+   different-intent is now a resolved Go `conflict` outcome (frontend →
+   code 5000, a safe refusal of the never-approved new intent); a genuine
+   lookup throw (journal read / IPC failure) leaves the true outcome unknown
+   and answers with a retryable `-32000`, never a definite 5000.
+3. **[P2] Replays never clobber a displayed request.** An unknown replay or a
+   failed replayed delivery arriving while another request occupies the modal
+   no longer overwrites it (which would orphan that request's backend hold):
+   the journal record survives for a later redelivery and the condition is
+   surfaced non-destructively.

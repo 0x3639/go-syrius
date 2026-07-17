@@ -156,7 +156,12 @@ func (t *TxService) LookupWalletConnectPublication(req WalletConnectSendRequest)
 		return none, nil
 	}
 	if rec.IntentHash != walletConnectIntentHash(replayTemplate) {
-		return WalletConnectPrepareResult{}, errors.New("this WalletConnect request id was already used for a different transaction; refusing")
+		// A reused request id carrying a different intent. This is a resolved
+		// outcome, NOT a Go error: only a genuine journal READ failure returns
+		// an error, so the frontend can reject a conflict (5000) while treating
+		// an unknown-status read failure as retryable rather than a definite
+		// rejection.
+		return WalletConnectPrepareResult{Outcome: "conflict"}, nil
 	}
 	return t.walletConnectReplayResult(rec)
 }
@@ -173,6 +178,8 @@ func (t *TxService) PrepareWalletConnectSend(req WalletConnectSendRequest) (Wall
 	// own gates; this keeps a direct PrepareWalletConnectSend caller safe too.)
 	if replay, err := t.LookupWalletConnectPublication(req); err != nil {
 		return none, err
+	} else if replay.Outcome == "conflict" {
+		return none, errors.New("this WalletConnect request id was already used for a different transaction; refusing")
 	} else if replay.Outcome != "none" {
 		return replay, nil
 	}

@@ -755,10 +755,10 @@ describe('WalletConnect request handling', () => {
     expect(h.ack).toHaveBeenCalledWith('scam-replay', 71)
   })
 
-  it('fails closed when lookup reports a reused id with a different intent', async () => {
+  it('rejects a reused-id conflict outcome with code 5000', async () => {
     unlock()
     const wc = useWalletConnectStore()
-    h.lookup.mockRejectedValueOnce(new Error('this WalletConnect request id was already used for a different transaction; refusing'))
+    h.lookup.mockResolvedValueOnce({ outcome: 'conflict' })
 
     await wc.handleRequest(sendEvent(72, 'reuse-topic'))
 
@@ -768,6 +768,93 @@ describe('WalletConnect request handling', () => {
       response: expect.objectContaining({ error: expect.objectContaining({ code: 5000 }) }),
     }))
     expect(wc.request).toBeNull()
+  })
+
+  it('treats a journal read failure as unknown/operational, not a 5000 rejection', async () => {
+    // Round-4 finding P1b: a lookup throw (journal read error) leaves the true
+    // outcome UNKNOWN — the block may be published — so it must not be a
+    // definite user-style rejection.
+    unlock()
+    const wc = useWalletConnectStore()
+    h.lookup.mockRejectedValueOnce(new Error('cannot read the publication journal: disk error'))
+
+    await wc.handleRequest(sendEvent(73, 'readfail-topic'))
+
+    expect(h.prepare).not.toHaveBeenCalled()
+    const call = h.respond.mock.calls.at(-1)?.[0]
+    expect(call.response.error.code).toBe(-32000)
+    expect(call.response.error.code).not.toBe(5000)
+  })
+
+  it('does not hijack an earlier in-flight preparation while looking up a second request', async () => {
+    // Round-4 finding P1a: the lookup of request B must not replace request A's
+    // preparing marker, or A's session/expiry events would be lost.
+    unlock()
+    const wc = useWalletConnectStore()
+    // A: a fresh request that is mid-prepare (preparing marker held).
+    let finishPrepareA!: (r: unknown) => void
+    h.lookup.mockResolvedValueOnce({ outcome: 'none' })
+    h.prepare.mockReturnValueOnce(new Promise((resolve) => { finishPrepareA = resolve }))
+    const a = wc.handleRequest(sendEvent(81, 'topic-a'))
+    await vi.waitFor(() => expect(wc.preparingRequest?.id).toBe(81))
+
+    // B: a second request; its lookup must NOT overwrite A's preparing marker.
+    let finishLookupB!: (r: unknown) => void
+    h.lookup.mockReturnValueOnce(new Promise((resolve) => { finishLookupB = resolve }))
+    const b = wc.handleRequest(sendEvent(82, 'topic-b'))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(wc.preparingRequest?.id).toBe(81)
+
+    // A's request expires while B is mid-lookup — the event must reach A.
+    await wc.handleRequestExpired(81)
+    expect(wc.preparingRequest?.sessionEnded).toBe(true)
+
+    finishLookupB({ outcome: 'none' })
+    finishPrepareA({ outcome: 'prepare', preview: { ...preview, holdId: 0 } })
+    await Promise.all([a, b])
+  })
+
+  it('does not overwrite a displayed request when an unknown replay arrives', async () => {
+    // Round-4 finding P2: an unknown replay must not clobber another displayed
+    // request (which would orphan its backend hold).
+    unlock()
+    const wc = useWalletConnectStore()
+    const displayed = {
+      topic: 'displayed', id: 500, dapp: 'Displayed', preview: { ...preview, holdId: 77 },
+      status: 'awaiting' as const, error: '', publishedResult: null, publishedHash: '',
+      sessionEnded: false, verifiedOrigin: '', validation: 'UNKNOWN' as const, isScam: false,
+    }
+    wc.request = { ...displayed }
+    h.lookup.mockResolvedValueOnce({ outcome: 'unknown', preview: { ...preview, holdId: 0 }, publishedHash: 'maybe' })
+
+    await wc.handleRequest(sendEvent(83, 'unknown-busy'))
+
+    // The displayed request is intact; its hold was never cancelled.
+    expect(wc.request?.id).toBe(500)
+    expect(wc.request?.status).toBe('awaiting')
+    expect(h.cancel).not.toHaveBeenCalled()
+    expect(wc.error).not.toBe('')
+  })
+
+  it('does not overwrite a displayed request when replay delivery fails', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    wc.request = {
+      topic: 'displayed', id: 501, dapp: 'Displayed', preview: { ...preview, holdId: 88 },
+      status: 'awaiting', error: '', publishedResult: null, publishedHash: '',
+      sessionEnded: false, verifiedOrigin: '', validation: 'UNKNOWN', isScam: false,
+    } as any
+    h.lookup.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'busy-replay' }, preview: { ...preview, holdId: 0 }, publishedHash: 'busy-replay' })
+    h.respond.mockRejectedValueOnce(new Error('relay down'))
+
+    await wc.handleRequest(sendEvent(84, 'published-busy'))
+
+    expect(wc.request?.id).toBe(501)
+    expect(wc.request?.status).toBe('awaiting')
+    expect(h.cancel).not.toHaveBeenCalled()
+    expect(h.ack).not.toHaveBeenCalled()
+    expect(wc.error).toContain('busy-replay')
   })
 
   it('routes an unknown-outcome confirm error into reconcile, never a rejection', async () => {

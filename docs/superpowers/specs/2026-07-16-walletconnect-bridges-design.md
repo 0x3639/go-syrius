@@ -167,3 +167,26 @@ round-3 replay path, all fixed:
    no longer overwrites it (which would orphan that request's backend hold):
    the journal record survives for a later redelivery and the condition is
    surfaced non-destructively.
+
+#### Round-5 review fixes (2026-07-17)
+
+A fifth pass found two P1 lifecycle gaps in the round-4 lookup path plus a
+retry improvement:
+
+1. **[P1] The looked-up request now tracks its own lifecycle.** A keyed
+   `lookupMarkers` collection (separate from the shared `preparingRequest`
+   slot) marks the exact request under lookup, so a `session_request_expire` /
+   `session_delete` arriving while `LookupWalletConnectPublication` is awaiting
+   is observed — an expired request aborts instead of falling through to a
+   fresh, approvable hold.
+2. **[P1] A journal-read failure no longer answers the dapp at all.** A lookup
+   throw leaves the outcome unknown (the block may be published), so sending
+   any JSON-RPC response — even `-32000` — is removed: a terminal error could
+   make the dapp retry under a NEW id and bypass the journal identity. The
+   failure is kept local and retryable; a same-id redelivery re-runs the
+   idempotent lookup.
+3. **[P2] A pending-replay queue** surfaces an unknown replay or a
+   delivery-failed published result promptly when the modal/preparation slot
+   clears, instead of relying on the dapp to redeliver. The journal remains the
+   durable source of truth; the queue is drained on every request-clearing path
+   and purged on session end/expiry.

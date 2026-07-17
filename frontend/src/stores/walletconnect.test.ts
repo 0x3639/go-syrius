@@ -54,6 +54,7 @@ vi.mock('../../wailsjs/go/app/WalletService', () => ({}))
 vi.mock('../../wailsjs/runtime/runtime', () => ({ EventsOn: vi.fn() }))
 
 import {
+  __resetWalletConnectModuleState,
   isSupportedZenonProposal,
   publicWalletConnectNodeURL,
   useWalletConnectStore,
@@ -155,6 +156,7 @@ describe('WalletConnect Zenon namespace compatibility', () => {
 describe('WalletConnect request handling', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    __resetWalletConnectModuleState()
     h.sessions.splice(0)
     h.respond.mockReset().mockResolvedValue(undefined)
     h.nodeStatus.mockReset()
@@ -770,10 +772,11 @@ describe('WalletConnect request handling', () => {
     expect(wc.request).toBeNull()
   })
 
-  it('treats a journal read failure as unknown/operational, not a 5000 rejection', async () => {
-    // Round-4 finding P1b: a lookup throw (journal read error) leaves the true
-    // outcome UNKNOWN — the block may be published — so it must not be a
-    // definite user-style rejection.
+  it('never answers the dapp when the journal lookup fails', async () => {
+    // Round-5 finding P1b: a lookup throw leaves the true outcome UNKNOWN (the
+    // block may be published). Any JSON-RPC response — even an error code —
+    // could make the dapp retry under a NEW id and bypass the journal
+    // identity, risking a duplicate. Leave it unanswered and retryable.
     unlock()
     const wc = useWalletConnectStore()
     h.lookup.mockRejectedValueOnce(new Error('cannot read the publication journal: disk error'))
@@ -781,9 +784,72 @@ describe('WalletConnect request handling', () => {
     await wc.handleRequest(sendEvent(73, 'readfail-topic'))
 
     expect(h.prepare).not.toHaveBeenCalled()
-    const call = h.respond.mock.calls.at(-1)?.[0]
-    expect(call.response.error.code).toBe(-32000)
-    expect(call.response.error.code).not.toBe(5000)
+    expect(h.respond).not.toHaveBeenCalled()
+    expect(wc.error).not.toBe('')
+  })
+
+  it('does not create a fresh hold when the request expires during journal lookup', async () => {
+    // Round-5 finding P1a: an expiry that fires while the lookup is awaiting
+    // must be observed, or a fresh (approvable) hold could be created and
+    // published after the request already expired.
+    unlock()
+    const wc = useWalletConnectStore()
+    let finishLookup!: (r: unknown) => void
+    h.lookup.mockReturnValueOnce(new Promise((resolve) => { finishLookup = resolve }))
+
+    const pending = wc.handleRequest(sendEvent(74, 'expire-during-lookup'))
+    await vi.waitFor(() => expect(h.lookup).toHaveBeenCalled())
+    await wc.handleRequestExpired(74)
+    finishLookup({ outcome: 'none' })
+    await pending
+
+    expect(h.prepare).not.toHaveBeenCalled()
+    expect(wc.request).toBeNull()
+    expect(wc.preparingRequest).toBeNull()
+  })
+
+  it('does not create a fresh hold when the session ends during journal lookup', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    let finishLookup!: (r: unknown) => void
+    h.lookup.mockReturnValueOnce(new Promise((resolve) => { finishLookup = resolve }))
+
+    const pending = wc.handleRequest(sendEvent(75, 'session-end-during-lookup'))
+    await vi.waitFor(() => expect(h.lookup).toHaveBeenCalled())
+    await wc.handleSessionEnded({ topic: 'session-end-during-lookup' })
+    finishLookup({ outcome: 'none' })
+    await pending
+
+    expect(h.prepare).not.toHaveBeenCalled()
+    expect(wc.request).toBeNull()
+  })
+
+  it('surfaces a queued replay once the displayed request clears', async () => {
+    // Round-5 finding P2: a published replay that fails to deliver while busy
+    // is queued and delivered when the modal clears, not left to redelivery.
+    unlock()
+    const wc = useWalletConnectStore()
+    wc.request = {
+      topic: 'displayed', id: 600, dapp: 'Displayed', preview: { ...preview, holdId: 5 },
+      status: 'awaiting', error: '', publishedResult: null, publishedHash: '',
+      sessionEnded: false, verifiedOrigin: '', validation: 'UNKNOWN', isScam: false,
+    } as any
+    h.lookup.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'queued-replay' }, preview: { ...preview, holdId: 0 }, publishedHash: 'queued-replay' })
+    h.respond.mockRejectedValueOnce(new Error('busy relay')) // delivery attempt while busy fails
+
+    await wc.handleRequest(sendEvent(76, 'queued-topic'))
+    expect(wc.request?.id).toBe(600) // displayed request intact
+
+    // Clear the displayed request; the queued replay must now be delivered
+    // (drain is fire-and-forget, so wait for its async chain to settle).
+    h.respond.mockResolvedValue(undefined)
+    await wc.rejectRequest()
+
+    await vi.waitFor(() => expect(h.ack).toHaveBeenCalledWith('queued-topic', 76))
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      topic: 'queued-topic',
+      response: expect.objectContaining({ result: { hash: 'queued-replay' } }),
+    }))
   })
 
   it('does not hijack an earlier in-flight preparation while looking up a second request', async () => {

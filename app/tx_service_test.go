@@ -492,3 +492,21 @@ func TestConfirmPublishReassertsPolicy(t *testing.T) {
 		t.Fatal("a policy refusal must retain the hold (reconnect + retry, like the mainnet guard)")
 	}
 }
+
+func TestGuardChainEnforcesMainnetOptInByBlockChain(t *testing.T) {
+	tx := newTestTxService(t)
+	// WC-04: the final pre-broadcast check keys off the BUILT block's chain,
+	// not a mutable node snapshot.
+	if err := tx.guardChain(mainnetChainID); err == nil || !strings.Contains(err.Error(), "mainnet") {
+		t.Fatalf("got %v, want mainnet refusal while the opt-in is disabled", err)
+	}
+	if err := tx.guardChain(3); err != nil {
+		t.Fatalf("non-mainnet chain must pass regardless of the opt-in: %v", err)
+	}
+	if err := tx.config.SetAllowMainnetSend(true); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.guardChain(mainnetChainID); err != nil {
+		t.Fatalf("mainnet chain must pass after the explicit opt-in: %v", err)
+	}
+}

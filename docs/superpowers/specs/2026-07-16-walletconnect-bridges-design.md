@@ -68,3 +68,37 @@ Publication and WalletConnect result delivery are separate states. Once Go retur
 - The deployed WalletConnect modal's copy control did not populate the in-app browser clipboard; decoding the displayed QR into the same `wc:` URI and pasting it into go-syrius paired successfully. This did not affect the WalletConnect protocol handshake.
 - `nom-bridge`: live WalletConnect pairing approved successfully against the local dapp and go-syrius displayed the NoM Bridge session with the expected `zenon:1:<active-address>` account. SignClient delivered its custom namespace under `optionalNamespaces`; compatibility is covered by the frozen-namespace tests. Transaction preview/rejection/publication acceptance remains to be run with a deliberately small mainnet amount.
 - A follow-up lifecycle/security review was applied locally: published-result delivery is terminal, lock/session/account races are fail-safe, racing prepares cannot replace a held block, canonical method funding is enforced, initialization is retryable, and the test claims above now correspond to implemented tests. No real-funds transaction was submitted during this review.
+
+### Audit remediation (2026-07-17)
+
+All eight findings of `docs/walletconnect-audit-2026-07-17.md` are remediated:
+
+- **WC-01** — publication is durable and idempotent: a per-request journal in
+  the backend data directory persists the signed block before broadcast,
+  classifies broadcast errors as *unknown* (reconciled by hash query or exact
+  rebroadcast, never a rebuilt block), and replays journaled outcomes for
+  redelivered requests. See
+  `docs/superpowers/specs/2026-07-17-walletconnect-durable-publication.md`.
+- **WC-02** — `session_request_expire` cancels preparing/awaiting requests
+  without a response; `expiryTimestamp` is re-checked at approval; expiry
+  during publication never invents a rejection.
+- **WC-03** — custom-token decimals must resolve or preparation fails; the
+  confirmation always shows the held block's exact base-unit amount.
+- **WC-04** — the mainnet opt-in is re-read immediately before broadcast,
+  keyed off the built block's chain identifier.
+- **WC-05** — the SignClient Verify context is surfaced on proposals and
+  requests; scam-flagged peers cannot be approved; unverified origins carry an
+  explicit warning.
+- **WC-06** — `znn_info` discloses only bare `ws(s)://host[:port]` origins;
+  URLs with userinfo, query, fragment, or any path are omitted.
+- **WC-07** — peer metadata icons are never fetched; a local placeholder
+  renders instead. (A production CSP remains a deliberate follow-up: it must
+  be validated live against the Wails runtime, the WalletConnect relay, and
+  the pre-existing lottie-web `eval` dependency.)
+- **WC-08** — `proposal_expire` clears only the matching proposal; approval
+  re-checks the proposal deadline.
+
+Verification after remediation: Go tests (including new journal/reconcile/
+expiry/guard-ordering coverage), `go vet`, Vitest (46 WalletConnect-specific
+tests), vue-tsc, and the production build all pass. The mainnet acceptance run
+(pair, `znn_info`, preview, reject, one small publish) is still outstanding.

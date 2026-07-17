@@ -10,7 +10,7 @@ const open = computed({
   get: () => wc.request !== null,
   set: (value: boolean) => {
     if (!value && wc.request?.status === 'awaiting') void wc.rejectRequest()
-    else if (!value && wc.request?.status === 'delivery-error') wc.clearPublishedRequest()
+    else if (!value && (wc.request?.status === 'delivery-error' || wc.request?.status === 'unknown')) wc.clearPublishedRequest()
   },
 })
 </script>
@@ -21,6 +21,14 @@ const open = computed({
       <DialogHeader><DialogTitle>WalletConnect request</DialogTitle></DialogHeader>
       <div v-if="wc.request" class="space-y-3 rounded border border-primary/40 bg-card p-4">
         <p class="text-sm text-primary">{{ wc.request.dapp }} requests {{ wc.request.preview.summary }}</p>
+        <p v-if="wc.request.validation === 'VALID'" class="text-xs text-success">
+          Verified origin: <span class="break-all font-mono">{{ wc.request.verifiedOrigin }}</span>
+        </p>
+        <p v-else class="text-xs text-warning" role="alert">
+          Dapp origin not verified by WalletConnect{{ wc.request.verifiedOrigin ? ':' : '' }}
+          <span v-if="wc.request.verifiedOrigin" class="break-all font-mono">{{ wc.request.verifiedOrigin }}</span>
+          — the name above is claimed by the dapp, not proven.
+        </p>
         <p class="text-xs text-muted-foreground">Verify the exact Go-decoded effect before approving.</p>
         <div v-if="wc.request.preview.effect" class="space-y-1 rounded border border-border/60 p-3">
           <p class="text-xs font-medium text-muted-foreground">
@@ -36,6 +44,12 @@ const open = computed({
         <div class="flex justify-between gap-4 text-sm">
           <span class="text-muted-foreground">Contract call value</span>
           <span class="font-mono">{{ formatAmountExact(wc.request.preview.amount, wc.request.preview.decimals ?? 8) }} {{ wc.request.preview.symbol || wc.request.preview.zts }}</span>
+        </div>
+        <!-- The human rendering above depends on node-reported token decimals;
+             the base-unit integer is the held block's authoritative amount. -->
+        <div class="flex justify-between gap-4 text-sm">
+          <span class="shrink-0 text-muted-foreground">Exact amount (base units)</span>
+          <span class="break-all text-right font-mono">{{ wc.request.preview.amount }} {{ wc.request.preview.zts }}</span>
         </div>
         <div class="flex justify-between gap-4 text-sm"><span class="text-muted-foreground">Fee</span><span>{{ wc.request.preview.needsPoW ? 'PoW — plasma generated on confirm' : 'Feeless (plasma)' }}</span></div>
 
@@ -56,6 +70,20 @@ const open = computed({
               class="flex-1"
               @click="wc.retryPublishedResponse()"
             >Retry dapp notification</Button>
+            <Button class="flex-1" variant="outline" @click="wc.clearPublishedRequest()">Close locally</Button>
+          </div>
+        </div>
+        <div v-else-if="wc.request.status === 'unknown'" class="space-y-2">
+          <p class="text-sm text-warning" role="alert">
+            The broadcast outcome of this transaction is unknown — it may already be on chain.
+            Never resubmit it from the dapp.
+          </p>
+          <p v-if="wc.request.publishedHash" class="break-all text-xs font-mono text-muted-foreground">
+            Signed block: {{ wc.request.publishedHash }}
+          </p>
+          <p v-if="wc.request.error" class="text-xs text-muted-foreground">{{ wc.request.error }}</p>
+          <div class="flex gap-2">
+            <Button class="flex-1" @click="wc.reconcileRequest()">Check outcome</Button>
             <Button class="flex-1" variant="outline" @click="wc.clearPublishedRequest()">Close locally</Button>
           </div>
         </div>

@@ -3,12 +3,16 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/0x3639/znn-sdk-go/pow"
+	"github.com/0x3639/znn-sdk-go/rpc_client"
+	sdkwallet "github.com/0x3639/znn-sdk-go/wallet"
 	"github.com/0x3639/znn-sdk-go/zenon"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zenon-network/go-zenon/chain/nom"
@@ -35,6 +39,24 @@ type TxService struct {
 	// for seconds outside mu, so without this a second (untrusted) caller could
 	// double-publish or race the held template.
 	publishMu sync.Mutex
+
+	// decimalsLookup overrides the node-backed token-decimals lookup used by the
+	// WalletConnect confirmation gate. Tests inject it; nil means "read from the
+	// connected node".
+	decimalsLookup ztsDecimalsLookup
+
+	// wcJournal is the durable WalletConnect publication journal (WC-01);
+	// pendingWC binds the current hold to the WalletConnect request it answers
+	// (nil for first-party holds) and is guarded by mu with the hold fields.
+	wcJournal *wcJournal
+	pendingWC *wcRequestIdentity
+
+	// Injectable node-touching seams (nil ⇒ the real SDK calls). They exist so
+	// the durability/ordering guarantees around broadcast are testable without
+	// a live node.
+	prepareBlockFn func(*rpc_client.RpcClient, *nom.AccountBlock, *sdkwallet.KeyPair) (*nom.AccountBlock, error)
+	publishFn      func(*rpc_client.RpcClient, *nom.AccountBlock) error
+	blockByHashFn  func(*rpc_client.RpcClient, types.Hash) (bool, error)
 }
 
 // callExpect captures the funds-moving effect a prepared block must match before
@@ -64,7 +86,7 @@ func assertMatches(b *nom.AccountBlock, e callExpect) error {
 }
 
 func newTxService(c *ConfigService, w *WalletService, n *NodeService) *TxService {
-	return &TxService{config: c, wallet: w, node: n}
+	return &TxService{config: c, wallet: w, node: n, wcJournal: newWCJournal(c.dataDir)}
 }
 
 func (t *TxService) symbolFor(zts string) string {
@@ -108,7 +130,15 @@ func (t *TxService) configuredChainID() uint64 {
 
 // guard rejects mainnet sends unless explicitly enabled.
 func (t *TxService) guard() error {
-	if t.node.currentChainID() == mainnetChainID {
+	return t.guardChain(t.node.currentChainID())
+}
+
+// guardChain enforces the explicit mainnet opt-in for a specific chain id. The
+// pre-broadcast re-check keys it off the BUILT block's ChainIdentifier rather
+// than a mutable node snapshot, so disabling the opt-in during PoW (or a node
+// transition racing the early guard) still refuses a chain-1 publication.
+func (t *TxService) guardChain(chainID uint64) error {
+	if chainID == mainnetChainID {
 		s, err := t.config.GetSettings()
 		if err != nil {
 			return err
@@ -248,7 +278,7 @@ func (t *TxService) confirmPublishBlock(holdId uint64) (*nom.AccountBlock, error
 		return nil, err
 	}
 	t.mu.Lock()
-	template, expect, pendingGen, holdID := t.pending, t.pendingExpect, t.pendingGen, t.pendingHoldID
+	template, expect, pendingGen, holdID, wcID := t.pending, t.pendingExpect, t.pendingGen, t.pendingHoldID, t.pendingWC
 	t.mu.Unlock()
 	if template == nil {
 		return nil, errors.New("no pending transaction")
@@ -302,13 +332,19 @@ func (t *TxService) confirmPublishBlock(holdId uint64) (*nom.AccountBlock, error
 	// The slow part, now that the user has approved: autofill against the current
 	// frontier, PoW (generate plasma), hash, and sign. The template is mutated
 	// here, so any failure from this point clears pending (a retry re-prepares).
-	z := zenon.NewZenon(client)
-	if t.ctx != nil {
-		z.PowCallback = func(s pow.PowStatus) {
-			runtime.EventsEmit(t.ctx, EventTxPowProgress, map[string]string{"state": s.String()})
+	prepare := t.prepareBlockFn
+	if prepare == nil {
+		prepare = func(client *rpc_client.RpcClient, tpl *nom.AccountBlock, kp *sdkwallet.KeyPair) (*nom.AccountBlock, error) {
+			z := zenon.NewZenon(client)
+			if t.ctx != nil {
+				z.PowCallback = func(s pow.PowStatus) {
+					runtime.EventsEmit(t.ctx, EventTxPowProgress, map[string]string{"state": s.String()})
+				}
+			}
+			return z.PrepareBlock(tpl, kp)
 		}
 	}
-	built, err := z.PrepareBlock(template, kp)
+	built, err := prepare(client, template, kp)
 	if err != nil {
 		t.clearPendingIf(holdID)
 		return nil, err
@@ -328,9 +364,56 @@ func (t *TxService) confirmPublishBlock(holdId uint64) (*nom.AccountBlock, error
 		t.clearPendingIf(holdID)
 		return nil, fmt.Errorf("configured Chain ID (%d) does not match the connected node's chain (%d)", built.ChainIdentifier, t.node.currentChainID())
 	}
-	if err := client.LedgerApi.PublishRawTransaction(built); err != nil {
-		t.clearPendingIf(holdID)
+	// Final mainnet-consent check immediately before broadcast: the early guard
+	// ran before PoW, which takes seconds — the user may have revoked the
+	// opt-in meanwhile. Refuse WITHOUT clearing (like the early guard) so the
+	// approved block survives for an explicit retry.
+	if err := t.guardChain(built.ChainIdentifier); err != nil {
 		return nil, err
+	}
+	// WC-01: persist the finalized signed block BEFORE the first broadcast
+	// attempt. From here the journal — not the in-memory hold — owns duplicate
+	// protection for this WalletConnect request; if persistence fails, refuse
+	// to broadcast at all (a definite non-publication).
+	if wcID != nil {
+		blockJSON, err := json.Marshal(built)
+		if err != nil {
+			t.clearPendingIf(holdID)
+			return nil, fmt.Errorf("cannot encode the signed block: %v", err)
+		}
+		rec := wcPublicationRecord{
+			IntentHash: wcID.IntentHash,
+			State:      wcStateSigned,
+			BlockJSON:  blockJSON,
+			Hash:       built.Hash.String(),
+			CreatedAt:  time.Now().Unix(),
+		}
+		if err := t.wcJournal.put(wcJournalKey(wcID.Topic, wcID.ID), rec); err != nil {
+			t.clearPendingIf(holdID)
+			return nil, fmt.Errorf("refusing to broadcast: cannot persist the signed block for duplicate protection: %v", err)
+		}
+	}
+	publish := t.publishFn
+	if publish == nil {
+		publish = func(c *rpc_client.RpcClient, b *nom.AccountBlock) error {
+			return c.LedgerApi.PublishRawTransaction(b)
+		}
+	}
+	if err := publish(client, built); err != nil {
+		t.clearPendingIf(holdID)
+		if wcID != nil {
+			// A broadcast error does NOT prove the node rejected the block. The
+			// journaled record stays "signed": the outcome is unknown and only
+			// reconciliation (query by hash / rebroadcast of the exact block)
+			// may resolve it. Never report this as a definite rejection.
+			return nil, fmt.Errorf("%s: %v. The signed block %s is preserved; check the outcome instead of retrying the request", wcOutcomeUnknownMarker, err, built.Hash.String())
+		}
+		return nil, err
+	}
+	if wcID != nil {
+		// Best-effort: the node accepted the block; a failure here degrades to
+		// an extra reconcile, never to a duplicate.
+		_ = t.wcJournal.markPublished(wcJournalKey(wcID.Topic, wcID.ID))
 	}
 	hash := built.Hash.String()
 	t.clearPendingIf(holdID)
@@ -338,6 +421,19 @@ func (t *TxService) confirmPublishBlock(holdId uint64) (*nom.AccountBlock, error
 		runtime.EventsEmit(t.ctx, EventTxPublished, map[string]string{"hash": hash})
 	}
 	return built, nil
+}
+
+// attachWalletConnectIdentity binds the WalletConnect request identity to a
+// live hold. It fails (false) if the hold is no longer current — the caller
+// must then treat the prepare as lost rather than proceed unjournaled.
+func (t *TxService) attachWalletConnectIdentity(holdID uint64, topic string, requestID uint64, intentHash string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if holdID == 0 || t.pendingHoldID != holdID {
+		return false
+	}
+	t.pendingWC = &wcRequestIdentity{Topic: topic, ID: requestID, IntentHash: intentHash}
+	return true
 }
 
 // prepareCall builds, PoWs, and signs an embedded-contract call template (without
@@ -465,6 +561,7 @@ func (t *TxService) clearPendingLocked() {
 	t.pendingExpect = callExpect{}
 	t.pendingGen = 0
 	t.pendingHoldID = 0
+	t.pendingWC = nil
 }
 
 func (t *TxService) clearPending() {

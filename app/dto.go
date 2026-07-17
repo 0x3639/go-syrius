@@ -221,10 +221,25 @@ type WalletConnectAccountBlockInput struct {
 }
 
 // WalletConnectSendRequest is the frozen znn_send envelope used by both
-// 0x3639/bridge-dapp and nom-bridge.
+// 0x3639/bridge-dapp and nom-bridge, plus the WalletConnect request identity
+// (session topic + JSON-RPC id) the wallet adds for the publication journal.
 type WalletConnectSendRequest struct {
 	FromAddress  string                         `json:"fromAddress"`
 	AccountBlock WalletConnectAccountBlockInput `json:"accountBlock"`
+	Topic        string                         `json:"topic"`
+	RequestID    uint64                         `json:"requestId"`
+}
+
+// WalletConnectPrepareResult is the outcome of preparing a znn_send request.
+// Outcome "prepare" carries a fresh hold's preview; "published" replays the
+// journaled result of an already-published identical request; "unknown" means
+// a signed block for this exact request exists whose broadcast outcome is
+// unresolved — the frontend must reconcile, never re-prepare.
+type WalletConnectPrepareResult struct {
+	Outcome       string                 `json:"outcome"` // "prepare" | "published" | "unknown"
+	Preview       *CallPreview           `json:"preview,omitempty"`
+	Published     map[string]interface{} `json:"published,omitempty"`
+	PublishedHash string                 `json:"publishedHash,omitempty"`
 }
 
 // PlasmaInfo is the active address's plasma snapshot.

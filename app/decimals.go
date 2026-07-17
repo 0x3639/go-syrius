@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+
 	"github.com/0x3639/znn-sdk-go/rpc_client"
 	"github.com/zenon-network/go-zenon/common/types"
 )
@@ -35,6 +37,29 @@ func resolveDecimals(zts string, lookup ztsDecimalsLookup) int {
 		return defaultDecimals
 	}
 	return d
+}
+
+// resolveDecimalsChecked is the confirmation-strict variant of resolveDecimals:
+// ZNN and QSR resolve to their protocol-fixed 8 without a node call, but a
+// custom token whose decimals cannot be resolved is an ERROR, never a guessed
+// 8 — a confirmation dialog must not render an amount with assumed decimals.
+func resolveDecimalsChecked(zts string, lookup ztsDecimalsLookup) (int, error) {
+	switch zts {
+	case types.ZnnTokenStandard.String(), types.QsrTokenStandard.String():
+		return defaultDecimals, nil
+	}
+	parsed, err := types.ParseZTS(zts)
+	if err != nil {
+		return 0, fmt.Errorf("cannot resolve token decimals: invalid ZTS %q: %w", zts, err)
+	}
+	if lookup == nil {
+		return 0, fmt.Errorf("cannot resolve decimals for token %s: no node lookup available", zts)
+	}
+	d, err := lookup(parsed)
+	if err != nil {
+		return 0, fmt.Errorf("cannot resolve decimals for token %s: %w", zts, err)
+	}
+	return d, nil
 }
 
 // clientTokenDecimals returns a lookup that reads a token's decimals from the

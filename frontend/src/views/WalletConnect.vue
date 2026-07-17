@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { Button, Input } from 'nom-ui'
-import { LinkIcon, ShieldCheckIcon, UnplugIcon } from '@lucide/vue'
+import { GlobeIcon, LinkIcon, ShieldCheckIcon, UnplugIcon } from '@lucide/vue'
 import { useWalletConnectStore } from '../stores/walletconnect'
 
 const wc = useWalletConnectStore()
@@ -59,12 +59,23 @@ onMounted(() => { if (configured.value) wc.ensureClient().catch((error) => { loc
 
     <section v-if="wc.proposal" class="rounded-xl border border-primary/50 bg-card p-5 space-y-4">
       <div class="flex items-center gap-3">
-        <img v-if="wc.proposal.icon" :src="wc.proposal.icon" alt="" class="h-10 w-10 rounded-lg" />
+        <!-- Peer metadata is untrusted: never fetch its icon URL from the
+             privileged WebView (IP disclosure, loopback/LAN probing). -->
+        <div class="grid h-10 w-10 place-items-center rounded-lg bg-primary/10 text-primary"><GlobeIcon :size="20" /></div>
         <div>
           <h2 class="font-semibold">{{ wc.proposal.name }} wants to connect</h2>
           <p class="text-xs text-muted-foreground break-all">{{ wc.proposal.url }}</p>
         </div>
       </div>
+      <p v-if="wc.proposal.isScam" class="rounded border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive" role="alert">
+        WalletConnect Verify flagged this dapp as a known scam. It cannot be approved.
+      </p>
+      <p v-else-if="wc.proposal.validation === 'VALID'" class="text-xs text-success">
+        Verified origin: <span class="break-all font-mono">{{ wc.proposal.verifiedOrigin }}</span>
+      </p>
+      <p v-else class="text-xs text-warning" role="alert">
+        Dapp origin not verified by WalletConnect — the name and URL above are claimed by the dapp, not proven.
+      </p>
       <p v-if="wc.proposal.description" class="text-sm text-muted-foreground">{{ wc.proposal.description }}</p>
       <div class="rounded border border-border p-3 text-sm space-y-2">
         <div class="flex justify-between gap-3"><span class="text-muted-foreground">Network</span><span class="font-mono">zenon:1</span></div>
@@ -84,7 +95,7 @@ onMounted(() => { if (configured.value) wc.ensureClient().catch((error) => { loc
       </div>
       <p v-if="!wc.sessions.length" class="text-sm text-muted-foreground">No active WalletConnect sessions.</p>
       <div v-for="session in wc.sessions" :key="session.topic" class="flex items-center gap-3 rounded border border-border p-3">
-        <img v-if="session.icon" :src="session.icon" alt="" class="h-9 w-9 rounded" />
+        <div class="grid h-9 w-9 shrink-0 place-items-center rounded bg-primary/10 text-primary"><GlobeIcon :size="18" /></div>
         <div class="min-w-0 flex-1">
           <p class="font-medium">{{ session.name }}</p>
           <p class="truncate text-xs text-muted-foreground">{{ session.url || session.topic }}</p>

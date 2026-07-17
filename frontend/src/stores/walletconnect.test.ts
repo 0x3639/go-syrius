@@ -14,6 +14,8 @@ const h = vi.hoisted(() => {
     prepare: vi.fn(),
     confirm: vi.fn(),
     cancel: vi.fn(),
+    reconcile: vi.fn(),
+    ack: vi.fn(),
     update: vi.fn(),
     emit: vi.fn(),
     disconnect: vi.fn(),
@@ -39,6 +41,8 @@ vi.mock('../../wailsjs/go/app/TxService', () => ({
   PrepareWalletConnectSend: h.prepare,
   ConfirmWalletConnectPublish: h.confirm,
   CancelPending: h.cancel,
+  ReconcileWalletConnectPublication: h.reconcile,
+  AckWalletConnectResult: h.ack,
 }))
 vi.mock('../../wailsjs/go/app/NodeService', () => ({
   NodeStatus: h.nodeStatus,
@@ -86,20 +90,20 @@ function unlock(address = 'z1qold') {
   return wallet
 }
 
-function sendEvent(id: number, topic = 'topic') {
+function sendEvent(id: number, topic = 'topic', expiryTimestamp?: number) {
   return {
     topic,
     id,
     params: {
       chainId: 'zenon:1',
-      request: { method: 'znn_send', params: { fromAddress: 'z1qold', accountBlock: {} } },
+      request: { method: 'znn_send', params: { fromAddress: 'z1qold', accountBlock: {} }, expiryTimestamp },
     },
   }
 }
 
 async function prepareRequest(id = 7, topic = 'topic') {
   const wc = useWalletConnectStore()
-  h.prepare.mockResolvedValueOnce({ ...preview })
+  h.prepare.mockResolvedValueOnce({ outcome: 'prepare', preview: { ...preview } })
   await wc.handleRequest(sendEvent(id, topic))
   return wc
 }
@@ -128,9 +132,20 @@ describe('WalletConnect Zenon namespace compatibility', () => {
 
   it('does not expose node URLs containing credentials to dapps', () => {
     expect(publicWalletConnectNodeURL('wss://mainnet.example')).toBe('wss://mainnet.example')
+    expect(publicWalletConnectNodeURL('wss://mainnet.example/')).toBe('wss://mainnet.example/')
+    expect(publicWalletConnectNodeURL('ws://127.0.0.1:35998')).toBe('ws://127.0.0.1:35998')
     expect(publicWalletConnectNodeURL('wss://user:secret@mainnet.example')).toBeUndefined()
     expect(publicWalletConnectNodeURL('wss://mainnet.example?apikey=secret')).toBeUndefined()
+    expect(publicWalletConnectNodeURL('wss://mainnet.example#secret')).toBeUndefined()
     expect(publicWalletConnectNodeURL('not a URL')).toBeUndefined()
+  })
+
+  it('does not expose node URLs with path-embedded provider tokens or non-ws schemes', () => {
+    expect(publicWalletConnectNodeURL('wss://node.example/v1/secret-project-token')).toBeUndefined()
+    expect(publicWalletConnectNodeURL('wss://node.example/%76%31/token')).toBeUndefined()
+    expect(publicWalletConnectNodeURL('https://node.example')).toBeUndefined()
+    expect(publicWalletConnectNodeURL('http://node.example')).toBeUndefined()
+    expect(publicWalletConnectNodeURL('file:///etc/hosts')).toBeUndefined()
   })
 })
 
@@ -143,6 +158,8 @@ describe('WalletConnect request handling', () => {
     h.prepare.mockReset()
     h.confirm.mockReset()
     h.cancel.mockReset().mockResolvedValue(undefined)
+    h.reconcile.mockReset()
+    h.ack.mockReset().mockResolvedValue(undefined)
     h.update.mockReset().mockResolvedValue({ acknowledged: async () => {} })
     h.emit.mockReset().mockResolvedValue(undefined)
     h.disconnect.mockReset().mockResolvedValue(undefined)
@@ -331,7 +348,7 @@ describe('WalletConnect request handling', () => {
     const preparing = wc.handleRequest(sendEvent(17, 'lock-during-prepare'))
     await vi.waitFor(() => expect(wc.preparingRequest?.id).toBe(17))
     await wc.walletLocked()
-    finishPrepare({ ...preview })
+    finishPrepare({ outcome: 'prepare', preview: { ...preview } })
     await preparing
 
     expect(h.cancel).toHaveBeenCalledWith(42)
@@ -359,10 +376,322 @@ describe('WalletConnect request handling', () => {
       response: expect.objectContaining({ error: expect.objectContaining({ code: -32000 }) }),
     }))
 
-    finishPrepare({ ...preview })
+    finishPrepare({ outcome: 'prepare', preview: { ...preview } })
     await first
     expect(wc.request?.id).toBe(12)
     expect(wc.request?.topic).toBe('first-topic')
+  })
+
+  it('registers the request/proposal expiry listeners on the SignClient', async () => {
+    const wc = useWalletConnectStore()
+    await wc.ensureClient()
+    expect(h.handlers.session_request_expire).toBeTypeOf('function')
+    expect(h.handlers.proposal_expire).toBeTypeOf('function')
+  })
+
+  it('releases an awaiting hold without responding when its request expires', async () => {
+    unlock()
+    const wc = await prepareRequest(21, 'expiring-topic')
+
+    await wc.handleRequestExpired(21)
+
+    expect(h.cancel).toHaveBeenCalledWith(42)
+    expect(h.respond).not.toHaveBeenCalled()
+    expect(wc.request).toBeNull()
+
+    await wc.approveRequest()
+    expect(h.confirm).not.toHaveBeenCalled()
+  })
+
+  it('ignores an expiry for a different request id', async () => {
+    unlock()
+    const wc = await prepareRequest(22)
+
+    await wc.handleRequestExpired(99)
+
+    expect(h.cancel).not.toHaveBeenCalled()
+    expect(wc.request?.id).toBe(22)
+  })
+
+  it('cancels the exact hold when a request expires while preparation is in flight', async () => {
+    unlock()
+    let finishPrepare!: (result: unknown) => void
+    h.prepare.mockReturnValueOnce(new Promise((resolve) => { finishPrepare = resolve }))
+    const wc = useWalletConnectStore()
+
+    const preparing = wc.handleRequest(sendEvent(23, 'expire-during-prepare'))
+    await vi.waitFor(() => expect(wc.preparingRequest?.id).toBe(23))
+    await wc.handleRequestExpired(23)
+    finishPrepare({ outcome: 'prepare', preview: { ...preview } })
+    await preparing
+
+    expect(h.cancel).toHaveBeenCalledWith(42)
+    expect(h.respond).not.toHaveBeenCalled()
+    expect(wc.request).toBeNull()
+  })
+
+  it('fails approval closed past the request expiry deadline even without an event', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-07-17T12:00:00Z'))
+      unlock()
+      const expirySeconds = Math.floor(Date.now() / 1000) + 300
+      const wc = useWalletConnectStore()
+      h.prepare.mockResolvedValueOnce({ outcome: 'prepare', preview: { ...preview } })
+      await wc.handleRequest(sendEvent(24, 'deadline-topic', expirySeconds))
+      expect(wc.request?.id).toBe(24)
+
+      vi.setSystemTime(new Date('2026-07-17T12:06:00Z'))
+      await wc.approveRequest()
+
+      expect(h.confirm).not.toHaveBeenCalled()
+      expect(h.cancel).toHaveBeenCalledWith(42)
+      expect(wc.request).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not let an expiry race an in-flight publication with an error response', async () => {
+    unlock()
+    const wc = await prepareRequest(25, 'expire-during-publish')
+    let finishPublish!: (result: unknown) => void
+    h.confirm.mockReturnValue(new Promise((resolve) => { finishPublish = resolve }))
+
+    const publishing = wc.approveRequest()
+    await Promise.resolve()
+    await wc.handleRequestExpired(25)
+
+    expect(h.respond).not.toHaveBeenCalled()
+    expect(h.cancel).not.toHaveBeenCalled()
+
+    finishPublish({ hash: 'published-despite-expiry' })
+    await publishing
+
+    expect(wc.request?.status).toBe('delivery-error')
+    expect(wc.request?.publishedHash).toBe('published-despite-expiry')
+    expect(wc.request?.error).toContain('Do not submit it again')
+    expect(h.respond.mock.calls.some(([call]) => 'error' in (call?.response ?? {}))).toBe(false)
+  })
+
+  it('clears only the matching expired proposal', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    wc.handleProposal({
+      id: 31,
+      params: { requiredNamespaces: bridgeNamespaces, proposer: { metadata: { name: 'Bridge A' } } },
+    })
+    expect(wc.proposal?.id).toBe(31)
+
+    await wc.handleProposalExpired(99)
+    expect(wc.proposal?.id).toBe(31)
+
+    await wc.handleProposalExpired(31)
+    expect(wc.proposal).toBeNull()
+  })
+
+  it('fails proposal approval closed past its expiry deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-07-17T12:00:00Z'))
+      unlock()
+      const wc = useWalletConnectStore()
+      wc.handleProposal({
+        id: 32,
+        params: {
+          requiredNamespaces: bridgeNamespaces,
+          expiryTimestamp: Math.floor(Date.now() / 1000) + 300,
+          proposer: { metadata: { name: 'Bridge B' } },
+        },
+      })
+      expect(wc.proposal?.id).toBe(32)
+
+      vi.setSystemTime(new Date('2026-07-17T12:06:00Z'))
+      await wc.approveProposal()
+
+      expect(fakeClient.approve).not.toHaveBeenCalled()
+      expect(wc.proposal).toBeNull()
+      expect(wc.error).toContain('expired')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('captures the SignClient Verify identity on proposals and defaults to UNKNOWN', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    wc.handleProposal({
+      id: 41,
+      params: { requiredNamespaces: bridgeNamespaces, proposer: { metadata: { name: 'Bridge', url: 'https://evil.example' } } },
+      verifyContext: { verified: { origin: 'https://bridge.0x3639.com', validation: 'VALID', isScam: false } },
+    })
+    expect(wc.proposal?.verifiedOrigin).toBe('https://bridge.0x3639.com')
+    expect(wc.proposal?.validation).toBe('VALID')
+    expect(wc.proposal?.isScam).toBe(false)
+
+    wc.handleProposal({
+      id: 42,
+      params: { requiredNamespaces: bridgeNamespaces, proposer: { metadata: { name: 'Bridge' } } },
+    })
+    expect(wc.proposal?.validation).toBe('UNKNOWN')
+    expect(wc.proposal?.isScam).toBe(false)
+    expect(wc.proposal?.verifiedOrigin).toBe('')
+  })
+
+  it('refuses to approve a scam-flagged proposal', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    wc.handleProposal({
+      id: 43,
+      params: { requiredNamespaces: bridgeNamespaces, proposer: { metadata: { name: 'Definitely The Real Bridge' } } },
+      verifyContext: { verified: { origin: 'https://scam.example', validation: 'INVALID', isScam: true } },
+    })
+    fakeClient.approve.mockClear()
+
+    await wc.approveProposal()
+
+    expect(fakeClient.approve).not.toHaveBeenCalled()
+    expect(wc.proposal).not.toBeNull()
+    expect(wc.error).toContain('scam')
+  })
+
+  it('captures the Verify identity on znn_send requests for the approval dialog', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    h.prepare.mockResolvedValueOnce({ ...preview })
+    const event = sendEvent(44)
+    ;(event as any).verifyContext = { verified: { origin: 'https://bridge.0x3639.com', validation: 'VALID', isScam: false } }
+    await wc.handleRequest(event)
+
+    expect(wc.request?.verifiedOrigin).toBe('https://bridge.0x3639.com')
+    expect(wc.request?.validation).toBe('VALID')
+    expect(wc.request?.isScam).toBe(false)
+  })
+
+  it('refuses to prepare a scam-flagged request and answers with a rejection', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    const event = sendEvent(45)
+    ;(event as any).verifyContext = { verified: { origin: 'https://scam.example', validation: 'INVALID', isScam: true } }
+    await wc.handleRequest(event)
+
+    expect(h.prepare).not.toHaveBeenCalled()
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      response: expect.objectContaining({ error: expect.objectContaining({ code: 5000 }) }),
+    }))
+    expect(wc.request).toBeNull()
+  })
+
+  it('passes the WalletConnect request identity to the backend prepare', async () => {
+    unlock()
+    await prepareRequest(51, 'identity-topic')
+
+    expect(h.prepare).toHaveBeenCalledWith(expect.objectContaining({
+      topic: 'identity-topic',
+      requestId: 51,
+      fromAddress: 'z1qold',
+    }))
+  })
+
+  it('replays a journaled published result without a modal and acks after delivery', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    h.prepare.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'journaled-hash' }, publishedHash: 'journaled-hash' })
+
+    await wc.handleRequest(sendEvent(52, 'replay-topic'))
+
+    expect(h.confirm).not.toHaveBeenCalled()
+    expect(wc.request).toBeNull()
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      topic: 'replay-topic',
+      response: expect.objectContaining({ result: { hash: 'journaled-hash' } }),
+    }))
+    expect(h.ack).toHaveBeenCalledWith('replay-topic', 52)
+  })
+
+  it('enters the reconcile flow for an unknown-outcome replay instead of re-preparing', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    h.prepare.mockResolvedValueOnce({ outcome: 'unknown', preview: { ...preview, holdId: 0 }, publishedHash: 'maybe-hash' })
+
+    await wc.handleRequest(sendEvent(53, 'unknown-topic'))
+
+    expect(wc.request?.status).toBe('unknown')
+    expect(wc.request?.publishedHash).toBe('maybe-hash')
+    expect(h.respond).not.toHaveBeenCalled()
+    expect(h.ack).not.toHaveBeenCalled()
+  })
+
+  it('routes an unknown-outcome confirm error into reconcile, never a rejection', async () => {
+    unlock()
+    const wc = await prepareRequest(54, 'confirm-unknown')
+    h.confirm.mockRejectedValueOnce(new Error('walletconnect publication outcome unknown: connection reset. The signed block abc is preserved'))
+
+    await wc.approveRequest()
+
+    expect(wc.request?.status).toBe('unknown')
+    expect(h.respond).not.toHaveBeenCalled()
+
+    // Neither rejection path may answer an unknown outcome with an error.
+    await wc.rejectRequest()
+    await wc.clearRequestError()
+    expect(h.respond).not.toHaveBeenCalled()
+    expect(wc.request?.status).toBe('unknown')
+  })
+
+  it('reconcile success delivers the stored result and acks the journal', async () => {
+    unlock()
+    const wc = await prepareRequest(55, 'reconcile-topic')
+    h.confirm.mockRejectedValueOnce(new Error('walletconnect publication outcome unknown: timeout'))
+    await wc.approveRequest()
+    expect(wc.request?.status).toBe('unknown')
+
+    h.reconcile.mockResolvedValueOnce({ hash: 'reconciled-hash' })
+    await wc.reconcileRequest()
+
+    expect(h.reconcile).toHaveBeenCalledWith('reconcile-topic', 55)
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      response: expect.objectContaining({ result: { hash: 'reconciled-hash' } }),
+    }))
+    expect(h.ack).toHaveBeenCalledWith('reconcile-topic', 55)
+    expect(wc.request).toBeNull()
+  })
+
+  it('keeps the unknown state retryable when reconcile fails', async () => {
+    unlock()
+    const wc = await prepareRequest(56, 'retry-topic')
+    h.confirm.mockRejectedValueOnce(new Error('walletconnect publication outcome unknown: timeout'))
+    await wc.approveRequest()
+
+    h.reconcile.mockRejectedValueOnce(new Error('walletconnect publication outcome unknown: still unreachable'))
+    await wc.reconcileRequest()
+
+    expect(wc.request?.status).toBe('unknown')
+    expect(wc.request?.error).toContain('unreachable')
+    expect(h.respond).not.toHaveBeenCalled()
+  })
+
+  it('acks the journal after a normal publish result is delivered', async () => {
+    unlock()
+    const wc = await prepareRequest(57, 'ack-topic')
+    h.confirm.mockResolvedValueOnce({ hash: 'delivered-hash' })
+
+    await wc.approveRequest()
+
+    expect(wc.request).toBeNull()
+    expect(h.ack).toHaveBeenCalledWith('ack-topic', 57)
+  })
+
+  it('does not disturb an unknown-outcome request on wallet lock', async () => {
+    unlock()
+    const wc = await prepareRequest(58, 'lock-unknown')
+    h.confirm.mockRejectedValueOnce(new Error('walletconnect publication outcome unknown: timeout'))
+    await wc.approveRequest()
+
+    await wc.walletLocked()
+
+    expect(wc.request?.status).toBe('unknown')
+    expect(h.respond).not.toHaveBeenCalled()
   })
 
   it('cancels a stale awaiting preview before advertising an account change', async () => {

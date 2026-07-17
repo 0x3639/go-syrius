@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/base64"
+	"errors"
 	"math/big"
 	"strings"
 	"testing"
@@ -22,6 +23,8 @@ func validWalletConnectRequest(t *testing.T) (WalletConnectSendRequest, types.Ad
 	)
 	return WalletConnectSendRequest{
 		FromAddress: active.String(),
+		Topic:       "test-topic",
+		RequestID:   1,
 		AccountBlock: WalletConnectAccountBlockInput{
 			Version:         1,
 			ChainIdentifier: mainnetChainID,
@@ -221,4 +224,44 @@ func TestPrepareWalletConnectSendFailsClosedAtEveryMainnetGate(t *testing.T) {
 			t.Fatalf("got %v, want disconnected-node refusal after all gates pass", err)
 		}
 	})
+}
+
+func TestPrepareWalletConnectSendRequiresResolvableCustomTokenDecimals(t *testing.T) {
+	tx := newTestTxService(t)
+	unlockTestWallet(t, tx.wallet)
+	tx.node.chainID = mainnetChainID
+	if err := tx.config.SetAllowMainnetSend(true); err != nil {
+		t.Fatal(err)
+	}
+	active, _ := tx.wallet.activeAddress()
+	req, _ := validWalletConnectRequest(t)
+	req.FromAddress = active.String()
+	req.AccountBlock.TokenStandard = "zts1x27drtpzgj99rjxcm7xmmg"
+	tx.decimalsLookup = func(types.ZenonTokenStandard) (int, error) {
+		return 0, errors.New("token metadata unavailable")
+	}
+	if _, err := tx.PrepareWalletConnectSend(req); err == nil || !strings.Contains(err.Error(), "decimals") {
+		t.Fatalf("got %v, want a decimals-resolution refusal", err)
+	}
+}
+
+func TestPrepareWalletConnectSendSkipsDecimalsLookupForZnn(t *testing.T) {
+	tx := newTestTxService(t)
+	unlockTestWallet(t, tx.wallet)
+	tx.node.chainID = mainnetChainID
+	if err := tx.config.SetAllowMainnetSend(true); err != nil {
+		t.Fatal(err)
+	}
+	active, _ := tx.wallet.activeAddress()
+	req, _ := validWalletConnectRequest(t)
+	req.FromAddress = active.String()
+	tx.decimalsLookup = func(types.ZenonTokenStandard) (int, error) {
+		t.Fatal("ZNN must resolve its protocol-fixed decimals without a lookup")
+		return 0, nil
+	}
+	// ZNN passes the decimals gate without a node call and fails later at the
+	// connectivity check, proving gate ordering.
+	if _, err := tx.PrepareWalletConnectSend(req); err == nil || !strings.Contains(err.Error(), "not connected") {
+		t.Fatalf("got %v, want not-connected after passing the decimals gate", err)
+	}
 }

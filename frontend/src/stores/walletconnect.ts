@@ -19,7 +19,16 @@ export type WalletConnectSession = {
   accounts: string[]
 }
 
-export type WalletConnectProposal = {
+// The SignClient Verify attestation for a proposal or request. The metadata
+// name/url are peer-controlled and spoofable; this is the only identity signal
+// that is not.
+export type WalletConnectVerify = {
+  verifiedOrigin: string
+  validation: 'VALID' | 'INVALID' | 'UNKNOWN'
+  isScam: boolean
+}
+
+export type WalletConnectProposal = WalletConnectVerify & {
   id: number
   name: string
   description: string
@@ -28,18 +37,20 @@ export type WalletConnectProposal = {
   methods: string[]
   events: string[]
   raw: any
+  expiryTimestamp?: number
 }
 
-export type WalletConnectRequest = {
+export type WalletConnectRequest = WalletConnectVerify & {
   topic: string
   id: number
   dapp: string
   preview: SendPreview
-  status: 'awaiting' | 'publishing' | 'notifying' | 'error' | 'delivery-error'
+  status: 'awaiting' | 'publishing' | 'notifying' | 'error' | 'delivery-error' | 'unknown'
   error: string
   publishedResult: unknown | null
   publishedHash: string
   sessionEnded: boolean
+  expiryTimestamp?: number
 }
 
 type WalletConnectPreparingRequest = {
@@ -60,12 +71,35 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+// Errors carrying this marker mean the signed block MAY be on chain (WC-01):
+// they must enter the reconcile flow and never be answered with a rejection.
+const OUTCOME_UNKNOWN_MARKER = 'walletconnect publication outcome unknown'
+
+type WalletConnectPrepareOutcome = {
+  outcome: 'prepare' | 'published' | 'unknown'
+  preview?: SendPreview
+  published?: unknown
+  publishedHash?: string
+}
+
 function errorResponse(id: number, code: number, message: string) {
   return { id, jsonrpc: '2.0' as const, error: { code, message } }
 }
 
 function resultResponse(id: number, result: unknown) {
   return { id, jsonrpc: '2.0' as const, result }
+}
+
+// A missing/omitted verifyContext (older relay, Verify outage) degrades to
+// UNKNOWN — shown as unverified, never as trusted.
+function verifyOf(context: any): WalletConnectVerify {
+  const verified = context?.verified ?? {}
+  const validation = verified.validation
+  return {
+    verifiedOrigin: typeof verified.origin === 'string' ? verified.origin : '',
+    validation: validation === 'VALID' || validation === 'INVALID' ? validation : 'UNKNOWN',
+    isScam: verified.isScam === true,
+  }
 }
 
 export function zenonProposalNamespace(
@@ -101,9 +135,12 @@ export function publicWalletConnectNodeURL(value: string): string | undefined {
   try {
     const parsed = new URL(value)
     // znn_info crosses a dapp trust boundary. A configured endpoint may carry
-    // basic-auth, query-token, or fragment material, which must never be
-    // disclosed to a session.
+    // credential material anywhere except the root: basic-auth userinfo,
+    // query/fragment tokens, or a hosted provider's path-embedded project key
+    // (wss://host/v1/<token>). Only a bare ws(s) origin is ever disclosed.
+    if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') return undefined
     if (parsed.username || parsed.password || parsed.search || parsed.hash) return undefined
+    if (parsed.pathname !== '' && parsed.pathname !== '/') return undefined
     return value
   } catch {
     return undefined
@@ -173,32 +210,43 @@ export const useWalletConnectStore = defineStore('walletconnect', {
     installListeners(c: Client) {
       if (listenersReady) return
       listenersReady = true
-      c.on('session_proposal', (raw: any) => {
-        const required = raw.params?.requiredNamespaces ?? {}
-        const optional = raw.params?.optionalNamespaces ?? {}
-        const zenon = zenonProposalNamespace(required, optional)
-        const methods = zenon?.methods ?? []
-        const events = zenon?.events ?? []
-        if (!isSupportedZenonProposal(required, optional)) {
-          this.error = 'Connection rejected: the dapp requested an unsupported WalletConnect namespace'
-          void c.reject({ id: raw.id, reason: { code: 5100, message: 'Unsupported WalletConnect namespace' } })
-          return
-        }
-        const metadata = raw.params?.proposer?.metadata ?? {}
-        this.proposal = {
-          id: raw.id,
-          name: metadata.name ?? 'Unknown dapp',
-          description: metadata.description ?? '',
-          url: metadata.url ?? '',
-          icon: metadata.icons?.[0] ?? '',
-          methods: [...methods],
-          events: [...events],
-          raw,
-        }
-      })
+      c.on('session_proposal', (raw: any) => { this.handleProposal(raw) })
       c.on('session_request', (event: any) => { void this.handleRequest(event) })
+      c.on('session_request_expire', (event: any) => { void this.handleRequestExpired(event?.id) })
+      c.on('proposal_expire', (event: any) => { void this.handleProposalExpired(event?.id) })
       c.on('session_delete', (event: any) => { void this.handleSessionEnded(event) })
       c.on('session_expire', (event: any) => { void this.handleSessionEnded(event) })
+    },
+    handleProposal(raw: any) {
+      const required = raw.params?.requiredNamespaces ?? {}
+      const optional = raw.params?.optionalNamespaces ?? {}
+      const zenon = zenonProposalNamespace(required, optional)
+      const methods = zenon?.methods ?? []
+      const events = zenon?.events ?? []
+      if (!isSupportedZenonProposal(required, optional)) {
+        this.error = 'Connection rejected: the dapp requested an unsupported WalletConnect namespace'
+        if (client) void client.reject({ id: raw.id, reason: { code: 5100, message: 'Unsupported WalletConnect namespace' } })
+        return
+      }
+      const metadata = raw.params?.proposer?.metadata ?? {}
+      const expiry = Number(raw.params?.expiryTimestamp)
+      this.proposal = {
+        id: raw.id,
+        name: metadata.name ?? 'Unknown dapp',
+        description: metadata.description ?? '',
+        url: metadata.url ?? '',
+        icon: metadata.icons?.[0] ?? '',
+        methods: [...methods],
+        events: [...events],
+        raw,
+        expiryTimestamp: Number.isFinite(expiry) && expiry > 0 ? expiry : undefined,
+        ...verifyOf(raw.verifyContext),
+      }
+    },
+    async handleProposalExpired(id: number) {
+      // SignClient has already deleted the expired proposal; only clear the
+      // matching one so a delayed expiry cannot wipe a newer proposal.
+      if (this.proposal?.id === id) this.proposal = null
     },
     async pair(uri: string) {
       this.error = ''
@@ -217,6 +265,19 @@ export const useWalletConnectStore = defineStore('walletconnect', {
     },
     async approveProposal() {
       if (!this.proposal) return
+      // Defense in depth alongside the proposal_expire listener: approving an
+      // already-expired proposal can only fail at the relay.
+      if (this.proposal.expiryTimestamp && Date.now() >= this.proposal.expiryTimestamp * 1000) {
+        this.proposal = null
+        this.error = 'The connection proposal expired; ask the dapp for a fresh pairing'
+        return
+      }
+      // Verify flagged this peer as a known scam; the proposal stays visible so
+      // the user can reject it, but it can never be approved.
+      if (this.proposal.isScam) {
+        this.error = 'Connection blocked: WalletConnect Verify flagged this dapp as a known scam'
+        return
+      }
       const c = await this.ensureClient()
       const wallet = useWalletStore()
       const address = wallet.activeAddress()
@@ -321,6 +382,11 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         await this.failRequest(topic, id, 4200, `Unsupported method ${method}`)
         return
       }
+      const verify = verifyOf(event?.verifyContext)
+      if (verify.isScam) {
+        await this.failRequest(topic, id, 5000, 'Request blocked: WalletConnect Verify flagged this dapp as a known scam')
+        return
+      }
       if (this.request || this.preparingRequest) {
         await this.failRequest(topic, id, -32000, 'Another WalletConnect request is awaiting approval')
         return
@@ -340,7 +406,42 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       }
       this.preparingRequest = preparing
       try {
-        const preview = await Tx.PrepareWalletConnectSend(params.request.params as any) as unknown as SendPreview
+        const result = await Tx.PrepareWalletConnectSend(
+          { ...(params.request.params as any), topic, requestId: id } as any,
+        ) as unknown as WalletConnectPrepareOutcome
+        if (result.outcome === 'published' && result.published) {
+          // The journal already holds this exact request's published block
+          // (restart-shaped replay). Deliver the stored result — nothing is
+          // signed — and ack only once the dapp actually received it.
+          if (preparing.sessionEnded) return
+          try {
+            await c.respond({ topic, response: resultResponse(id, result.published) })
+            await Tx.AckWalletConnectResult(topic, id).catch(() => {})
+          } catch {
+            this.error = `Transaction ${result.publishedHash ?? ''} for this request was already published, but the dapp could not be notified. Do not submit it again.`
+          }
+          return
+        }
+        if (result.outcome === 'unknown') {
+          // A signed block for this exact request exists with an unresolved
+          // broadcast outcome. Only reconciliation may answer the dapp.
+          if (preparing.sessionEnded || preparing.cancelMessage) return
+          const session = this.sessions.find((item) => item.topic === topic)
+          this.request = {
+            topic,
+            id,
+            dapp: session?.name ?? 'Connected dapp',
+            preview: (result.preview ?? {}) as SendPreview,
+            status: 'unknown',
+            error: '',
+            publishedResult: null,
+            publishedHash: result.publishedHash ?? '',
+            sessionEnded: false,
+            ...verify,
+          }
+          return
+        }
+        const preview = result.preview as SendPreview
         // The session/account may have ended while the backend prepared the
         // hold. Release that exact hold and never resurrect a stale modal.
         if (this.preparingRequest?.token !== preparing.token || preparing.sessionEnded || preparing.cancelMessage) {
@@ -352,6 +453,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
           return
         }
         const session = this.sessions.find((item) => item.topic === topic)
+        const expiry = Number(params?.request?.expiryTimestamp)
         this.request = {
           topic,
           id,
@@ -362,6 +464,8 @@ export const useWalletConnectStore = defineStore('walletconnect', {
           publishedResult: null,
           publishedHash: '',
           sessionEnded: false,
+          expiryTimestamp: Number.isFinite(expiry) && expiry > 0 ? expiry : undefined,
+          ...verify,
         }
         this.error = ''
       } catch (error) {
@@ -378,12 +482,30 @@ export const useWalletConnectStore = defineStore('walletconnect', {
     async approveRequest() {
       if (!this.request || this.request.status !== 'awaiting') return
       const current = this.request
+      // Defense in depth alongside the session_request_expire listener: the
+      // relay has already deleted an expired request, so approving it could
+      // only publish funds with no counterpart to answer. Fail closed.
+      if (current.expiryTimestamp && Date.now() >= current.expiryTimestamp * 1000) {
+        this.request = null
+        this.error = 'The WalletConnect request expired before it was approved'
+        const holdID = current.preview.holdId ?? 0
+        if (holdID) await Tx.CancelPending(holdID).catch(() => {})
+        return
+      }
       current.status = 'publishing'
       current.error = ''
       let result: unknown
       try {
         result = await Tx.ConfirmWalletConnectPublish(current.preview.holdId ?? 0)
       } catch (error) {
+        const message = messageOf(error)
+        if (message.includes(OUTCOME_UNKNOWN_MARKER)) {
+          // The block may be on chain. The journaled signed block owns the
+          // outcome now; only reconciliation may answer this request.
+          current.status = 'unknown'
+          current.error = message
+          return
+        }
         if (current.sessionEnded) {
           const holdID = current.preview.holdId ?? 0
           if (holdID) await Tx.CancelPending(holdID).catch(() => {})
@@ -391,7 +513,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
           return
         }
         current.status = 'error'
-        current.error = messageOf(error)
+        current.error = message
         return
       }
       // From this line onward funds moved. Never convert a relay/session
@@ -412,6 +534,9 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       try {
         const c = await this.ensureClient()
         await c.respond({ topic: current.topic, response: resultResponse(current.id, current.publishedResult) })
+        // The dapp holds the result; the journal record is no longer needed
+        // for replay protection.
+        await Tx.AckWalletConnectResult(current.topic, current.id).catch(() => {})
         if (this.request === current) this.request = null
       } catch (error) {
         current.status = 'delivery-error'
@@ -427,8 +552,26 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       current.error = ''
       await this.deliverPublishedResult(current)
     },
+    async reconcileRequest() {
+      const current = this.request
+      if (!current || current.status !== 'unknown') return
+      current.error = ''
+      try {
+        const result = await Tx.ReconcileWalletConnectPublication(current.topic, current.id)
+        current.publishedResult = result
+        current.publishedHash = String((result as any)?.hash ?? current.publishedHash ?? '')
+        current.status = 'notifying'
+        await this.deliverPublishedResult(current)
+      } catch (error) {
+        // Still unknown — retryable; never convert this into a rejection.
+        current.status = 'unknown'
+        current.error = messageOf(error)
+      }
+    },
     clearPublishedRequest() {
-      if (this.request?.status === 'delivery-error') this.request = null
+      // Closing locally never acks: the journal record must survive so a
+      // redelivered request replays the stored outcome instead of re-signing.
+      if (this.request?.status === 'delivery-error' || this.request?.status === 'unknown') this.request = null
     },
     async rejectRequest(message = 'User rejected') {
       if (!this.request || (this.request.status !== 'awaiting' && this.request.status !== 'error')) return
@@ -487,14 +630,33 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       if (!this.request || this.request.topic !== topic) return
       const current = this.request
       current.sessionEnded = true
-      if (current.status === 'publishing' || current.status === 'notifying') {
+      if (current.status === 'publishing' || current.status === 'notifying' || current.status === 'unknown') {
         // Let the single in-flight publication/delivery attempt settle. Calling
         // respond() again here could race it and produce two result responses.
+        // An unknown outcome keeps its journal record for reconciliation.
         return
       }
       if (current.status === 'delivery-error') {
         const label = current.publishedHash ? ` ${current.publishedHash}` : ''
         current.error = `Transaction${label} was published, but the dapp session ended before it could be notified. Do not submit it again.`
+        return
+      }
+      this.request = null
+      const holdID = current.preview.holdId ?? 0
+      if (holdID) await Tx.CancelPending(holdID).catch(() => {})
+    },
+    async handleRequestExpired(id: number) {
+      const preparing = this.preparingRequest
+      // The expired request no longer exists at the relay, so there is nothing
+      // to answer; reuse the session-ended path, which cancels silently.
+      if (preparing && preparing.id === id) preparing.sessionEnded = true
+      const current = this.request
+      if (!current || current.id !== id) return
+      if (current.status === 'publishing' || current.status === 'notifying' || current.status === 'delivery-error' || current.status === 'unknown') {
+        // Publication already started: only its actual outcome may drive the
+        // terminal state. Marking the request ended suppresses any response
+        // attempt for this id without inventing a rejection.
+        current.sessionEnded = true
         return
       }
       this.request = null
@@ -509,7 +671,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       if (!this.request) return
       // Once publication starts, only its actual outcome may answer the dapp.
       // Sending 9000 here can race a successful publish and invite a duplicate.
-      if (this.request.status === 'publishing' || this.request.status === 'notifying' || this.request.status === 'delivery-error') return
+      if (this.request.status === 'publishing' || this.request.status === 'notifying' || this.request.status === 'delivery-error' || this.request.status === 'unknown') return
       const current = this.request
       this.request = null
       const holdID = current.preview.holdId ?? 0

@@ -82,27 +82,6 @@ func TestWalletConnectJournalPersistsAcrossInstances(t *testing.T) {
 	}
 }
 
-func TestWalletConnectJournalBoundsRetention(t *testing.T) {
-	tx := newTestTxService(t)
-	for i := 0; i < wcJournalMaxRecords+8; i++ {
-		rec := wcPublicationRecord{IntentHash: "x", State: wcStatePublished, Hash: "00", CreatedAt: int64(i)}
-		if err := tx.wcJournal.put(wcJournalKey("t", uint64(i)), rec); err != nil {
-			t.Fatal(err)
-		}
-	}
-	all, err := tx.wcJournal.load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(all) > wcJournalMaxRecords {
-		t.Fatalf("journal grew to %d records; cap is %d", len(all), wcJournalMaxRecords)
-	}
-	// The newest record must have survived eviction.
-	if _, ok, _ := tx.wcJournal.get(wcJournalKey("t", uint64(wcJournalMaxRecords+7))); !ok {
-		t.Fatal("newest record was evicted")
-	}
-}
-
 func TestConfirmWalletConnectPublishPersistsSignedBlockBeforeBroadcast(t *testing.T) {
 	tx := newTestTxService(t)
 	holdID, template := wcTestHold(t, tx, 3, "topic-b", 9)
@@ -366,5 +345,191 @@ func TestConfirmPublishReenforcesMainnetOptInAfterPoW(t *testing.T) {
 	}
 	if tx.pending == nil {
 		t.Fatal("the approved block must survive a guard refusal for an explicit retry")
+	}
+}
+
+func TestPrepareWalletConnectSendReplaysWithoutLiveWalletGates(t *testing.T) {
+	// Round-2 finding 1: a redelivered request whose outcome is journaled must
+	// resolve from the journal BEFORE the locked-wallet / configured-chain /
+	// connected-node gates — funds may already have moved, and a gate error
+	// would be reported to the dapp as an ordinary rejection.
+	tx := newTestTxService(t)
+	req, _ := validWalletConnectRequest(t)
+	req.Topic = "gateless-topic"
+	req.RequestID = 31
+	from := types.ParseAddressPanic(req.FromAddress)
+	template, _, _, err := walletConnectValidateIntent(req, from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	built := stubBuilt(template, "7777777777777777777777777777777777777777777777777777777777777777")
+	blockJSON, err := json.Marshal(built)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := wcPublicationRecord{
+		IntentHash: walletConnectIntentHash(template),
+		State:      wcStatePublished,
+		BlockJSON:  blockJSON,
+		Hash:       built.Hash.String(),
+		CreatedAt:  1,
+	}
+	if err := tx.wcJournal.put(wcJournalKey("gateless-topic", 31), rec); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wallet locked, no configured chain gate satisfied, no node connected.
+	result, err := tx.PrepareWalletConnectSend(req)
+	if err != nil {
+		t.Fatalf("locked-wallet replay must return the stored outcome, got %v", err)
+	}
+	if result.Outcome != "published" || result.Published["hash"] != built.Hash.String() {
+		t.Fatalf("replay result = %+v", result)
+	}
+	if result.Preview == nil {
+		t.Fatal("published replay must carry a preview for the delivery-retry dialog")
+	}
+
+	// A journaled identity with DIFFERENT intent still fails closed while locked.
+	tampered := req
+	tampered.AccountBlock.Amount = "31337"
+	if _, err := tx.PrepareWalletConnectSend(tampered); err == nil || !strings.Contains(err.Error(), "different") {
+		t.Fatalf("got %v, want reused-identity refusal", err)
+	}
+}
+
+func TestWalletConnectJournalFailsClosedWhenFull(t *testing.T) {
+	// Round-2 finding 2: every retained record is potential duplicate
+	// protection; eviction is never allowed. A full journal refuses NEW writes
+	// (which refuses new broadcasts) instead of dropping old outcomes.
+	tx := newTestTxService(t)
+	for i := 0; i < wcJournalMaxRecords; i++ {
+		rec := wcPublicationRecord{IntentHash: "x", State: wcStatePublished, Hash: "00", CreatedAt: int64(i + 1)}
+		if err := tx.wcJournal.put(wcJournalKey("t", uint64(i+1)), rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := tx.wcJournal.put(wcJournalKey("overflow", 1), wcPublicationRecord{IntentHash: "y", State: wcStateSigned, Hash: "01", CreatedAt: 99})
+	if err == nil {
+		t.Fatal("a full journal must refuse new records, never evict old outcomes")
+	}
+	all, loadErr := tx.wcJournal.load()
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if len(all) != wcJournalMaxRecords {
+		t.Fatalf("journal has %d records after refused write, want %d intact", len(all), wcJournalMaxRecords)
+	}
+	if _, ok := all[wcJournalKey("t", 1)]; !ok {
+		t.Fatal("oldest record was evicted by the refused write")
+	}
+	// Overwriting an EXISTING key (signed -> published) must still work at cap.
+	if err := tx.wcJournal.put(wcJournalKey("t", 1), wcPublicationRecord{IntentHash: "x", State: wcStateSigned, Hash: "00", CreatedAt: 1}); err != nil {
+		t.Fatalf("updating an existing record at cap must succeed: %v", err)
+	}
+}
+
+func TestReconcileWalletConnectRefusesWhileAnotherPublishIsInFlight(t *testing.T) {
+	// Round-2 finding 4: reconciliation rebroadcasts on the same account
+	// frontier as normal sends/receives; it must serialize under publishMu.
+	tx := newTestTxService(t)
+	holdID, _ := wcTestHold(t, tx, 3, "topic-lock", 37)
+	tx.prepareBlockFn = func(_ *rpc_client.RpcClient, tpl *nom.AccountBlock, _ *sdkwallet.KeyPair) (*nom.AccountBlock, error) {
+		return stubBuilt(tpl, "8888888888888888888888888888888888888888888888888888888888888888"), nil
+	}
+	tx.publishFn = func(_ *rpc_client.RpcClient, _ *nom.AccountBlock) error { return errors.New("timeout") }
+	if _, err := tx.ConfirmWalletConnectPublish(holdID); err == nil {
+		t.Fatal("expected outcome-unknown error")
+	}
+	tx.publishMu.Lock()
+	defer tx.publishMu.Unlock()
+	if _, err := tx.ReconcileWalletConnectPublication("topic-lock", 37); err == nil || !strings.Contains(err.Error(), "already being published") {
+		t.Fatalf("got %v, want publish-serialization refusal", err)
+	}
+}
+
+func TestReconcileWalletConnectRefusesChainMismatchBeforeQuery(t *testing.T) {
+	// Round-2 finding 4: a "not found" answer from a node on ANOTHER chain is
+	// not evidence of non-publication, and rebroadcasting there is wrong.
+	tx := newTestTxService(t)
+	holdID, _ := wcTestHold(t, tx, 3, "topic-chain", 41)
+	tx.prepareBlockFn = func(_ *rpc_client.RpcClient, tpl *nom.AccountBlock, _ *sdkwallet.KeyPair) (*nom.AccountBlock, error) {
+		return stubBuilt(tpl, "9999999999999999999999999999999999999999999999999999999999999999"), nil
+	}
+	tx.publishFn = func(_ *rpc_client.RpcClient, _ *nom.AccountBlock) error { return errors.New("timeout") }
+	if _, err := tx.ConfirmWalletConnectPublish(holdID); err == nil {
+		t.Fatal("expected outcome-unknown error")
+	}
+	tx.node.chainID = 12 // node switched networks since the block was signed
+	queried := false
+	tx.blockByHashFn = func(_ *rpc_client.RpcClient, _ types.Hash) (bool, error) { queried = true; return false, nil }
+	published := false
+	tx.publishFn = func(_ *rpc_client.RpcClient, _ *nom.AccountBlock) error { published = true; return nil }
+	if _, err := tx.ReconcileWalletConnectPublication("topic-chain", 41); err == nil || !strings.Contains(err.Error(), "chain") {
+		t.Fatalf("got %v, want chain-mismatch refusal", err)
+	}
+	if queried || published {
+		t.Fatalf("wrong-chain node was consulted (queried=%v published=%v)", queried, published)
+	}
+	rec, ok, _ := tx.wcJournal.get(wcJournalKey("topic-chain", 41))
+	if !ok || rec.State != wcStateSigned {
+		t.Fatalf("record must stay signed/unknown after a chain refusal: %+v", rec)
+	}
+}
+
+func TestLookupWalletConnectPublicationIsGateless(t *testing.T) {
+	// Round-3 finding 1: the lookup-only method resolves a journaled outcome
+	// with a locked wallet and no node, and never creates a hold.
+	tx := newTestTxService(t)
+	req, _ := validWalletConnectRequest(t)
+	req.Topic = "lookup-topic"
+	req.RequestID = 61
+	from := types.ParseAddressPanic(req.FromAddress)
+	template, _, _, err := walletConnectValidateIntent(req, from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	built := stubBuilt(template, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	blockJSON, _ := json.Marshal(built)
+	if err := tx.wcJournal.put(wcJournalKey("lookup-topic", 61), wcPublicationRecord{
+		IntentHash: walletConnectIntentHash(template), State: wcStatePublished, BlockJSON: blockJSON, Hash: built.Hash.String(), CreatedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wallet locked, no node connected — lookup still replays.
+	res, err := tx.LookupWalletConnectPublication(req)
+	if err != nil {
+		t.Fatalf("gateless lookup failed: %v", err)
+	}
+	if res.Outcome != "published" || res.Published["hash"] != built.Hash.String() {
+		t.Fatalf("lookup result = %+v", res)
+	}
+	if tx.pending != nil {
+		t.Fatal("lookup must never create a hold")
+	}
+
+	// An unjournaled request is Outcome none (no error) so the fresh path runs.
+	fresh := req
+	fresh.RequestID = 62
+	if res, err := tx.LookupWalletConnectPublication(fresh); err != nil || res.Outcome != "none" {
+		t.Fatalf("unjournaled lookup = %+v, %v; want none, nil", res, err)
+	}
+
+	// Reused id + different intent fails closed.
+	tampered := req
+	tampered.AccountBlock.Amount = "999"
+	if _, err := tx.LookupWalletConnectPublication(tampered); err == nil || !strings.Contains(err.Error(), "different") {
+		t.Fatalf("got %v, want reused-identity refusal", err)
+	}
+}
+
+func TestNodeConnectionSnapshotReadsClientAndChainTogether(t *testing.T) {
+	tx := newTestTxService(t)
+	tx.node.client = &rpc_client.RpcClient{}
+	tx.node.chainID = 7
+	client, chain := tx.node.connectionSnapshot()
+	if client == nil || chain != 7 {
+		t.Fatalf("snapshot = %v, %d; want non-nil client and chain 7", client, chain)
 	}
 }

@@ -335,13 +335,23 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         await this.failRequest(topic, id, 5100, 'Unsupported Zenon chain')
         return
       }
+      // The Verify hard block runs before any DISCLOSURE or hold: a scam-
+      // flagged peer must not learn the wallet address / node URL via znn_info
+      // and must not create a znn_send hold. It is applied per-method, though —
+      // NOT to a znn_send journal replay, which resolves a possibly-published
+      // outcome (funds already moved) and must never become a rejection.
+      const verify = verifyOf(event?.verifyContext)
       const wallet = useWalletStore()
       const node = useNodeStore()
-      if (wallet.locked || !wallet.activeAddress()) {
-        await this.failRequest(topic, id, 9000, 'Wallet is locked')
-        return
-      }
       if (method === 'znn_info') {
+        if (verify.isScam) {
+          await this.failRequest(topic, id, 5000, 'Request blocked: WalletConnect Verify flagged this dapp as a known scam')
+          return
+        }
+        if (wallet.locked || !wallet.activeAddress()) {
+          await this.failRequest(topic, id, 9000, 'Wallet is locked')
+          return
+        }
         // Read the authoritative backend snapshot for every handshake. The
         // Pinia copy is event-driven and can briefly reflect a prior node while
         // Settings is reconnecting, which made a valid mainnet session fail
@@ -382,11 +392,65 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         await this.failRequest(topic, id, 4200, `Unsupported method ${method}`)
         return
       }
-      const verify = verifyOf(event?.verifyContext)
-      if (verify.isScam) {
-        await this.failRequest(topic, id, 5000, 'Request blocked: WalletConnect Verify flagged this dapp as a known scam')
+      // Journal replay resolution comes FIRST — before the scam, existing-
+      // request, and busy-tx gates below — so a redelivered published or
+      // unknown outcome (funds may already have moved) is never turned into an
+      // ordinary rejection. The lookup is journal-only: it creates no hold, so
+      // a fresh scam/duplicate request still hits the gates that follow. A
+      // `preparing` marker is registered so session_delete / expire can mark
+      // THIS request even during the replay delivery's respond() await.
+      const preparing: WalletConnectPreparingRequest = {
+        token: ++preparingRequestToken,
+        topic,
+        id,
+        sessionEnded: false,
+        cancelMessage: '',
+        cancelCode: 5000,
+      }
+      const priorRequest = this.request
+      const priorPreparing = this.preparingRequest
+      this.preparingRequest = preparing
+      let replay: WalletConnectPrepareOutcome
+      try {
+        replay = await Tx.LookupWalletConnectPublication(
+          { ...(params.request.params as any), topic, requestId: id } as any,
+        ) as unknown as WalletConnectPrepareOutcome
+      } catch (error) {
+        // A reused id with a different intent (or a journal read error): fail
+        // closed. No funds move on this path.
+        if (this.preparingRequest === preparing) this.preparingRequest = priorPreparing
+        await this.failRequest(topic, id, 5000, messageOf(error))
         return
       }
+      if (replay.outcome === 'published' && replay.published) {
+        try {
+          await this.deliverReplayPublished(preparing, replay, verify)
+        } finally {
+          if (this.preparingRequest === preparing) this.preparingRequest = priorPreparing
+        }
+        return
+      }
+      if (replay.outcome === 'unknown') {
+        if (this.preparingRequest === preparing) this.preparingRequest = priorPreparing
+        if (preparing.sessionEnded) return
+        const session = this.sessions.find((item) => item.topic === topic)
+        this.request = {
+          topic,
+          id,
+          dapp: session?.name ?? 'Connected dapp',
+          preview: (replay.preview ?? {}) as SendPreview,
+          status: 'unknown',
+          error: '',
+          publishedResult: null,
+          publishedHash: replay.publishedHash ?? '',
+          sessionEnded: preparing.sessionEnded,
+          ...verify,
+        }
+        return
+      }
+      // outcome 'none' → a fresh request. Restore the pre-lookup state and
+      // apply the policy gates that replays are allowed to skip.
+      this.preparingRequest = priorPreparing
       if (this.request || this.preparingRequest) {
         await this.failRequest(topic, id, -32000, 'Another WalletConnect request is awaiting approval')
         return
@@ -396,35 +460,23 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         await this.failRequest(topic, id, -32000, 'The wallet is already handling another transaction')
         return
       }
-      const preparing: WalletConnectPreparingRequest = {
-        token: ++preparingRequestToken,
-        topic,
-        id,
-        sessionEnded: false,
-        cancelMessage: '',
-        cancelCode: 5000,
+      if (verify.isScam) {
+        await this.failRequest(topic, id, 5000, 'Request blocked: WalletConnect Verify flagged this dapp as a known scam')
+        return
       }
+      void priorRequest
       this.preparingRequest = preparing
       try {
         const result = await Tx.PrepareWalletConnectSend(
           { ...(params.request.params as any), topic, requestId: id } as any,
         ) as unknown as WalletConnectPrepareOutcome
+        // A journal record could appear between lookup and prepare (a race);
+        // Prepare re-checks the journal, so honor a replay result here too.
         if (result.outcome === 'published' && result.published) {
-          // The journal already holds this exact request's published block
-          // (restart-shaped replay). Deliver the stored result — nothing is
-          // signed — and ack only once the dapp actually received it.
-          if (preparing.sessionEnded) return
-          try {
-            await c.respond({ topic, response: resultResponse(id, result.published) })
-            await Tx.AckWalletConnectResult(topic, id).catch(() => {})
-          } catch {
-            this.error = `Transaction ${result.publishedHash ?? ''} for this request was already published, but the dapp could not be notified. Do not submit it again.`
-          }
+          await this.deliverReplayPublished(preparing, result, verify)
           return
         }
         if (result.outcome === 'unknown') {
-          // A signed block for this exact request exists with an unresolved
-          // broadcast outcome. Only reconciliation may answer the dapp.
           if (preparing.sessionEnded || preparing.cancelMessage) return
           const session = this.sessions.find((item) => item.topic === topic)
           this.request = {
@@ -436,7 +488,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
             error: '',
             publishedResult: null,
             publishedHash: result.publishedHash ?? '',
-            sessionEnded: false,
+            sessionEnded: preparing.sessionEnded,
             ...verify,
           }
           return
@@ -474,9 +526,53 @@ export const useWalletConnectStore = defineStore('walletconnect', {
           await this.respondError(topic, id, preparing.cancelCode, preparing.cancelMessage).catch(() => {})
           return
         }
+        if (wallet.locked || !wallet.activeAddress()) {
+          await this.failRequest(topic, id, 9000, 'Wallet is locked')
+          return
+        }
         await this.failRequest(topic, id, -32602, messageOf(error))
       } finally {
         if (this.preparingRequest?.token === preparing.token) this.preparingRequest = null
+      }
+    },
+    // deliverReplayPublished delivers a journaled published result (nothing is
+    // signed) and acks only once the dapp has it. On a delivery failure it
+    // retains the standard retryable delivery-error request, carrying
+    // preparing.sessionEnded so a session that died during respond() never
+    // leaves a live retry button (round-3 finding 3).
+    async deliverReplayPublished(preparing: WalletConnectPreparingRequest, replay: WalletConnectPrepareOutcome, verify: WalletConnectVerify) {
+      const { topic, id } = preparing
+      if (preparing.sessionEnded) {
+        // The session ended before we could deliver; keep the journal record
+        // (it survives for a future redelivery) and surface an ended state.
+        this.retainReplayDeliveryError(preparing, replay, verify, true)
+        return
+      }
+      try {
+        const c = await this.ensureClient()
+        await c.respond({ topic, response: resultResponse(id, replay.published) })
+        await Tx.AckWalletConnectResult(topic, id).catch(() => {})
+      } catch {
+        this.retainReplayDeliveryError(preparing, replay, verify, preparing.sessionEnded)
+      }
+    },
+    retainReplayDeliveryError(preparing: WalletConnectPreparingRequest, replay: WalletConnectPrepareOutcome, verify: WalletConnectVerify, sessionEnded: boolean) {
+      const { topic, id } = preparing
+      const session = this.sessions.find((item) => item.topic === topic)
+      const label = replay.publishedHash ? ` ${replay.publishedHash}` : ''
+      this.request = {
+        topic,
+        id,
+        dapp: session?.name ?? 'Connected dapp',
+        preview: (replay.preview ?? {}) as SendPreview,
+        status: 'delivery-error',
+        error: sessionEnded
+          ? `Transaction${label} was published, but the dapp session ended before it could be notified. Do not submit it again.`
+          : `Transaction${label} was published, but the dapp could not be notified. Do not submit it again.`,
+        publishedResult: replay.published,
+        publishedHash: replay.publishedHash ?? '',
+        sessionEnded,
+        ...verify,
       }
     },
     async approveRequest() {

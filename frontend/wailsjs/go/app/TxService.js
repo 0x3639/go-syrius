@@ -22,6 +22,10 @@ export function ConfirmWalletConnectPublish(arg1) {
   return window['go']['app']['TxService']['ConfirmWalletConnectPublish'](arg1);
 }
 
+export function LookupWalletConnectPublication(arg1) {
+  return window['go']['app']['TxService']['LookupWalletConnectPublication'](arg1);
+}
+
 export function PrepareSend(arg1) {
   return window['go']['app']['TxService']['PrepareSend'](arg1);
 }

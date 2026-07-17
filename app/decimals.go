@@ -62,9 +62,15 @@ func resolveDecimalsChecked(zts string, lookup ztsDecimalsLookup) (int, error) {
 	return d, nil
 }
 
+// errTokenNotFound reports token metadata that does not exist on the connected
+// node. Display paths (resolveDecimals) degrade to defaultDecimals; the strict
+// confirmation path (resolveDecimalsChecked) must treat it as a failure — a
+// confirmation can never render an amount with guessed decimals.
+var errTokenNotFound = fmt.Errorf("token metadata not found on the connected node")
+
 // clientTokenDecimals returns a lookup that reads a token's decimals from the
 // node's TokenApi (the same GetByZts path GetTokenByZts uses). A nil/missing
-// token reports defaultDecimals via a nil error so the caller renders 8.
+// token is an ERROR; fail-open callers fall back to 8 themselves.
 func clientTokenDecimals(client *rpc_client.RpcClient) ztsDecimalsLookup {
 	return func(zts types.ZenonTokenStandard) (int, error) {
 		tok, err := client.TokenApi.GetByZts(zts)
@@ -72,7 +78,7 @@ func clientTokenDecimals(client *rpc_client.RpcClient) ztsDecimalsLookup {
 			return defaultDecimals, err
 		}
 		if tok == nil || tok.TokenStandard == types.ZeroTokenStandard {
-			return defaultDecimals, nil
+			return 0, errTokenNotFound
 		}
 		return int(tok.Decimals), nil
 	}

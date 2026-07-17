@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync"
 
 	"github.com/zenon-network/go-zenon/chain/nom"
@@ -165,40 +164,17 @@ func (j *wcJournal) put(key string, rec wcPublicationRecord) error {
 	if err != nil {
 		return err
 	}
-	m[key] = rec
-	j.evictLocked(m, key)
-	return j.saveLocked(m)
-}
-
-// evictLocked bounds retention. Published (delivered-or-deliverable) records
-// evict before signed/unknown ones — an unknown outcome is duplicate
-// protection and must be the last thing dropped. The just-written key is never
-// evicted.
-func (j *wcJournal) evictLocked(m map[string]wcPublicationRecord, keep string) {
-	for len(m) > wcJournalMaxRecords {
-		type kv struct {
-			key string
-			rec wcPublicationRecord
-		}
-		candidates := make([]kv, 0, len(m))
-		for k, r := range m {
-			if k == keep {
-				continue
-			}
-			candidates = append(candidates, kv{k, r})
-		}
-		if len(candidates) == 0 {
-			return
-		}
-		sort.Slice(candidates, func(a, b int) bool {
-			ra, rb := candidates[a].rec, candidates[b].rec
-			if (ra.State == wcStatePublished) != (rb.State == wcStatePublished) {
-				return ra.State == wcStatePublished
-			}
-			return ra.CreatedAt < rb.CreatedAt
-		})
-		delete(m, candidates[0].key)
+	// Every retained record is duplicate protection: a signed record is a
+	// possibly-published block, and a published record is only deleted once
+	// its result reached the dapp. Evicting either would let a redelivered
+	// request build a fresh block. When the journal is full, REFUSE the new
+	// write instead (which refuses the new broadcast — fail closed); updating
+	// an existing key stays possible so reconciliation can always progress.
+	if _, exists := m[key]; !exists && len(m) >= wcJournalMaxRecords {
+		return fmt.Errorf("the WalletConnect publication journal holds %d unresolved outcomes; reconcile or acknowledge them before publishing new requests", len(m))
 	}
+	m[key] = rec
+	return j.saveLocked(m)
 }
 
 func (j *wcJournal) markPublished(key string) error {

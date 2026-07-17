@@ -10,6 +10,8 @@ export function ConfirmPublish(arg1:number):Promise<string>;
 
 export function ConfirmWalletConnectPublish(arg1:number):Promise<Record<string, any>>;
 
+export function LookupWalletConnectPublication(arg1:app.WalletConnectSendRequest):Promise<app.WalletConnectPrepareResult>;
+
 export function PrepareSend(arg1:app.SendRequest):Promise<app.SendPreview>;
 
 export function PrepareWalletConnectSend(arg1:app.WalletConnectSendRequest):Promise<app.WalletConnectPrepareResult>;

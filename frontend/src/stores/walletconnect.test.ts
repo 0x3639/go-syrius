@@ -12,6 +12,7 @@ const h = vi.hoisted(() => {
     nodeStatus: vi.fn(),
     respond: vi.fn(),
     prepare: vi.fn(),
+    lookup: vi.fn(),
     confirm: vi.fn(),
     cancel: vi.fn(),
     reconcile: vi.fn(),
@@ -39,6 +40,7 @@ const fakeClient = {
 vi.mock('@walletconnect/sign-client', () => ({ SignClient: { init: h.init } }))
 vi.mock('../../wailsjs/go/app/TxService', () => ({
   PrepareWalletConnectSend: h.prepare,
+  LookupWalletConnectPublication: h.lookup,
   ConfirmWalletConnectPublish: h.confirm,
   CancelPending: h.cancel,
   ReconcileWalletConnectPublication: h.reconcile,
@@ -58,6 +60,7 @@ import {
 } from './walletconnect'
 import { useWalletStore } from './wallet'
 import { useNodeStore } from './node'
+import { useTxStore } from './tx'
 
 const bridgeNamespaces = {
   zenon: {
@@ -158,6 +161,7 @@ describe('WalletConnect request handling', () => {
     h.prepare.mockReset()
     h.confirm.mockReset()
     h.cancel.mockReset().mockResolvedValue(undefined)
+    h.lookup.mockReset().mockResolvedValue({ outcome: 'none' })
     h.reconcile.mockReset()
     h.ack.mockReset().mockResolvedValue(undefined)
     h.update.mockReset().mockResolvedValue({ acknowledged: async () => {} })
@@ -226,14 +230,115 @@ describe('WalletConnect request handling', () => {
     expect(wc.error).toContain('Wallet is not connected to a Zenon node')
   })
 
-  it('rejects requests while the wallet is locked before preparing anything', async () => {
+  it('answers a locked-wallet fresh znn_send with 9000 after consulting the backend journal', async () => {
+    // The backend must be consulted even while locked: a journaled outcome
+    // must replay. Only a FRESH request maps the backend's locked error to 9000.
     const wc = useWalletConnectStore()
+    h.prepare.mockRejectedValueOnce(new Error('wallet is locked'))
     await wc.handleRequest(sendEvent(9))
 
-    expect(h.prepare).not.toHaveBeenCalled()
+    expect(h.prepare).toHaveBeenCalled()
     expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
       response: expect.objectContaining({ error: { code: 9000, message: 'Wallet is locked' } }),
     }))
+  })
+
+  it('rejects a locked-wallet znn_info without touching the node', async () => {
+    const wc = useWalletConnectStore()
+    await wc.handleRequest({ topic: 'topic', id: 10, params: { chainId: 'zenon:1', request: { method: 'znn_info' } } })
+
+    expect(h.nodeStatus).not.toHaveBeenCalled()
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      response: expect.objectContaining({ error: { code: 9000, message: 'Wallet is locked' } }),
+    }))
+  })
+
+  it('replays a journaled published result even while the wallet is locked', async () => {
+    const wc = useWalletConnectStore()
+    h.lookup.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'locked-replay-hash' }, publishedHash: 'locked-replay-hash' })
+
+    await wc.handleRequest(sendEvent(61, 'locked-replay'))
+
+    expect(h.prepare).not.toHaveBeenCalled()
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      topic: 'locked-replay',
+      response: expect.objectContaining({ result: { hash: 'locked-replay-hash' } }),
+    }))
+    expect(h.ack).toHaveBeenCalledWith('locked-replay', 61)
+  })
+
+  it('blocks a scam-flagged znn_info before disclosing anything', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    await wc.handleRequest({
+      topic: 'topic',
+      id: 62,
+      params: { chainId: 'zenon:1', request: { method: 'znn_info' } },
+      verifyContext: { verified: { origin: 'https://scam.example', validation: 'INVALID', isScam: true } },
+    })
+
+    expect(h.nodeStatus).not.toHaveBeenCalled()
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      response: expect.objectContaining({ error: expect.objectContaining({ code: 5000 }) }),
+    }))
+  })
+
+  it('keeps a retryable delivery-error state when replay delivery fails', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    h.lookup.mockResolvedValueOnce({
+      outcome: 'published',
+      published: { hash: 'replay-retry-hash' },
+      preview: { ...preview, holdId: 0 },
+      publishedHash: 'replay-retry-hash',
+    })
+    h.respond.mockRejectedValueOnce(new Error('relay unavailable'))
+
+    await wc.handleRequest(sendEvent(63, 'replay-retry'))
+
+    expect(h.ack).not.toHaveBeenCalled()
+    expect(wc.request?.status).toBe('delivery-error')
+    expect(wc.request?.publishedHash).toBe('replay-retry-hash')
+    expect(wc.request?.sessionEnded).toBe(false)
+
+    h.respond.mockResolvedValueOnce(undefined)
+    await wc.retryPublishedResponse()
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      topic: 'replay-retry',
+      response: expect.objectContaining({ result: { hash: 'replay-retry-hash' } }),
+    }))
+    expect(h.ack).toHaveBeenCalledWith('replay-retry', 63)
+    expect(wc.request).toBeNull()
+  })
+
+  it('marks the delivery-error session-ended when the session dies during replay delivery', async () => {
+    // Round-3 finding 3: if the session ends while respond() is pending, the
+    // retained delivery-error must carry sessionEnded so no retry targets a
+    // dead session.
+    unlock()
+    const wc = useWalletConnectStore()
+    h.lookup.mockResolvedValueOnce({
+      outcome: 'published',
+      published: { hash: 'ended-replay-hash' },
+      preview: { ...preview, holdId: 0 },
+      publishedHash: 'ended-replay-hash',
+    })
+    h.respond.mockImplementationOnce(async () => {
+      // Session ends mid-respond.
+      await wc.handleSessionEnded({ topic: 'ended-replay' })
+      throw new Error('relay closed')
+    })
+
+    await wc.handleRequest(sendEvent(64, 'ended-replay'))
+
+    expect(wc.request?.status).toBe('delivery-error')
+    expect(wc.request?.sessionEnded).toBe(true)
+    expect(wc.request?.error).toContain('session ended')
+
+    // Retry is a no-op against a dead session.
+    h.respond.mockClear()
+    await wc.retryPublishedResponse()
+    expect(h.respond).not.toHaveBeenCalled()
   })
 
   it('cancels the exact backend hold before answering a user rejection', async () => {
@@ -596,10 +701,11 @@ describe('WalletConnect request handling', () => {
   it('replays a journaled published result without a modal and acks after delivery', async () => {
     unlock()
     const wc = useWalletConnectStore()
-    h.prepare.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'journaled-hash' }, publishedHash: 'journaled-hash' })
+    h.lookup.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'journaled-hash' }, publishedHash: 'journaled-hash' })
 
     await wc.handleRequest(sendEvent(52, 'replay-topic'))
 
+    expect(h.prepare).not.toHaveBeenCalled()
     expect(h.confirm).not.toHaveBeenCalled()
     expect(wc.request).toBeNull()
     expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
@@ -612,14 +718,56 @@ describe('WalletConnect request handling', () => {
   it('enters the reconcile flow for an unknown-outcome replay instead of re-preparing', async () => {
     unlock()
     const wc = useWalletConnectStore()
-    h.prepare.mockResolvedValueOnce({ outcome: 'unknown', preview: { ...preview, holdId: 0 }, publishedHash: 'maybe-hash' })
+    h.lookup.mockResolvedValueOnce({ outcome: 'unknown', preview: { ...preview, holdId: 0 }, publishedHash: 'maybe-hash' })
 
     await wc.handleRequest(sendEvent(53, 'unknown-topic'))
 
+    expect(h.prepare).not.toHaveBeenCalled()
     expect(wc.request?.status).toBe('unknown')
     expect(wc.request?.publishedHash).toBe('maybe-hash')
     expect(h.respond).not.toHaveBeenCalled()
     expect(h.ack).not.toHaveBeenCalled()
+  })
+
+  it('replays a journaled outcome before the scam gate, existing request, and busy tx', async () => {
+    // Round-3 finding 1: a redelivered journaled request must resolve before
+    // the frontend scam/existing/busy gates can turn it into a rejection.
+    unlock()
+    const wc = useWalletConnectStore()
+    wc.request = { // an unrelated awaiting request occupies the single slot
+      topic: 'other', id: 999, dapp: 'Other', preview: { ...preview },
+      status: 'awaiting', error: '', publishedResult: null, publishedHash: '',
+      sessionEnded: false, verifiedOrigin: '', validation: 'UNKNOWN', isScam: false,
+    } as any
+    const tx = useTxStore()
+    tx.status = 'publishing'
+    h.lookup.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'gated-replay' }, publishedHash: 'gated-replay' })
+
+    const event = sendEvent(71, 'scam-replay')
+    ;(event as any).verifyContext = { verified: { origin: 'https://scam.example', validation: 'INVALID', isScam: true } }
+    await wc.handleRequest(event)
+
+    expect(h.prepare).not.toHaveBeenCalled()
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      topic: 'scam-replay',
+      response: expect.objectContaining({ result: { hash: 'gated-replay' } }),
+    }))
+    expect(h.ack).toHaveBeenCalledWith('scam-replay', 71)
+  })
+
+  it('fails closed when lookup reports a reused id with a different intent', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    h.lookup.mockRejectedValueOnce(new Error('this WalletConnect request id was already used for a different transaction; refusing'))
+
+    await wc.handleRequest(sendEvent(72, 'reuse-topic'))
+
+    expect(h.prepare).not.toHaveBeenCalled()
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      topic: 'reuse-topic',
+      response: expect.objectContaining({ error: expect.objectContaining({ code: 5000 }) }),
+    }))
+    expect(wc.request).toBeNull()
   })
 
   it('routes an unknown-outcome confirm error into reconcile, never a rejection', async () => {

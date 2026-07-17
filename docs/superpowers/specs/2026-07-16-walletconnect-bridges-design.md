@@ -102,3 +102,46 @@ Verification after remediation: Go tests (including new journal/reconcile/
 expiry/guard-ordering coverage), `go vet`, Vitest (46 WalletConnect-specific
 tests), vue-tsc, and the production build all pass. The mainnet acceptance run
 (pair, `znn_info`, preview, reject, one small publish) is still outstanding.
+
+#### Round-2 review fixes (2026-07-17)
+
+A follow-up review of the remediation commit surfaced six findings, all fixed:
+
+1. Journaled requests now resolve **before** the locked-wallet/chain/node
+   gates (sender-independent intent validation), so a known outcome is never
+   answered with an ordinary rejection; the frontend consults the backend for
+   `znn_send` even while locked and maps only *fresh* requests to code 9000.
+2. The journal cap no longer evicts: every retained record is duplicate
+   protection, so a full journal refuses **new** writes (and therefore new
+   broadcasts) while existing records stay updatable for reconciliation.
+3. Custom-token decimals are resolved exactly once — missing token metadata is
+   an error, and the checked value is stamped into the confirmation preview
+   (no second fail-open lookup).
+4. Reconciliation serializes under the publication mutex and requires the
+   connected node to be on the journaled block's chain before a "not found"
+   query result counts as evidence or a rebroadcast is attempted.
+5. The Verify known-scam block now runs before *any* method dispatch,
+   including `znn_info`.
+6. A failed delivery of a replayed published result keeps the standard
+   retryable delivery-error state (with the journaled result) instead of a
+   dead global error.
+
+#### Round-3 review fixes (2026-07-17)
+
+A third review pass surfaced one remaining P1 and two P2 edge cases, all fixed:
+
+1. **[P1] Journal replay now precedes the frontend policy gates.** A new
+   journal-only `Tx.LookupWalletConnectPublication` (no wallet/node gate, never
+   creates a hold) resolves a redelivered `znn_send` before the scam,
+   existing-request, and busy-`tx.status` gates, so a published/unknown outcome
+   is never turned into code 5000 or `-32000`. A fresh (unjournaled) request
+   still passes through all those gates and `PrepareWalletConnectSend`; a reused
+   id with a different intent fails closed.
+2. **[P2] Reconciliation reads the client and chain in one snapshot.**
+   `NodeService.connectionSnapshot()` returns both under a single read lock, so
+   a node transition can't pair an old client with the new chain identifier
+   between the two accessor calls.
+3. **[P2] Session end during replay delivery is preserved.** A
+   `session_delete`/expire that lands while a replayed result's `respond()` is
+   in flight now carries `sessionEnded` into the retained delivery-error state
+   (with the ended-session message), so no retry button targets a dead session.

@@ -641,6 +641,15 @@ func (n *NodeService) currentChainID() uint64 {
 	return n.chainID
 }
 
+// connectionSnapshot returns the client and its chain identifier read together
+// under one lock, so a node transition cannot pair an old client with a new
+// chain id (or vice-versa) between two separate accessor calls.
+func (n *NodeService) connectionSnapshot() (*rpc_client.RpcClient, uint64) {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.client, n.chainID
+}
+
 // setReceiveFunc wires the callback used by auto-receive to receive each block.
 func (n *NodeService) setReceiveFunc(fn func(string) (string, error)) { n.receiveFn = fn }
 

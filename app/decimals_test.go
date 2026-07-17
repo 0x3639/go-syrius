@@ -125,3 +125,19 @@ func TestResolveDecimalsCheckedFailsInsteadOfGuessing(t *testing.T) {
 		t.Fatal("expected error when no lookup is available")
 	}
 }
+
+func TestClientTokenDecimalsContractTreatsMissingTokenAsError(t *testing.T) {
+	// Round-2 finding 3: a missing token must be an ERROR from the strict
+	// resolver's perspective, never a silent (8, nil) guess. This pins the
+	// resolveDecimalsChecked contract for the lookup used at prepare time.
+	missing := func(types.ZenonTokenStandard) (int, error) {
+		return 0, errTokenNotFound
+	}
+	if _, err := resolveDecimalsChecked(customZts, missing); err == nil {
+		t.Fatal("missing token metadata must fail the strict decimals check")
+	}
+	// The display path still degrades to 8 for the same condition.
+	if d := resolveDecimals(customZts, missing); d != 8 {
+		t.Fatalf("display fallback = %d, want 8", d)
+	}
+}

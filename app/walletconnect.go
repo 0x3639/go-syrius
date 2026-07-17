@@ -13,9 +13,10 @@ import (
 	definition "github.com/zenon-network/go-zenon/vm/embedded/definition"
 )
 
-// walletConnectBridgeTemplate validates the dapp's immutable intent and
-// reconstructs a clean block. In particular, no dapp-supplied frontier, PoW,
-// hash, public key, or signature field can enter the signing path.
+// walletConnectBridgeTemplate validates the dapp's immutable intent against
+// the ACTIVE wallet account and reconstructs a clean block for a fresh
+// prepare. In particular, no dapp-supplied frontier, PoW, hash, public key, or
+// signature field can enter the signing path.
 func walletConnectBridgeTemplate(req WalletConnectSendRequest, active types.Address) (*nom.AccountBlock, callExpect, *TransactionEffect, error) {
 	from, err := types.ParseAddress(req.FromAddress)
 	if err != nil {
@@ -24,6 +25,15 @@ func walletConnectBridgeTemplate(req WalletConnectSendRequest, active types.Addr
 	if from != active {
 		return nil, callExpect{}, nil, errors.New("WalletConnect sender is not the active wallet account")
 	}
+	return walletConnectValidateIntent(req, from)
+}
+
+// walletConnectValidateIntent is the sender-independent validation core: it
+// rebuilds the clean template with `from` as the sender WITHOUT comparing it
+// to the active account. Journal replays use it so an already-journaled
+// request can be matched against its intent hash even while the wallet is
+// locked or on another account — nothing on this path can sign.
+func walletConnectValidateIntent(req WalletConnectSendRequest, from types.Address) (*nom.AccountBlock, callExpect, *TransactionEffect, error) {
 	b := req.AccountBlock
 	if b.Version != 1 {
 		return nil, callExpect{}, nil, fmt.Errorf("unsupported account-block version %d", b.Version)
@@ -35,13 +45,13 @@ func walletConnectBridgeTemplate(req WalletConnectSendRequest, active types.Addr
 		return nil, callExpect{}, nil, errors.New("WalletConnect bridge request must be a user-send block")
 	}
 	// SDK contract templates normally carry ZeroAddress until the wallet fills
-	// the sender. If a dapp does populate it, it must match the active account.
+	// the sender. If a dapp does populate it, it must match the envelope sender.
 	if b.Address != "" {
 		blockFrom, parseErr := types.ParseAddress(b.Address)
 		if parseErr != nil {
 			return nil, callExpect{}, nil, fmt.Errorf("invalid account-block sender: %w", parseErr)
 		}
-		if blockFrom != types.ZeroAddress && blockFrom != active {
+		if blockFrom != types.ZeroAddress && blockFrom != from {
 			return nil, callExpect{}, nil, errors.New("account-block sender is not the active wallet account")
 		}
 	}
@@ -91,14 +101,14 @@ func walletConnectBridgeTemplate(req WalletConnectSendRequest, active types.Addr
 		Version:         1,
 		ChainIdentifier: mainnetChainID,
 		BlockType:       nom.BlockTypeUserSend,
-		Address:         active,
+		Address:         from,
 		ToAddress:       to,
 		Amount:          new(big.Int).Set(amount),
 		TokenStandard:   zts,
 		Data:            append([]byte(nil), data...),
 	}
 	expect := callExpect{
-		from:   active,
+		from:   from,
 		to:     to,
 		zts:    zts,
 		amount: new(big.Int).Set(amount),
@@ -116,8 +126,56 @@ const wcOutcomeUnknownMarker = "walletconnect publication outcome unknown"
 // confirm-what-you-sign flow used by first-party wallet actions. A request
 // whose identity is already journaled replays the stored outcome instead of
 // ever building a fresh block (WC-01).
+// LookupWalletConnectPublication resolves an already-journaled request WITHOUT
+// any live wallet/node gate and without ever creating a hold. The frontend
+// calls it before its scam/busy policy gates so a redelivered published or
+// unknown outcome is replayed rather than turned into a rejection — while a
+// fresh (unjournaled) request still gets Outcome "none" and remains subject to
+// those gates and PrepareWalletConnectSend. A reused request id carrying a
+// different intent fails closed.
+func (t *TxService) LookupWalletConnectPublication(req WalletConnectSendRequest) (WalletConnectPrepareResult, error) {
+	none := WalletConnectPrepareResult{Outcome: "none"}
+	if req.Topic == "" || req.RequestID == 0 {
+		return none, nil
+	}
+	rec, found, err := t.wcJournal.get(wcJournalKey(req.Topic, req.RequestID))
+	if err != nil {
+		return WalletConnectPrepareResult{}, fmt.Errorf("cannot read the publication journal: %v", err)
+	}
+	if !found {
+		return none, nil
+	}
+	from, perr := types.ParseAddress(req.FromAddress)
+	if perr != nil {
+		// A malformed sender can never match a journaled (validated) record;
+		// let the fresh-prepare path produce the precise validation error.
+		return none, nil
+	}
+	replayTemplate, _, _, verr := walletConnectValidateIntent(req, from)
+	if verr != nil {
+		return none, nil
+	}
+	if rec.IntentHash != walletConnectIntentHash(replayTemplate) {
+		return WalletConnectPrepareResult{}, errors.New("this WalletConnect request id was already used for a different transaction; refusing")
+	}
+	return t.walletConnectReplayResult(rec)
+}
+
 func (t *TxService) PrepareWalletConnectSend(req WalletConnectSendRequest) (WalletConnectPrepareResult, error) {
 	none := WalletConnectPrepareResult{}
+	if req.Topic == "" || req.RequestID == 0 {
+		return none, errors.New("missing WalletConnect request identity (topic and request id)")
+	}
+	// Resolve an already-journaled request BEFORE any live wallet or node gate:
+	// funds may already have moved for it, and a locked wallet, another active
+	// account, or a different chain must never turn a known outcome into an
+	// ordinary rejection. (The frontend also calls Lookup directly ahead of its
+	// own gates; this keeps a direct PrepareWalletConnectSend caller safe too.)
+	if replay, err := t.LookupWalletConnectPublication(req); err != nil {
+		return none, err
+	} else if replay.Outcome != "none" {
+		return replay, nil
+	}
 	active, ok := t.wallet.activeAddress()
 	if !ok {
 		return none, errLocked
@@ -128,28 +186,18 @@ func (t *TxService) PrepareWalletConnectSend(req WalletConnectSendRequest) (Wall
 	if t.node.currentChainID() != mainnetChainID {
 		return none, errors.New("connect to a Zenon mainnet node before using WalletConnect")
 	}
-	if req.Topic == "" || req.RequestID == 0 {
-		return none, errors.New("missing WalletConnect request identity (topic and request id)")
-	}
 	template, expect, effect, err := walletConnectBridgeTemplate(req, active)
 	if err != nil {
 		return none, err
 	}
 	intentHash := walletConnectIntentHash(template)
-	key := wcJournalKey(req.Topic, req.RequestID)
-	if rec, found, jerr := t.wcJournal.get(key); jerr != nil {
-		return none, fmt.Errorf("cannot read the publication journal: %v", jerr)
-	} else if found {
-		if rec.IntentHash != intentHash {
-			return none, errors.New("this WalletConnect request id was already used for a different transaction; refusing")
-		}
-		return t.walletConnectReplayResult(rec)
-	}
 	// WC-03: the confirmation renders a human amount from token decimals. ZNN
 	// and QSR are protocol-fixed; a custom token whose decimals cannot be
-	// resolved must fail preparation instead of being formatted with a guess.
-	// The lookup is lazy so native tokens never require the client here and the
-	// downstream connectivity/mainnet gates keep their error precedence.
+	// resolved (including missing metadata) must fail preparation instead of
+	// being formatted with a guess. The value resolved HERE is stamped into
+	// the preview — no second, fail-open lookup may replace it. The lookup is
+	// lazy so native tokens never require the client and the downstream
+	// connectivity/mainnet gates keep their error precedence.
 	lookup := t.decimalsLookup
 	if lookup == nil {
 		lookup = func(zts types.ZenonTokenStandard) (int, error) {
@@ -160,10 +208,11 @@ func (t *TxService) PrepareWalletConnectSend(req WalletConnectSendRequest) (Wall
 			return clientTokenDecimals(client)(zts)
 		}
 	}
-	if _, err := resolveDecimalsChecked(template.TokenStandard.String(), lookup); err != nil {
+	decimals, err := resolveDecimalsChecked(template.TokenStandard.String(), lookup)
+	if err != nil {
 		return none, err
 	}
-	preview, err := t.prepareCallWithEffect(template, expect, "Bridge."+effect.Method, effect)
+	preview, err := t.prepareCallWithEffectDecimals(template, expect, "Bridge."+effect.Method, effect, &decimals)
 	if err != nil {
 		return none, err
 	}
@@ -180,16 +229,18 @@ func (t *TxService) PrepareWalletConnectSend(req WalletConnectSendRequest) (Wall
 // published records replay the stored result; signed records surface the
 // reconcile flow with a preview rebuilt from the journaled block.
 func (t *TxService) walletConnectReplayResult(rec wcPublicationRecord) (WalletConnectPrepareResult, error) {
+	preview, err := t.wcPreviewFromRecord(rec)
+	if err != nil {
+		return WalletConnectPrepareResult{}, err
+	}
 	if rec.State == wcStatePublished {
 		result, err := wcRecordResult(rec)
 		if err != nil {
 			return WalletConnectPrepareResult{}, err
 		}
-		return WalletConnectPrepareResult{Outcome: "published", Published: result, PublishedHash: rec.Hash}, nil
-	}
-	preview, err := t.wcPreviewFromRecord(rec)
-	if err != nil {
-		return WalletConnectPrepareResult{}, err
+		// The preview accompanies the result so a failed delivery can keep a
+		// renderable retry dialog on the frontend.
+		return WalletConnectPrepareResult{Outcome: "published", Published: result, Preview: preview, PublishedHash: rec.Hash}, nil
 	}
 	return WalletConnectPrepareResult{Outcome: "unknown", Preview: preview, PublishedHash: rec.Hash}, nil
 }
@@ -251,6 +302,14 @@ func (t *TxService) ConfirmWalletConnectPublish(holdID uint64) (map[string]inter
 // the EXACT journaled signed block — never a rebuilt one. Retryable until the
 // outcome is known.
 func (t *TxService) ReconcileWalletConnectPublication(topic string, requestID uint64) (map[string]interface{}, error) {
+	// A rebroadcast lands on the same account frontier as any other
+	// publication: serialize with ConfirmPublish and Receive, or it could race
+	// them into sibling blocks. TryLock (not Lock) so a stuck publish surfaces
+	// as an explicit retryable error.
+	if !t.publishMu.TryLock() {
+		return nil, errors.New("a transaction is already being published")
+	}
+	defer t.publishMu.Unlock()
 	key := wcJournalKey(topic, requestID)
 	rec, found, err := t.wcJournal.get(key)
 	if err != nil {
@@ -262,7 +321,11 @@ func (t *TxService) ReconcileWalletConnectPublication(topic string, requestID ui
 	if rec.State == wcStatePublished {
 		return wcRecordResult(rec)
 	}
-	client := t.node.currentClient()
+	// Read the client and its chain identifier together: a node transition
+	// between two separate accessor calls could pair an old client with the new
+	// chain id, letting the query/rebroadcast hit a connection the chain check
+	// never validated.
+	client, connectedChain := t.node.connectionSnapshot()
 	if client == nil {
 		return nil, errors.New("not connected")
 	}
@@ -270,30 +333,36 @@ func (t *TxService) ReconcileWalletConnectPublication(topic string, requestID ui
 	if err != nil {
 		return nil, fmt.Errorf("corrupt journal record hash %q: %v", rec.Hash, err)
 	}
-	query := t.blockByHashFn
-	if query == nil {
-		query = func(c *rpc_client.RpcClient, h types.Hash) (bool, error) {
-			block, err := c.LedgerApi.GetAccountBlockByHash(h)
-			if err != nil {
-				return false, err
-			}
-			return block != nil && block.Hash == h, nil
-		}
-	}
-	found, queryErr := query(client, hash)
-	if found {
-		_ = t.wcJournal.markPublished(key)
-		return wcRecordResult(rec)
-	}
-	if queryErr != nil {
-		return nil, fmt.Errorf("%s: cannot verify the outcome: %v; check again when the node is reachable", wcOutcomeUnknownMarker, queryErr)
-	}
 	var block nom.AccountBlock
 	if err := json.Unmarshal(rec.BlockJSON, &block); err != nil {
 		return nil, fmt.Errorf("corrupt journaled block for %s: %v", rec.Hash, err)
 	}
 	if block.Hash != hash {
 		return nil, errors.New("journal record integrity check failed; refusing to rebroadcast")
+	}
+	// The connected node must be on the block's chain BEFORE the query counts
+	// as evidence: "not found" from a node on another network proves nothing,
+	// and rebroadcasting there would submit to the wrong chain.
+	if block.ChainIdentifier != connectedChain {
+		return nil, fmt.Errorf("the connected node is on chain %d but the journaled block belongs to chain %d; reconnect before checking the outcome", connectedChain, block.ChainIdentifier)
+	}
+	query := t.blockByHashFn
+	if query == nil {
+		query = func(c *rpc_client.RpcClient, h types.Hash) (bool, error) {
+			queried, err := c.LedgerApi.GetAccountBlockByHash(h)
+			if err != nil {
+				return false, err
+			}
+			return queried != nil && queried.Hash == h, nil
+		}
+	}
+	onChain, queryErr := query(client, hash)
+	if onChain {
+		_ = t.wcJournal.markPublished(key)
+		return wcRecordResult(rec)
+	}
+	if queryErr != nil {
+		return nil, fmt.Errorf("%s: cannot verify the outcome: %v; check again when the node is reachable", wcOutcomeUnknownMarker, queryErr)
 	}
 	// The user approved this exact block, but respect a since-revoked mainnet
 	// opt-in for the (re)broadcast itself; querying stays available regardless.

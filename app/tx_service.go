@@ -445,6 +445,15 @@ func (t *TxService) prepareCall(template *nom.AccountBlock, expect callExpect, s
 // prepareCallWithEffect is prepareCall plus a decoded TransactionEffect for the
 // confirm dialog (used by flows whose material parameters live in ABI data).
 func (t *TxService) prepareCallWithEffect(template *nom.AccountBlock, expect callExpect, summary string, effect *TransactionEffect) (CallPreview, error) {
+	return t.prepareCallWithEffectDecimals(template, expect, summary, effect, nil)
+}
+
+// prepareCallWithEffectDecimals additionally accepts a pre-resolved decimals
+// value. WalletConnect resolves decimals strictly (missing metadata fails) and
+// stamps THAT value here, so a second fail-open lookup can never replace it in
+// the confirmation. nil keeps the fail-open display resolution used by
+// first-party flows.
+func (t *TxService) prepareCallWithEffectDecimals(template *nom.AccountBlock, expect callExpect, summary string, effect *TransactionEffect, decimals *int) (CallPreview, error) {
 	if err := t.guard(); err != nil {
 		return CallPreview{}, err
 	}
@@ -477,13 +486,19 @@ func (t *TxService) prepareCallWithEffect(template *nom.AccountBlock, expect cal
 	if err != nil {
 		return CallPreview{}, err
 	}
+	dec := 0
+	if decimals != nil {
+		dec = *decimals
+	} else {
+		dec = resolveDecimals(template.TokenStandard.String(), clientTokenDecimals(client))
+	}
 	return CallPreview{
 		FromAddress: from.String(),
 		ToAddress:   template.ToAddress.String(),
 		Zts:         template.TokenStandard.String(),
 		Symbol:      t.symbolFor(template.TokenStandard.String()),
 		Amount:      template.Amount.String(),
-		Decimals:    resolveDecimals(template.TokenStandard.String(), clientTokenDecimals(client)),
+		Decimals:    dec,
 		Summary:     summary,
 		Effect:      effect,
 		NeedsPoW:    needsPoW,

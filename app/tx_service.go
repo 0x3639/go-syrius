@@ -382,6 +382,8 @@ func (t *TxService) confirmPublishBlock(holdId uint64) (*nom.AccountBlock, error
 			return nil, fmt.Errorf("cannot encode the signed block: %v", err)
 		}
 		rec := wcPublicationRecord{
+			Topic:      wcID.Topic,
+			RequestID:  wcID.ID,
 			IntentHash: wcID.IntentHash,
 			State:      wcStateSigned,
 			BlockJSON:  blockJSON,

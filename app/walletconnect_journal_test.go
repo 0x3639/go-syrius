@@ -539,3 +539,109 @@ func TestNodeConnectionSnapshotReadsClientAndChainTogether(t *testing.T) {
 		t.Fatalf("snapshot = %v, %d; want non-nil client and chain 7", client, chain)
 	}
 }
+
+func journalSignedRecord(t *testing.T, tx *TxService, topic string, reqID uint64, req WalletConnectSendRequest, state wcPublicationState, hashHex string) *nom.AccountBlock {
+	t.Helper()
+	from := types.ParseAddressPanic(req.FromAddress)
+	template, _, _, err := walletConnectValidateIntent(req, from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	built := stubBuilt(template, hashHex)
+	blockJSON, err := json.Marshal(built)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.wcJournal.put(wcJournalKey(topic, reqID), wcPublicationRecord{
+		Topic: topic, RequestID: reqID, IntentHash: walletConnectIntentHash(template),
+		State: state, BlockJSON: blockJSON, Hash: built.Hash.String(), CreatedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return built
+}
+
+func TestLookupMatchesRetainedUnresolvedIntentUnderNewID(t *testing.T) {
+	// P1: a retained UNRESOLVED (signed) record must block a fresh publication
+	// of the identical intent reissued under a NEW request id in the same
+	// session — otherwise a second block could be signed for the same transfer.
+	tx := newTestTxService(t)
+	req, _ := validWalletConnectRequest(t)
+	req.Topic = "sess"
+	req.RequestID = 100
+	journalSignedRecord(t, tx, "sess", 100, req, wcStateSigned, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
+
+	newReq := req
+	newReq.RequestID = 101 // same intent, new id
+	res, err := tx.LookupWalletConnectPublication(newReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Outcome == "none" {
+		t.Fatal("a new id with a retained matching intent resolved to none; a duplicate block could be built")
+	}
+	if res.Outcome != "unknown" {
+		t.Fatalf("outcome = %q, want unknown (unresolved match)", res.Outcome)
+	}
+	if res.JournalTopic != "sess" || res.JournalRequestID != 100 {
+		t.Fatalf("result must carry the ORIGINAL journal key for reconcile/ack, got %s#%d", res.JournalTopic, res.JournalRequestID)
+	}
+
+	// Prepare must not build a fresh hold for the duplicate — the intent-matched
+	// replay resolves before any wallet/node gate, so no setup is needed.
+	out, err := tx.PrepareWalletConnectSend(newReq)
+	if err != nil {
+		t.Fatalf("prepare of a matched-intent new id must return the replay, not error: %v", err)
+	}
+	if out.Outcome != "unknown" {
+		t.Fatalf("prepare outcome = %q, want unknown replay", out.Outcome)
+	}
+	if tx.pending != nil {
+		t.Fatal("a duplicate-intent new id must NEVER create a fresh hold")
+	}
+}
+
+func TestLookupMatchesRetainedPublishedIntentUnderNewID(t *testing.T) {
+	tx := newTestTxService(t)
+	req, _ := validWalletConnectRequest(t)
+	req.Topic = "sess"
+	req.RequestID = 200
+	built := journalSignedRecord(t, tx, "sess", 200, req, wcStatePublished, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
+
+	newReq := req
+	newReq.RequestID = 201
+	res, err := tx.LookupWalletConnectPublication(newReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Outcome != "published" || res.Published["hash"] != built.Hash.String() {
+		t.Fatalf("published intent match = %+v", res)
+	}
+	if res.JournalTopic != "sess" || res.JournalRequestID != 200 {
+		t.Fatalf("published match must carry the original key, got %s#%d", res.JournalTopic, res.JournalRequestID)
+	}
+}
+
+func TestLookupDoesNotMatchDifferentIntentOrTopic(t *testing.T) {
+	tx := newTestTxService(t)
+	req, _ := validWalletConnectRequest(t)
+	req.Topic = "sess"
+	req.RequestID = 300
+	journalSignedRecord(t, tx, "sess", 300, req, wcStateSigned, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
+
+	// Different amount under a new id → no match (genuinely fresh).
+	diff := req
+	diff.RequestID = 301
+	diff.AccountBlock.Amount = "200000000"
+	if res, err := tx.LookupWalletConnectPublication(diff); err != nil || res.Outcome != "none" {
+		t.Fatalf("different intent = %+v, %v; want none", res, err)
+	}
+	// Same intent but a DIFFERENT topic (session) → not matched (avoids
+	// false-positives across unrelated dapps).
+	otherTopic := req
+	otherTopic.Topic = "other-sess"
+	otherTopic.RequestID = 302
+	if res, err := tx.LookupWalletConnectPublication(otherTopic); err != nil || res.Outcome != "none" {
+		t.Fatalf("cross-topic same intent = %+v, %v; want none", res, err)
+	}
+}

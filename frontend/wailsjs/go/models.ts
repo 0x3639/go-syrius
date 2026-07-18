@@ -1013,6 +1013,8 @@ export namespace app {
 	    preview?: CallPreview;
 	    published?: Record<string, any>;
 	    publishedHash?: string;
+	    journalTopic?: string;
+	    journalRequestId?: number;
 
 	    static createFrom(source: any = {}) {
 	        return new WalletConnectPrepareResult(source);
@@ -1024,6 +1026,8 @@ export namespace app {
 	        this.preview = this.convertValues(source["preview"], CallPreview);
 	        this.published = source["published"];
 	        this.publishedHash = source["publishedHash"];
+	        this.journalTopic = source["journalTopic"];
+	        this.journalRequestId = source["journalRequestId"];
 	    }
 
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

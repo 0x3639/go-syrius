@@ -138,12 +138,10 @@ func (t *TxService) LookupWalletConnectPublication(req WalletConnectSendRequest)
 	if req.Topic == "" || req.RequestID == 0 {
 		return none, nil
 	}
-	rec, found, err := t.wcJournal.get(wcJournalKey(req.Topic, req.RequestID))
+	key := wcJournalKey(req.Topic, req.RequestID)
+	rec, found, err := t.wcJournal.get(key)
 	if err != nil {
 		return WalletConnectPrepareResult{}, fmt.Errorf("cannot read the publication journal: %v", err)
-	}
-	if !found {
-		return none, nil
 	}
 	from, perr := types.ParseAddress(req.FromAddress)
 	if perr != nil {
@@ -155,15 +153,31 @@ func (t *TxService) LookupWalletConnectPublication(req WalletConnectSendRequest)
 	if verr != nil {
 		return none, nil
 	}
-	if rec.IntentHash != walletConnectIntentHash(replayTemplate) {
-		// A reused request id carrying a different intent. This is a resolved
-		// outcome, NOT a Go error: only a genuine journal READ failure returns
-		// an error, so the frontend can reject a conflict (5000) while treating
-		// an unknown-status read failure as retryable rather than a definite
-		// rejection.
-		return WalletConnectPrepareResult{Outcome: "conflict"}, nil
+	intentHash := walletConnectIntentHash(replayTemplate)
+	if found {
+		if rec.IntentHash != intentHash {
+			// A reused request id carrying a different intent. This is a resolved
+			// outcome, NOT a Go error: only a genuine journal READ failure returns
+			// an error, so the frontend can reject a conflict (5000) while treating
+			// an unknown-status read failure as retryable rather than a definite
+			// rejection.
+			return WalletConnectPrepareResult{Outcome: "conflict"}, nil
+		}
+		return t.walletConnectReplayResult(rec, req.Topic, req.RequestID)
 	}
-	return t.walletConnectReplayResult(rec)
+	// No record under this exact id. Before treating it as fresh, check whether
+	// an identical intent is still retained under a DIFFERENT id in the same
+	// session — a dapp reissuing a transfer under a new id (SignClient suppresses
+	// same-id re-emission) must resolve to that record's outcome, never build a
+	// second block for the same transfer.
+	match, matched, err := t.wcJournal.findByIntent(req.Topic, intentHash, key)
+	if err != nil {
+		return WalletConnectPrepareResult{}, fmt.Errorf("cannot read the publication journal: %v", err)
+	}
+	if matched {
+		return t.walletConnectReplayResult(match, match.Topic, match.RequestID)
+	}
+	return none, nil
 }
 
 func (t *TxService) PrepareWalletConnectSend(req WalletConnectSendRequest) (WalletConnectPrepareResult, error) {
@@ -235,7 +249,7 @@ func (t *TxService) PrepareWalletConnectSend(req WalletConnectSendRequest) (Wall
 // walletConnectReplayResult renders a journaled record as a prepare outcome:
 // published records replay the stored result; signed records surface the
 // reconcile flow with a preview rebuilt from the journaled block.
-func (t *TxService) walletConnectReplayResult(rec wcPublicationRecord) (WalletConnectPrepareResult, error) {
+func (t *TxService) walletConnectReplayResult(rec wcPublicationRecord, journalTopic string, journalRequestID uint64) (WalletConnectPrepareResult, error) {
 	preview, err := t.wcPreviewFromRecord(rec)
 	if err != nil {
 		return WalletConnectPrepareResult{}, err
@@ -247,9 +261,9 @@ func (t *TxService) walletConnectReplayResult(rec wcPublicationRecord) (WalletCo
 		}
 		// The preview accompanies the result so a failed delivery can keep a
 		// renderable retry dialog on the frontend.
-		return WalletConnectPrepareResult{Outcome: "published", Published: result, Preview: preview, PublishedHash: rec.Hash}, nil
+		return WalletConnectPrepareResult{Outcome: "published", Published: result, Preview: preview, PublishedHash: rec.Hash, JournalTopic: journalTopic, JournalRequestID: journalRequestID}, nil
 	}
-	return WalletConnectPrepareResult{Outcome: "unknown", Preview: preview, PublishedHash: rec.Hash}, nil
+	return WalletConnectPrepareResult{Outcome: "unknown", Preview: preview, PublishedHash: rec.Hash, JournalTopic: journalTopic, JournalRequestID: journalRequestID}, nil
 }
 
 // wcRecordResult decodes the journaled block JSON into the WalletConnect

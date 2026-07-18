@@ -51,6 +51,11 @@ export type WalletConnectRequest = WalletConnectVerify & {
   publishedHash: string
   sessionEnded: boolean
   expiryTimestamp?: number
+  // The journal record that owns this request's outcome. Differs from
+  // topic/id only when the outcome was matched by intent to a record under a
+  // different id (a dapp reissuing under a new id). reconcile/ack use these.
+  journalTopic?: string
+  journalRequestId?: number
 }
 
 type WalletConnectPreparingRequest = {
@@ -125,6 +130,8 @@ type WalletConnectPrepareOutcome = {
   preview?: SendPreview
   published?: unknown
   publishedHash?: string
+  journalTopic?: string
+  journalRequestId?: number
 }
 
 function errorResponse(id: number, code: number, message: string) {
@@ -536,6 +543,8 @@ export const useWalletConnectStore = defineStore('walletconnect', {
           publishedResult: null,
           publishedHash: replay.publishedHash ?? '',
           sessionEnded: false,
+          journalTopic: replay.journalTopic ?? topic,
+          journalRequestId: replay.journalRequestId ?? id,
           ...verify,
         }
         return
@@ -588,6 +597,8 @@ export const useWalletConnectStore = defineStore('walletconnect', {
             publishedResult: null,
             publishedHash: result.publishedHash ?? '',
             sessionEnded: preparing.sessionEnded,
+            journalTopic: result.journalTopic ?? topic,
+            journalRequestId: result.journalRequestId ?? id,
             ...verify,
           }
           return
@@ -672,10 +683,15 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         ? { token: ++preparingRequestToken, topic, id, sessionEnded: false, cancelMessage: '', cancelCode: 5000 }
         : null
       if (marker) this.preparingRequest = marker
+      // The result is delivered to the dapp's request id, but acknowledged
+      // under the journal key that OWNS the outcome (the original id for a
+      // cross-id intent match), so the right record is cleared.
+      const ackTopic = replay.journalTopic ?? topic
+      const ackId = replay.journalRequestId ?? id
       try {
         const c = await this.ensureClient()
         await c.respond({ topic, response: resultResponse(id, replay.published) })
-        await Tx.AckWalletConnectResult(topic, id).catch(() => {})
+        await Tx.AckWalletConnectResult(ackTopic, ackId).catch(() => {})
       } catch {
         const sessionEnded = marker?.sessionEnded ?? false
         const label = replay.publishedHash ? ` ${replay.publishedHash}` : ''
@@ -699,6 +715,8 @@ export const useWalletConnectStore = defineStore('walletconnect', {
             publishedResult: replay.published,
             publishedHash: replay.publishedHash ?? '',
             sessionEnded,
+            journalTopic: ackTopic,
+            journalRequestId: ackId,
             ...verify,
           }
         } else {
@@ -739,6 +757,8 @@ export const useWalletConnectStore = defineStore('walletconnect', {
             publishedResult: null,
             publishedHash: next.replay.publishedHash ?? '',
             sessionEnded: false,
+            journalTopic: next.replay.journalTopic ?? next.topic,
+            journalRequestId: next.replay.journalRequestId ?? next.id,
             ...next.verify,
           }
           return
@@ -802,9 +822,10 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       try {
         const c = await this.ensureClient()
         await c.respond({ topic: current.topic, response: resultResponse(current.id, current.publishedResult) })
-        // The dapp holds the result; the journal record is no longer needed
-        // for replay protection.
-        await Tx.AckWalletConnectResult(current.topic, current.id).catch(() => {})
+        // The dapp holds the result; the journal record (owned by journalTopic/
+        // journalRequestId — the original id for a cross-id match) is no longer
+        // needed for replay protection.
+        await Tx.AckWalletConnectResult(current.journalTopic ?? current.topic, current.journalRequestId ?? current.id).catch(() => {})
         if (this.request === current) this.request = null
         void this.drainPendingReplays()
       } catch (error) {
@@ -826,7 +847,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       if (!current || current.status !== 'unknown') return
       current.error = ''
       try {
-        const result = await Tx.ReconcileWalletConnectPublication(current.topic, current.id)
+        const result = await Tx.ReconcileWalletConnectPublication(current.journalTopic ?? current.topic, current.journalRequestId ?? current.id)
         current.publishedResult = result
         current.publishedHash = String((result as any)?.hash ?? current.publishedHash ?? '')
         current.status = 'notifying'

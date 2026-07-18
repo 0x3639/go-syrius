@@ -824,6 +824,56 @@ describe('WalletConnect request handling', () => {
     expect(wc.request).toBeNull()
   })
 
+  it('delivers a cross-id published replay to the new id but acks the original journal key', async () => {
+    // P1: a dapp reissuing an identical intent under a new id resolves to the
+    // record journaled under the ORIGINAL id — respond to the new id, but ack
+    // the original key so the right record is cleared and no second block is
+    // ever built.
+    unlock()
+    const wc = useWalletConnectStore()
+    h.lookup.mockResolvedValueOnce({
+      outcome: 'published',
+      published: { hash: 'orig-block' },
+      publishedHash: 'orig-block',
+      journalTopic: 'sess',
+      journalRequestId: 100,
+    })
+
+    await wc.handleRequest(sendEvent(101, 'sess'))
+
+    expect(h.prepare).not.toHaveBeenCalled()
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      topic: 'sess',
+      response: expect.objectContaining({ id: 101, result: { hash: 'orig-block' } }),
+    }))
+    expect(h.ack).toHaveBeenCalledWith('sess', 100)
+  })
+
+  it('reconciles the original journal key for a cross-id unknown replay', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    h.lookup.mockResolvedValueOnce({
+      outcome: 'unknown',
+      preview: { ...preview, holdId: 0 },
+      publishedHash: 'maybe-orig',
+      journalTopic: 'sess',
+      journalRequestId: 100,
+    })
+
+    await wc.handleRequest(sendEvent(101, 'sess'))
+    expect(wc.request?.status).toBe('unknown')
+
+    h.reconcile.mockResolvedValueOnce({ hash: 'resolved-orig' })
+    await wc.reconcileRequest()
+
+    // Reconcile and ack target the ORIGINAL key; the response goes to the new id.
+    expect(h.reconcile).toHaveBeenCalledWith('sess', 100)
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      response: expect.objectContaining({ id: 101, result: { hash: 'resolved-orig' } }),
+    }))
+    expect(h.ack).toHaveBeenCalledWith('sess', 100)
+  })
+
   it('cancels a retained failed lookup when the session ends, creating no hold', async () => {
     // Round-7 finding P1a: a scheduled retry must not run after session_delete
     // and fall through to a fresh hold for a dead session.

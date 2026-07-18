@@ -236,10 +236,18 @@ type WalletConnectSendRequest struct {
 // a signed block for this exact request exists whose broadcast outcome is
 // unresolved — the frontend must reconcile, never re-prepare.
 type WalletConnectPrepareResult struct {
-	Outcome       string                 `json:"outcome"` // "prepare" | "published" | "unknown"
+	Outcome       string                 `json:"outcome"` // "prepare" | "published" | "unknown" | "conflict" | "none"
 	Preview       *CallPreview           `json:"preview,omitempty"`
 	Published     map[string]interface{} `json:"published,omitempty"`
 	PublishedHash string                 `json:"publishedHash,omitempty"`
+	// JournalTopic/JournalRequestID identify the journal record that owns this
+	// outcome. They equal the request's own topic/id for a same-id replay, but
+	// point at the ORIGINAL id when the outcome was matched by intent to a
+	// record journaled under a different id (a dapp reissuing under a new id).
+	// The frontend uses them for reconcile/acknowledge so the right record is
+	// resolved and cleared.
+	JournalTopic     string `json:"journalTopic,omitempty"`
+	JournalRequestID uint64 `json:"journalRequestId,omitempty"`
 }
 
 // PlasmaInfo is the active address's plasma snapshot.

@@ -235,3 +235,28 @@ A seventh pass found three lifecycle gaps in the round-6 retry/drain work:
    `ConfirmWalletConnectPublish` fails after the session ended, clearing the
    displayed request now also drains pending replays, so a replay queued behind
    the publishing request is no longer stranded.
+
+#### Round-8 review fixes (2026-07-17)
+
+An eighth pass found the remaining new-ID bypass: the journal keys on
+`topic#requestId`, so a dapp reissuing the identical transfer under a NEW id
+(SignClient suppresses same-id re-emission, so a stuck request is reissued
+under a fresh id after it expires) found no record for its own id and could
+build a **second** block for the same transfer even though the first may have
+published.
+
+- **[P1] Retained records are matched by validated intent hash, not only by
+  request id.** `LookupWalletConnectPublication`, after missing on the exact
+  `topic#id`, scans (`wcJournal.findByIntent`) for a retained record with the
+  same intent hash **within the same topic/session**, and replays its outcome
+  (published → deliver, signed/unresolved → reconcile) instead of returning
+  `none`. So a new-id duplicate never reaches a fresh hold. Records now store
+  their `topic`/`requestId`, and the prepare result carries the owning
+  `journalTopic`/`journalRequestId` so the frontend delivers to the new id but
+  reconciles/acknowledges the **original** record. Matching is scoped to one
+  topic to avoid false-positives across unrelated dapps that share an identical
+  intent; the residual cross-session (re-pair under a new topic) case is a
+  documented gap, mitigated because the primary defense — actively resolving
+  the original id so the dapp never reissues — remains in place. A backend test
+  journals id 100, submits the identical intent as id 101, and proves no fresh
+  hold is created.

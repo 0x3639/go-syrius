@@ -39,6 +39,8 @@ const (
 )
 
 type wcPublicationRecord struct {
+	Topic      string             `json:"topic"`
+	RequestID  uint64             `json:"requestId"`
 	IntentHash string             `json:"intentHash"`
 	State      wcPublicationState `json:"state"`
 	BlockJSON  json.RawMessage    `json:"blockJson,omitempty"` // the exact signed block; public material only
@@ -191,6 +193,29 @@ func (j *wcJournal) markPublished(key string) error {
 	rec.State = wcStatePublished
 	m[key] = rec
 	return j.saveLocked(m)
+}
+
+// findByIntent returns a retained record whose intent matches intentHash within
+// the SAME topic (session), excluding excludeKey. It exists so a dapp that
+// reissues an identical transfer under a NEW request id — while a prior record
+// for that intent is still retained (signed/unresolved, or published but not
+// yet acknowledged) — is matched to that record instead of building a second
+// block. Scoping to one topic avoids false-positives across unrelated dapps
+// that happen to share an identical intent.
+func (j *wcJournal) findByIntent(topic, intentHash, excludeKey string) (wcPublicationRecord, bool, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	m, err := j.loadLocked()
+	if err != nil {
+		return wcPublicationRecord{}, false, err
+	}
+	for k, rec := range m {
+		if k == excludeKey || rec.Topic != topic || rec.IntentHash != intentHash {
+			continue
+		}
+		return rec, true, nil
+	}
+	return wcPublicationRecord{}, false, nil
 }
 
 func (j *wcJournal) delete(key string) error {

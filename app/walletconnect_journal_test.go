@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -509,9 +511,11 @@ func TestLookupWalletConnectPublicationIsGateless(t *testing.T) {
 		t.Fatal("lookup must never create a hold")
 	}
 
-	// An unjournaled request is Outcome none (no error) so the fresh path runs.
+	// A genuinely fresh request (new id AND a different intent) is Outcome none
+	// so the fresh path runs.
 	fresh := req
 	fresh.RequestID = 62
+	fresh.AccountBlock.Amount = "500000000"
 	if res, err := tx.LookupWalletConnectPublication(fresh); err != nil || res.Outcome != "none" {
 		t.Fatalf("unjournaled lookup = %+v, %v; want none, nil", res, err)
 	}
@@ -636,12 +640,74 @@ func TestLookupDoesNotMatchDifferentIntentOrTopic(t *testing.T) {
 	if res, err := tx.LookupWalletConnectPublication(diff); err != nil || res.Outcome != "none" {
 		t.Fatalf("different intent = %+v, %v; want none", res, err)
 	}
-	// Same intent but a DIFFERENT topic (session) → not matched (avoids
-	// false-positives across unrelated dapps).
+	// Same intent under a DIFFERENT topic (session) → a blocking "duplicate"
+	// outcome (fail closed: not auto-replayed to a possibly-unrelated dapp, but
+	// still not a fresh publication).
 	otherTopic := req
 	otherTopic.Topic = "other-sess"
 	otherTopic.RequestID = 302
-	if res, err := tx.LookupWalletConnectPublication(otherTopic); err != nil || res.Outcome != "none" {
-		t.Fatalf("cross-topic same intent = %+v, %v; want none", res, err)
+	res, err := tx.LookupWalletConnectPublication(otherTopic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Outcome != "duplicate" {
+		t.Fatalf("cross-topic same intent outcome = %q, want duplicate", res.Outcome)
+	}
+	if res.JournalTopic != "sess" || res.JournalRequestID != 300 {
+		t.Fatalf("duplicate must point at the retained record %s#%d", res.JournalTopic, res.JournalRequestID)
+	}
+	// It must never build a fresh hold.
+	if _, err := tx.PrepareWalletConnectSend(otherTopic); err != nil {
+		t.Fatalf("prepare of a cross-topic duplicate must return the blocking outcome, not error: %v", err)
+	}
+	if tx.pending != nil {
+		t.Fatal("a cross-topic duplicate must NEVER create a fresh hold")
+	}
+}
+
+func TestLookupBackfillsOwnershipForLegacyRecords(t *testing.T) {
+	// P1: records written before the topic/requestId fields existed must still
+	// participate in intent matching (their ownership is derived from the key),
+	// or the new-id duplicate bypass persists for records already on disk.
+	tx := newTestTxService(t)
+	req, _ := validWalletConnectRequest(t)
+	req.Topic = "legacy-sess"
+	req.RequestID = 400
+	from := types.ParseAddressPanic(req.FromAddress)
+	template, _, _, err := walletConnectValidateIntent(req, from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	built := stubBuilt(template, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+	blockJSON, _ := json.Marshal(built)
+
+	// Write a LEGACY-shaped record: no topic/requestId fields.
+	dir, err := tx.config.dataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := map[string]wcPublicationRecord{
+		wcJournalKey("legacy-sess", 400): {
+			IntentHash: walletConnectIntentHash(template),
+			State:      wcStateSigned,
+			BlockJSON:  blockJSON,
+			Hash:       built.Hash.String(),
+			CreatedAt:  1,
+		},
+	}
+	raw, _ := json.MarshalIndent(legacy, "", "  ")
+	if err := os.WriteFile(filepath.Join(dir, wcJournalFile), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Same intent, NEW id → must match the legacy record (not none).
+	newReq := req
+	newReq.RequestID = 401
+	res, err := tx.LookupWalletConnectPublication(newReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Outcome != "unknown" || res.JournalRequestID != 400 {
+		t.Fatalf("legacy-record intent match = %+v; want unknown owned by 400", res)
 	}
 }

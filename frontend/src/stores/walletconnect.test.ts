@@ -824,6 +824,40 @@ describe('WalletConnect request handling', () => {
     expect(wc.request).toBeNull()
   })
 
+  it('refuses a cross-topic duplicate and surfaces the retained record to reconcile', async () => {
+    // P1 (round-9): an identical intent from ANOTHER session must not be auto-
+    // replayed to the new dapp, must not build a hold, and must let the user
+    // reconcile/clear the retained record.
+    unlock()
+    const wc = useWalletConnectStore()
+    h.lookup.mockResolvedValueOnce({
+      outcome: 'duplicate',
+      preview: { ...preview, holdId: 0 },
+      publishedHash: 'other-block',
+      journalTopic: 'old-sess',
+      journalRequestId: 100,
+    })
+
+    await wc.handleRequest(sendEvent(500, 'new-sess'))
+
+    // The new dapp request is refused (no hold, no disclosure of the old result).
+    expect(h.prepare).not.toHaveBeenCalled()
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      topic: 'new-sess',
+      response: expect.objectContaining({ id: 500, error: expect.objectContaining({ code: 5000 }) }),
+    }))
+    // The retained record is surfaced for reconciliation, keyed to its owner.
+    expect(wc.request?.status).toBe('unknown')
+    expect(wc.request?.topic).toBe('old-sess')
+    expect(wc.request?.journalRequestId).toBe(100)
+
+    // Reconciling it targets the retained record's key.
+    h.reconcile.mockResolvedValueOnce({ hash: 'other-block' })
+    await wc.reconcileRequest()
+    expect(h.reconcile).toHaveBeenCalledWith('old-sess', 100)
+    expect(h.ack).toHaveBeenCalledWith('old-sess', 100)
+  })
+
   it('delivers a cross-id published replay to the new id but acks the original journal key', async () => {
     // P1: a dapp reissuing an identical intent under a new id resolves to the
     // record journaled under the ORIGINAL id — respond to the new id, but ack

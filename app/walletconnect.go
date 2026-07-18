@@ -177,6 +177,30 @@ func (t *TxService) LookupWalletConnectPublication(req WalletConnectSendRequest)
 	if matched {
 		return t.walletConnectReplayResult(match, match.Topic, match.RequestID)
 	}
+	// Finally, check ANY other session (topic). The original session may have
+	// expired and the dapp re-paired under a new topic, so the identical intent
+	// arrives under both a new id and a new topic. This is NOT auto-replayed —
+	// it may be an unrelated dapp that happens to share the intent — but it must
+	// still block a second publication. Return a "duplicate" outcome that the
+	// frontend refuses (no disclosure to the new dapp) while surfacing the
+	// retained record for the user to reconcile or clear.
+	crossMatch, crossMatched, err := t.wcJournal.findByIntentAnyTopic(intentHash, key, req.Topic)
+	if err != nil {
+		return WalletConnectPrepareResult{}, fmt.Errorf("cannot read the publication journal: %v", err)
+	}
+	if crossMatched {
+		preview, perr := t.wcPreviewFromRecord(crossMatch)
+		if perr != nil {
+			return WalletConnectPrepareResult{}, perr
+		}
+		return WalletConnectPrepareResult{
+			Outcome:          "duplicate",
+			Preview:          preview,
+			PublishedHash:    crossMatch.Hash,
+			JournalTopic:     crossMatch.Topic,
+			JournalRequestID: crossMatch.RequestID,
+		}, nil
+	}
 	return none, nil
 }
 

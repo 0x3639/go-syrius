@@ -126,7 +126,7 @@ function messageOf(error: unknown): string {
 const OUTCOME_UNKNOWN_MARKER = 'walletconnect publication outcome unknown'
 
 type WalletConnectPrepareOutcome = {
-  outcome: 'prepare' | 'published' | 'unknown' | 'conflict' | 'none'
+  outcome: 'prepare' | 'published' | 'unknown' | 'conflict' | 'duplicate' | 'none'
   preview?: SendPreview
   published?: unknown
   publishedHash?: string
@@ -516,6 +516,37 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         // A reused request id carrying a different intent: a safe, definite
         // refusal of the NEW intent (which was never approved).
         await this.failRequest(topic, id, 5000, 'This WalletConnect request id was already used for a different transaction')
+        return
+      }
+      if (replay.outcome === 'duplicate') {
+        // An identical transfer is still retained from ANOTHER WalletConnect
+        // session. It may be an unrelated dapp, so its result is NOT disclosed
+        // to this one and no second block is built. Refuse this request, and
+        // surface the retained record (keyed to its owner) so the user can
+        // reconcile or clear it before retrying.
+        await this.failRequest(topic, id, 5000, 'An identical transfer is still unresolved from another WalletConnect session; reconcile or clear it in the wallet before retrying.')
+        const jt = replay.journalTopic ?? topic
+        const jid = replay.journalRequestId ?? id
+        const retained: WalletConnectPrepareOutcome = { outcome: 'unknown', preview: replay.preview, publishedHash: replay.publishedHash, journalTopic: jt, journalRequestId: jid }
+        if (this.request || this.preparingRequest) {
+          enqueuePendingReplay({ topic: jt, id: jid, replay: retained, verify })
+          return
+        }
+        const session = this.sessions.find((item) => item.topic === jt)
+        this.request = {
+          topic: jt,
+          id: jid,
+          dapp: session?.name ?? 'Connected dapp',
+          preview: (replay.preview ?? {}) as SendPreview,
+          status: 'unknown',
+          error: 'An identical transfer from another WalletConnect session is unresolved. Check its outcome to clear it.',
+          publishedResult: null,
+          publishedHash: replay.publishedHash ?? '',
+          sessionEnded: false,
+          journalTopic: jt,
+          journalRequestId: jid,
+          ...verify,
+        }
         return
       }
       if (replay.outcome === 'published' && replay.published) {

@@ -260,3 +260,26 @@ published.
   the original id so the dapp never reissues — remains in place. A backend test
   journals id 100, submits the identical intent as id 101, and proves no fresh
   hold is created.
+
+#### Round-9 review fixes (2026-07-17)
+
+Two remaining new-ID/new-topic duplicate gaps from round-8:
+
+1. **[P1] Cross-topic (re-pair) duplicate protection, fail-closed.** When the
+   original session expires and the dapp re-pairs under a new topic, the
+   identical intent arrives under both a new id and a new topic. Lookup now,
+   after the same-topic scan, does a global scan (`findByIntentAnyTopic`) for a
+   retained record with the same intent in ANY other session. A cross-topic
+   match is **not** auto-replayed (it may be an unrelated dapp that shares the
+   intent) — it returns a blocking `duplicate` outcome: the frontend refuses the
+   new request (5000, no disclosure of the old result, no hold) and surfaces the
+   retained record — keyed to its owning `journalTopic`/`journalRequestId` — as
+   a reconcile prompt so the user can resolve or clear it before retrying. This
+   covers both unresolved `signed` and retained (undelivered) `published`
+   records.
+2. **[P1] Legacy record ownership is backfilled.** Records written before the
+   `topic`/`requestId` fields existed deserialize with empty/zero ownership, so
+   intent-matching would miss them. `loadLocked` now derives ownership from each
+   map key (`topic#requestId`), so the duplicate defenses work for durable
+   records already on disk. An upgrade test writes legacy-shaped JSON, loads it,
+   and proves an identical intent under a new id matches (no fresh hold).

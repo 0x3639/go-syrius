@@ -306,3 +306,22 @@ Three frontend recovery issues in the round-9 cross-topic `duplicate` flow:
    approvable hold-zero `awaiting` request. The duplicate handling is factored
    into `refuseDuplicateAndRecover` and invoked from both the initial lookup
    and the Prepare result.
+
+#### Round-11 review fixes (2026-07-18)
+
+Three issues in the round-10 `recovered` recovery state:
+
+1. **[P1] Generic dialog dismissal is non-destructive.** Escape / backdrop /
+   the X no longer call `acknowledgeRecovered` (which would delete the durable
+   duplicate guard). Generic dismissal only hides the modal; the labeled
+   "Acknowledge and clear" button is the sole path that acknowledges/deletes
+   the record. A component test emits `update:open=false` and asserts Ack is
+   not called.
+2. **[P2] Acknowledgement failure keeps the record visible.** `acknowledge-
+   Recovered` now awaits the Ack and clears the modal only on success; a failed
+   Ack (journal read/write error) is no longer swallowed — the recovered state
+   stays with an actionable error so the guard is not falsely reported cleared.
+3. **[P2] Local recovery survives lifecycle events.** A `localRecovery` record
+   is journal-owned and independent of any session, so `handleSessionEnded`,
+   `handleRequestExpired`, and `walletLocked` now leave it untouched (no
+   discard, and no error-9000 response to the dead original session).

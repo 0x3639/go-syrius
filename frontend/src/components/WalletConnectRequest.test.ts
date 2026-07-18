@@ -14,7 +14,8 @@ vi.mock('nom-ui', () => ({
   DialogTitle: { template: '<div><slot /></div>' },
   Button: { template: '<button @click="$emit(\'click\')"><slot /></button>' },
 }))
-vi.mock('../../wailsjs/go/app/TxService', () => ({ CancelPending: vi.fn() }))
+const ackSpy = vi.fn()
+vi.mock('../../wailsjs/go/app/TxService', () => ({ CancelPending: vi.fn(), AckWalletConnectResult: (...a: any[]) => ackSpy(...a) }))
 vi.mock('../../wailsjs/go/app/NodeService', () => ({}))
 vi.mock('@walletconnect/sign-client', () => ({ SignClient: { init: vi.fn() } }))
 
@@ -89,6 +90,20 @@ describe('WalletConnectRequest confirm-what-you-sign rendering', () => {
     expect(w.text().toLowerCase()).toContain('check outcome')
     expect(w.text().toLowerCase()).not.toContain('approve and publish')
     expect(w.text().toLowerCase()).not.toContain('reject')
+  })
+
+  it('does not acknowledge on a generic dialog dismissal (Escape/backdrop/X)', async () => {
+    const wc = useWalletConnectStore()
+    wc.request = request({ status: 'recovered', publishedHash: 'blk', localRecovery: true, journalTopic: 'old', journalRequestId: 9, publishedResult: { hash: 'blk' } })
+    ackSpy.mockClear()
+
+    const w = mount(WalletConnectRequest)
+    // Simulate a generic close (not the labeled button).
+    w.findComponent({ name: 'Dialog' }).vm.$emit('update:open', false)
+    await w.vm.$nextTick()
+
+    // The durable duplicate guard must NOT be deleted by a generic dismissal.
+    expect(ackSpy).not.toHaveBeenCalled()
   })
 
   it('renders the recovered state with an acknowledge-and-clear action', () => {

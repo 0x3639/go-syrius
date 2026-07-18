@@ -873,6 +873,66 @@ describe('WalletConnect request handling', () => {
     expect(wc.request).toBeNull()
   })
 
+  it('keeps the recovered record when acknowledgement fails, then clears on retry', async () => {
+    // Round-11 P2: Ack must succeed before the modal clears; on failure the
+    // recovered state stays with an actionable error.
+    unlock()
+    const wc = useWalletConnectStore()
+    h.lookup.mockResolvedValueOnce({
+      outcome: 'duplicate', preview: { ...preview, holdId: 0 }, publishedHash: 'blk',
+      journalTopic: 'old-sess', journalRequestId: 100,
+    })
+    await wc.handleRequest(sendEvent(500, 'new-sess'))
+    h.reconcile.mockResolvedValueOnce({ hash: 'blk' })
+    await wc.reconcileRequest()
+    expect(wc.request?.status).toBe('recovered')
+
+    h.ack.mockRejectedValueOnce(new Error('disk full'))
+    await wc.acknowledgeRecovered()
+    expect(wc.request?.status).toBe('recovered')
+    expect(wc.request?.error).toContain('disk full')
+
+    h.ack.mockResolvedValueOnce(undefined)
+    await wc.acknowledgeRecovered()
+    expect(h.ack).toHaveBeenCalledWith('old-sess', 100)
+    expect(wc.request).toBeNull()
+  })
+
+  it('preserves a local-recovery record across session end, expiry, and wallet lock', async () => {
+    // Round-11 P2: local recovery is journal-owned and must survive lifecycle
+    // events without being discarded or answered on a dead session.
+    unlock()
+    const wc = useWalletConnectStore()
+    const surface = async () => {
+      h.lookup.mockResolvedValueOnce({
+        outcome: 'duplicate', preview: { ...preview, holdId: 0 }, publishedHash: 'blk',
+        journalTopic: 'old-sess', journalRequestId: 100,
+      })
+      await wc.handleRequest(sendEvent(500, 'new-sess'))
+      h.respond.mockClear()
+      h.cancel.mockClear()
+    }
+
+    // Exercise the RECOVERED state (the one not previously guarded).
+    await surface()
+    h.reconcile.mockResolvedValueOnce({ hash: 'blk' })
+    await wc.reconcileRequest()
+    expect(wc.request?.status).toBe('recovered')
+    h.respond.mockClear(); h.cancel.mockClear()
+
+    await wc.handleSessionEnded({ topic: 'old-sess' })
+    expect(wc.request?.status).toBe('recovered')
+    expect(h.respond).not.toHaveBeenCalled()
+
+    await wc.handleRequestExpired(100)
+    expect(wc.request?.status).toBe('recovered')
+
+    await wc.walletLocked()
+    expect(wc.request?.status).toBe('recovered')
+    expect(h.respond).not.toHaveBeenCalled()
+    expect(h.cancel).not.toHaveBeenCalled()
+  })
+
   it('handles a duplicate returned by the prepare-time recheck', async () => {
     // Round-10: a cross-topic record can appear during the lookup->prepare
     // window; Prepare then returns duplicate. It must refuse + recover, never

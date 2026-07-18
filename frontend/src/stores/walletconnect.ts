@@ -921,16 +921,28 @@ export const useWalletConnectStore = defineStore('walletconnect', {
     // the ONLY path that clears it — closing without acknowledging keeps it, so
     // an identical intent is not silently unblocked).
     async acknowledgeRecovered() {
-      if (!this.request || this.request.status !== 'recovered') return
       const current = this.request
-      this.request = null
-      await Tx.AckWalletConnectResult(current.journalTopic ?? current.topic, current.journalRequestId ?? current.id).catch(() => {})
+      if (!current || current.status !== 'recovered') return
+      current.error = ''
+      try {
+        // Delete the journal record BEFORE clearing the modal — if this fails,
+        // the record still guards against a duplicate, so keep the recovered
+        // prompt (with an actionable error) rather than falsely reporting it
+        // cleared.
+        await Tx.AckWalletConnectResult(current.journalTopic ?? current.topic, current.journalRequestId ?? current.id)
+      } catch (error) {
+        current.error = `Could not clear the recovered record: ${messageOf(error)}. Try again.`
+        return
+      }
+      if (this.request === current) this.request = null
       void this.drainPendingReplays()
     },
     clearPublishedRequest() {
       // Closing locally never acks: the journal record must survive so a
       // redelivered request replays the stored outcome instead of re-signing.
-      if (this.request?.status === 'delivery-error' || this.request?.status === 'unknown') this.request = null
+      // (For a recovered cross-topic record this is a non-destructive hide —
+      // the record is only deleted by the explicit acknowledgeRecovered.)
+      if (this.request?.status === 'delivery-error' || this.request?.status === 'unknown' || this.request?.status === 'recovered') this.request = null
       void this.drainPendingReplays()
     },
     async rejectRequest(message = 'User rejected') {
@@ -1003,6 +1015,10 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       }
       const preparing = this.preparingRequest
       if (preparing && preparing.topic === topic) preparing.sessionEnded = true
+      // A local-recovery record is journal-owned and independent of any session
+      // (its originating session is already gone). Never discard or answer it on
+      // a session lifecycle event.
+      if (this.request?.localRecovery) return
       if (!this.request || this.request.topic !== topic) return
       const current = this.request
       current.sessionEnded = true
@@ -1038,6 +1054,8 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       // The expired request no longer exists at the relay, so there is nothing
       // to answer; reuse the session-ended path, which cancels silently.
       if (preparing && preparing.id === id) preparing.sessionEnded = true
+      // A local-recovery record is journal-owned; leave it untouched.
+      if (this.request?.localRecovery) return
       const current = this.request
       if (!current || current.id !== id) return
       if (current.status === 'publishing' || current.status === 'notifying' || current.status === 'delivery-error' || current.status === 'unknown') {
@@ -1058,6 +1076,9 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         this.preparingRequest.cancelCode = 9000
       }
       if (!this.request) return
+      // A local-recovery record is journal-owned with no live session; never
+      // answer it (the old topic is dead) — leave it for explicit acknowledge.
+      if (this.request.localRecovery) return
       // Once publication starts, only its actual outcome may answer the dapp.
       // Sending 9000 here can race a successful publish and invite a duplicate.
       if (this.request.status === 'publishing' || this.request.status === 'notifying' || this.request.status === 'delivery-error' || this.request.status === 'unknown') return

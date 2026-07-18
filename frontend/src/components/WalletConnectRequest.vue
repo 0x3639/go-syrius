@@ -9,9 +9,12 @@ const wc = useWalletConnectStore()
 const open = computed({
   get: () => wc.request !== null,
   set: (value: boolean) => {
+    // A generic dismissal (Escape, backdrop, X) is NON-destructive: it only
+    // hides the modal. It must never acknowledge/delete a recovered record's
+    // durable duplicate guard — only the labeled "Acknowledge and clear" button
+    // does that.
     if (!value && wc.request?.status === 'awaiting') void wc.rejectRequest()
-    else if (!value && wc.request?.status === 'recovered') void wc.acknowledgeRecovered()
-    else if (!value && (wc.request?.status === 'delivery-error' || wc.request?.status === 'unknown')) wc.clearPublishedRequest()
+    else if (!value && (wc.request?.status === 'delivery-error' || wc.request?.status === 'unknown' || wc.request?.status === 'recovered')) wc.clearPublishedRequest()
   },
 })
 </script>

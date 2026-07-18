@@ -28,6 +28,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'network/rewards', name: 'net-rewards', meta: { title: 'Rewards', panel: 'rewards' }, component: () => import('../views/NetworkPage.vue') },
       { path: 'network/governance', name: 'net-governance', meta: { title: 'Governance', panel: 'governance' }, component: () => import('../views/NetworkPage.vue') },
       { path: 'settings', name: 'settings', meta: { title: 'Settings' }, component: () => import('../views/Settings.vue') },
+      { path: 'walletconnect', name: 'walletconnect', meta: { title: 'WalletConnect' }, component: () => import('../views/WalletConnect.vue') },
       { path: 'address-book', name: 'address-book', meta: { title: 'Address book' }, component: () => import('../views/AddressBook.vue') },
     ],
   },
@@ -44,12 +45,11 @@ router.beforeEach((to) => {
 })
 
 router.afterEach(() => {
-  // Discard any half-built/finished tx when navigating between screens. An
-  // awaiting hold must go through discard() so the BACKEND hold is released
-  // too — a bare reset() would leave the block held until the next prepare
-  // supersedes it.
+  // Discard any half-built/finished tx when navigating between screens.
+  // Awaiting previews and retryable confirmation errors can both own a backend
+  // hold, so both must release it by identity rather than using a bare reset.
   const tx = useTxStore()
-  if (tx.status === 'awaiting') tx.discard()
+  if (tx.status === 'awaiting' || tx.status === 'error') tx.discard()
   else tx.reset()
 })
 

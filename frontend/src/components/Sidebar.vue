@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import {
   LayoutDashboardIcon, SendIcon, DownloadIcon, CoinsIcon, ZapIcon, LayersIcon,
   Building2Icon, ShieldCheckIcon, RocketIcon, GiftIcon, VoteIcon, SettingsIcon,
-  BookUserIcon, ShieldIcon,
+  BookUserIcon, ShieldIcon, LinkIcon,
 } from '@lucide/vue'
 import { useNodeStore } from '../stores/node'
 import { useUiStore } from '../stores/ui'
@@ -30,6 +30,7 @@ const networkNav = computed(() => [
   ...(showGovernance.value ? [{ to: '/network/governance', label: 'Governance', icon: VoteIcon }] : []),
 ])
 const bottomNav = [
+  { to: '/walletconnect', label: 'WalletConnect', icon: LinkIcon },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
   { to: '/address-book', label: 'Address book', icon: BookUserIcon },
 ]

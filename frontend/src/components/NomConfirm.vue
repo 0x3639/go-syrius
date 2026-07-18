@@ -18,10 +18,10 @@ const open = computed({
   get: () => tx.status === 'awaiting' || tx.status === 'publishing' || tx.status === 'done' || tx.status === 'error',
   set: (v: boolean) => {
     if (!v) {
-      // Closing while awaiting discards the held block (synchronous, then a
-      // background identity-checked CancelPending); after a publish
-      // (done/error) it just clears the result.
-      tx.status === 'awaiting' ? tx.discard() : tx.reset()
+      // Awaiting and retryable error states can both own a backend hold. Their
+      // close path must release it by identity; a completed result just resets.
+      if (tx.status === 'awaiting' || tx.status === 'error') tx.discard()
+      else if (tx.status !== 'publishing') tx.reset()
     }
   },
 })

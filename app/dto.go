@@ -205,6 +205,51 @@ type CallPreview struct {
 	HoldID     uint64             `json:"holdId"` // identity of the backend hold; lets a cancel target exactly this block
 }
 
+// WalletConnectAccountBlockInput is the immutable intent subset of the
+// TypeScript SDK AccountBlockTemplate JSON supplied by a WalletConnect dapp.
+// Chain-state, PoW, hash, and signature fields are intentionally absent: Go
+// reconstructs and finalizes those values from the connected node and keypair.
+type WalletConnectAccountBlockInput struct {
+	Version         uint64 `json:"version"`
+	ChainIdentifier uint64 `json:"chainIdentifier"`
+	BlockType       uint64 `json:"blockType"`
+	Address         string `json:"address"`
+	ToAddress       string `json:"toAddress"`
+	Amount          string `json:"amount"`
+	TokenStandard   string `json:"tokenStandard"`
+	Data            string `json:"data"` // canonical standard base64
+}
+
+// WalletConnectSendRequest is the frozen znn_send envelope used by both
+// 0x3639/bridge-dapp and nom-bridge, plus the WalletConnect request identity
+// (session topic + JSON-RPC id) the wallet adds for the publication journal.
+type WalletConnectSendRequest struct {
+	FromAddress  string                         `json:"fromAddress"`
+	AccountBlock WalletConnectAccountBlockInput `json:"accountBlock"`
+	Topic        string                         `json:"topic"`
+	RequestID    uint64                         `json:"requestId"`
+}
+
+// WalletConnectPrepareResult is the outcome of preparing a znn_send request.
+// Outcome "prepare" carries a fresh hold's preview; "published" replays the
+// journaled result of an already-published identical request; "unknown" means
+// a signed block for this exact request exists whose broadcast outcome is
+// unresolved — the frontend must reconcile, never re-prepare.
+type WalletConnectPrepareResult struct {
+	Outcome       string                 `json:"outcome"` // "prepare" | "published" | "unknown" | "conflict" | "none"
+	Preview       *CallPreview           `json:"preview,omitempty"`
+	Published     map[string]interface{} `json:"published,omitempty"`
+	PublishedHash string                 `json:"publishedHash,omitempty"`
+	// JournalTopic/JournalRequestID identify the journal record that owns this
+	// outcome. They equal the request's own topic/id for a same-id replay, but
+	// point at the ORIGINAL id when the outcome was matched by intent to a
+	// record journaled under a different id (a dapp reissuing under a new id).
+	// The frontend uses them for reconcile/acknowledge so the right record is
+	// resolved and cleared.
+	JournalTopic     string `json:"journalTopic,omitempty"`
+	JournalRequestID uint64 `json:"journalRequestId,omitempty"`
+}
+
 // PlasmaInfo is the active address's plasma snapshot.
 type PlasmaInfo struct {
 	QsrFused      string `json:"qsrFused"`

@@ -93,3 +93,51 @@ func TestDecimalsCacheQueriesOncePerZts(t *testing.T) {
 		t.Fatalf("ZNN must not invoke lookup; calls = %d", calls)
 	}
 }
+
+func TestResolveDecimalsCheckedNativeNoLookup(t *testing.T) {
+	for _, zts := range []string{types.ZnnTokenStandard.String(), types.QsrTokenStandard.String()} {
+		d, err := resolveDecimalsChecked(zts, failLookup(t))
+		if err != nil || d != 8 {
+			t.Fatalf("resolveDecimalsChecked(%s) = %d, %v; want 8, nil", zts, d, err)
+		}
+	}
+}
+
+func TestResolveDecimalsCheckedCustomToken(t *testing.T) {
+	lookup := func(types.ZenonTokenStandard) (int, error) { return 2, nil }
+	d, err := resolveDecimalsChecked(customZts, lookup)
+	if err != nil || d != 2 {
+		t.Fatalf("resolveDecimalsChecked = %d, %v; want 2, nil", d, err)
+	}
+}
+
+func TestResolveDecimalsCheckedFailsInsteadOfGuessing(t *testing.T) {
+	// WC-03: a confirmation must never silently render a custom-token amount
+	// with assumed decimals. Unresolvable metadata is an error, not an 8.
+	lookup := func(types.ZenonTokenStandard) (int, error) { return 0, errors.New("node down") }
+	if _, err := resolveDecimalsChecked(customZts, lookup); err == nil {
+		t.Fatal("expected error when custom-token decimals cannot be resolved")
+	}
+	if _, err := resolveDecimalsChecked("not-a-zts", failLookup(t)); err == nil {
+		t.Fatal("expected error for an unparseable ZTS")
+	}
+	if _, err := resolveDecimalsChecked(customZts, nil); err == nil {
+		t.Fatal("expected error when no lookup is available")
+	}
+}
+
+func TestClientTokenDecimalsContractTreatsMissingTokenAsError(t *testing.T) {
+	// Round-2 finding 3: a missing token must be an ERROR from the strict
+	// resolver's perspective, never a silent (8, nil) guess. This pins the
+	// resolveDecimalsChecked contract for the lookup used at prepare time.
+	missing := func(types.ZenonTokenStandard) (int, error) {
+		return 0, errTokenNotFound
+	}
+	if _, err := resolveDecimalsChecked(customZts, missing); err == nil {
+		t.Fatal("missing token metadata must fail the strict decimals check")
+	}
+	// The display path still degrades to 8 for the same condition.
+	if d := resolveDecimals(customZts, missing); d != 8 {
+		t.Fatalf("display fallback = %d, want 8", d)
+	}
+}

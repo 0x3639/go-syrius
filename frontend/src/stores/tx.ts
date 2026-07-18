@@ -89,15 +89,17 @@ export const useTxStore = defineStore('tx', {
     // where a confirm dialog shows a live Confirm for a cancelled block, and a
     // stale continuation can't wipe newer state (there is none to wipe). The
     // backend hold is released in the background, identity-checked by holdId
-    // so it can only ever release THIS block — never a newer one that won a
-    // race against the RPC. Without a holdId there is no identity to check, so
-    // we skip the release entirely (the hold is superseded by the next prepare
-    // and session-guarded) rather than risk an unconditional cancel.
-    discard() {
-      if (this.status !== 'awaiting') return
+    // so it can only ever release THIS block. Without a holdId there is no
+    // identity to check, so we skip the release rather than risk an
+    // unconditional cancel of a different reviewed transaction.
+    async discard() {
+      // A confirm failure can deliberately retain its backend hold so the user
+      // may fix a node/network gate and retry. If the user abandons that error
+      // instead, release the exact hold just like an unconfirmed preview.
+      if (this.status !== 'awaiting' && this.status !== 'error') return
       const holdId = this.preview?.holdId ?? 0
       this.reset()
-      if (holdId !== 0) Tx.CancelPending(holdId).catch(() => {})
+      if (holdId !== 0) await Tx.CancelPending(holdId).catch(() => {})
     },
   },
 })

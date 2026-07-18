@@ -32,6 +32,10 @@ async function refreshEmbedded() {
 }
 
 const chainId = ref(1)
+const allowMainnetSend = ref(false)
+const showMainnetConfirm = ref(false)
+const mainnetMsg = ref('')
+const mainnetErr = ref('')
 const chainMsg = ref('')
 const chainErr = ref('')
 const chainMismatch = computed(
@@ -45,6 +49,35 @@ async function applyChainId() {
   } catch (e: any) { chainErr.value = e?.message ?? String(e) }
 }
 
+async function requestMainnetToggle() {
+  if (!allowMainnetSend.value) {
+    // click.prevent keeps the controlled checkbox at its persisted value until
+    // the warning is explicitly confirmed.
+    showMainnetConfirm.value = true
+    return
+  }
+  mainnetMsg.value = ''; mainnetErr.value = ''
+  try {
+    await Cfg.SetAllowMainnetSend(false)
+    allowMainnetSend.value = false
+    mainnetMsg.value = 'Mainnet transactions disabled'
+  } catch (e: any) { mainnetErr.value = e?.message ?? String(e) }
+}
+
+function cancelMainnetTransactions() {
+  showMainnetConfirm.value = false
+}
+
+async function confirmMainnetTransactions() {
+  mainnetMsg.value = ''; mainnetErr.value = ''
+  try {
+    await Cfg.SetAllowMainnetSend(true)
+    allowMainnetSend.value = true
+    mainnetMsg.value = 'Mainnet transactions enabled'
+  } catch (e: any) { mainnetErr.value = e?.message ?? String(e) }
+  finally { showMainnetConfirm.value = false }
+}
+
 onMounted(async () => {
   const c = await node.getConfig()
   loadedMode = c.mode
@@ -54,7 +87,11 @@ onMounted(async () => {
   if (!remoteDirty.value) remoteUrl.value = c.remoteUrl
   if (!localDirty.value) localUrl.value = c.localUrl
   await refreshEmbedded()
-  try { chainId.value = (await Cfg.GetSettings()).chainId || 1 } catch {}
+  try {
+    const settings = await Cfg.GetSettings()
+    chainId.value = settings.chainId || 1
+    allowMainnetSend.value = settings.allowMainnetSend ?? false
+  } catch {}
   await ui.init()
   if (!wallet.wallets.length) await wallet.loadWallets()
   walletName.value = wallet.wallets.find((w) => w.id === wallet.active)?.name ?? ''
@@ -239,6 +276,32 @@ function hide() { revealed.value = '' }
       <Button @click="applyChainId">Apply network</Button>
       <p v-if="chainMsg" class="text-primary text-sm">{{ chainMsg }}</p>
       <p v-if="chainErr" class="text-destructive text-sm" role="alert">{{ chainErr }}</p>
+
+      <div class="mt-4 border-t border-border pt-4 space-y-2">
+        <label class="flex items-center gap-2 text-foreground">
+          <input
+            type="checkbox"
+            aria-label="enable mainnet transactions"
+            :checked="allowMainnetSend"
+            @click.prevent="requestMainnetToggle"
+          />
+          Enable mainnet transactions
+        </label>
+        <p class="text-xs text-destructive">
+          This allows go-syrius and approved WalletConnect sessions to sign and publish transactions with real funds on chain 1.
+        </p>
+        <div v-if="showMainnetConfirm" class="rounded border border-destructive/40 bg-background p-3 space-y-2">
+          <p class="text-sm text-destructive">
+            Mainnet transactions use real ZNN, QSR, and tokens. Verify the connected node, destination, amount, and contract call before every confirmation.
+          </p>
+          <div class="flex gap-2">
+            <Button aria-label="Confirm mainnet transactions" @click="confirmMainnetTransactions">I understand, enable</Button>
+            <Button variant="outline" @click="cancelMainnetTransactions">Cancel</Button>
+          </div>
+        </div>
+        <p v-if="mainnetMsg" class="text-primary text-sm">{{ mainnetMsg }}</p>
+        <p v-if="mainnetErr" class="text-destructive text-sm" role="alert">{{ mainnetErr }}</p>
+      </div>
     </section>
 
     <section class="rounded-xl border border-border bg-card p-5 space-y-2">

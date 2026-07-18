@@ -28,3 +28,4 @@ node_modules/
 frontend/dist/
 build/bin
 frontend/package.json.md5
+frontend/.env.local

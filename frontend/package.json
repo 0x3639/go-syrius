@@ -13,6 +13,9 @@
   "dependencies": {
     "@lucide/vue": "^1.20.0",
     "@types/qrcode": "^1.5.6",
+    "@walletconnect/sign-client": "2.23.9",
+    "@walletconnect/types": "2.23.9",
+    "@walletconnect/utils": "2.23.9",
     "lottie-web": "^5.13.0",
     "nom-ui": "github:digitalSloth/nom-ui#63f755a52cf6ee3665d3755755c506e3aa191bd4",
     "pinia": "^2.2.0",

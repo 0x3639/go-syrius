@@ -982,6 +982,108 @@ export namespace app {
 		}
 	}
 	
+	export class WalletConnectAccountBlockInput {
+	    version: number;
+	    chainIdentifier: number;
+	    blockType: number;
+	    address: string;
+	    toAddress: string;
+	    amount: string;
+	    tokenStandard: string;
+	    data: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WalletConnectAccountBlockInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.chainIdentifier = source["chainIdentifier"];
+	        this.blockType = source["blockType"];
+	        this.address = source["address"];
+	        this.toAddress = source["toAddress"];
+	        this.amount = source["amount"];
+	        this.tokenStandard = source["tokenStandard"];
+	        this.data = source["data"];
+	    }
+	}
+	export class WalletConnectPrepareResult {
+	    outcome: string;
+	    preview?: CallPreview;
+	    published?: Record<string, any>;
+	    publishedHash?: string;
+	    journalTopic?: string;
+	    journalRequestId?: number;
+
+	    static createFrom(source: any = {}) {
+	        return new WalletConnectPrepareResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.outcome = source["outcome"];
+	        this.preview = this.convertValues(source["preview"], CallPreview);
+	        this.published = source["published"];
+	        this.publishedHash = source["publishedHash"];
+	        this.journalTopic = source["journalTopic"];
+	        this.journalRequestId = source["journalRequestId"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class WalletConnectSendRequest {
+	    fromAddress: string;
+	    accountBlock: WalletConnectAccountBlockInput;
+	    topic: string;
+	    requestId: number;
+
+	    static createFrom(source: any = {}) {
+	        return new WalletConnectSendRequest(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fromAddress = source["fromAddress"];
+	        this.accountBlock = this.convertValues(source["accountBlock"], WalletConnectAccountBlockInput);
+	        this.topic = source["topic"];
+	        this.requestId = source["requestId"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class WalletMeta {
 	    id: string;
 	    name: string;

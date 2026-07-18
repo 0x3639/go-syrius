@@ -3,12 +3,16 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/0x3639/znn-sdk-go/pow"
+	"github.com/0x3639/znn-sdk-go/rpc_client"
+	sdkwallet "github.com/0x3639/znn-sdk-go/wallet"
 	"github.com/0x3639/znn-sdk-go/zenon"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zenon-network/go-zenon/chain/nom"
@@ -35,6 +39,24 @@ type TxService struct {
 	// for seconds outside mu, so without this a second (untrusted) caller could
 	// double-publish or race the held template.
 	publishMu sync.Mutex
+
+	// decimalsLookup overrides the node-backed token-decimals lookup used by the
+	// WalletConnect confirmation gate. Tests inject it; nil means "read from the
+	// connected node".
+	decimalsLookup ztsDecimalsLookup
+
+	// wcJournal is the durable WalletConnect publication journal (WC-01);
+	// pendingWC binds the current hold to the WalletConnect request it answers
+	// (nil for first-party holds) and is guarded by mu with the hold fields.
+	wcJournal *wcJournal
+	pendingWC *wcRequestIdentity
+
+	// Injectable node-touching seams (nil ⇒ the real SDK calls). They exist so
+	// the durability/ordering guarantees around broadcast are testable without
+	// a live node.
+	prepareBlockFn func(*rpc_client.RpcClient, *nom.AccountBlock, *sdkwallet.KeyPair) (*nom.AccountBlock, error)
+	publishFn      func(*rpc_client.RpcClient, *nom.AccountBlock) error
+	blockByHashFn  func(*rpc_client.RpcClient, types.Hash) (bool, error)
 }
 
 // callExpect captures the funds-moving effect a prepared block must match before
@@ -64,7 +86,7 @@ func assertMatches(b *nom.AccountBlock, e callExpect) error {
 }
 
 func newTxService(c *ConfigService, w *WalletService, n *NodeService) *TxService {
-	return &TxService{config: c, wallet: w, node: n}
+	return &TxService{config: c, wallet: w, node: n, wcJournal: newWCJournal(c.dataDir)}
 }
 
 func (t *TxService) symbolFor(zts string) string {
@@ -108,7 +130,15 @@ func (t *TxService) configuredChainID() uint64 {
 
 // guard rejects mainnet sends unless explicitly enabled.
 func (t *TxService) guard() error {
-	if t.node.currentChainID() == mainnetChainID {
+	return t.guardChain(t.node.currentChainID())
+}
+
+// guardChain enforces the explicit mainnet opt-in for a specific chain id. The
+// pre-broadcast re-check keys it off the BUILT block's ChainIdentifier rather
+// than a mutable node snapshot, so disabling the opt-in during PoW (or a node
+// transition racing the early guard) still refuses a chain-1 publication.
+func (t *TxService) guardChain(chainID uint64) error {
+	if chainID == mainnetChainID {
 		s, err := t.config.GetSettings()
 		if err != nil {
 			return err
@@ -180,7 +210,10 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 		return SendPreview{}, errors.New("wallet state changed during prepare")
 	}
 
-	holdID := t.holdPending(template, callExpect{from: from, to: to, zts: zts, amount: new(big.Int).Set(amount), data: append([]byte(nil), template.Data...)}, gen)
+	holdID, err := t.holdPending(template, callExpect{from: from, to: to, zts: zts, amount: new(big.Int).Set(amount), data: append([]byte(nil), template.Data...)}, gen)
+	if err != nil {
+		return SendPreview{}, err
+	}
 
 	return SendPreview{
 		FromAddress: from.String(),
@@ -199,29 +232,42 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 // It returns a fresh hold id that identifies THIS hold: previews carry it so a
 // cancel can be identity-checked (see CancelPending) — a stale cancel racing a
 // newer Prepare must never release the newer block.
-func (t *TxService) holdPending(template *nom.AccountBlock, expect callExpect, gen uint64) uint64 {
+func (t *TxService) holdPending(template *nom.AccountBlock, expect callExpect, gen uint64) (uint64, error) {
 	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.pending != nil {
+		return 0, errors.New("another transaction is already awaiting confirmation")
+	}
 	t.holdCounter++
 	t.pendingHoldID = t.holdCounter
 	t.pending = template
 	t.pendingExpect = expect
 	t.pendingGen = gen
-	id := t.pendingHoldID
-	t.mu.Unlock()
-	return id
+	return t.pendingHoldID, nil
 }
 
 // ConfirmPublish broadcasts the held block after re-asserting it matches the
 // originating request, then clears it. holdId is the identity of the preview
 // the USER confirmed; every preview stamps a non-zero id, so the gate fails
 // CLOSED — a zero or mismatched id is refused (never trust frontend
-// validation). If a slower Prepare replaced the held block after that preview
-// was displayed, the wallet must not broadcast a block the user didn't see.
+// validation). A stale or corrupted caller therefore cannot confirm a block
+// other than the exact hold represented by its preview.
 func (t *TxService) ConfirmPublish(holdId uint64) (string, error) {
+	built, err := t.confirmPublishBlock(holdId)
+	if err != nil {
+		return "", err
+	}
+	return built.Hash.String(), nil
+}
+
+// confirmPublishBlock is the single signing/publication implementation. The
+// normal wallet flow returns only its hash; WalletConnect returns the complete
+// finalized block JSON expected by both bridge dapps.
+func (t *TxService) confirmPublishBlock(holdId uint64) (*nom.AccountBlock, error) {
 	// Only one confirm may be in flight: PoW+publish run for seconds, so a second
 	// concurrent call must be rejected rather than double-publish/race the template.
 	if !t.publishMu.TryLock() {
-		return "", errors.New("a transaction is already being published")
+		return nil, errors.New("a transaction is already being published")
 	}
 	defer t.publishMu.Unlock()
 
@@ -229,28 +275,27 @@ func (t *TxService) ConfirmPublish(holdId uint64) (string, error) {
 	// was prepared on testnet but we are now connected to mainnet), refuse to
 	// publish WITHOUT clearing pending so the user can reconnect and retry.
 	if err := t.guard(); err != nil {
-		return "", err
+		return nil, err
 	}
 	t.mu.Lock()
-	template, expect, pendingGen, holdID := t.pending, t.pendingExpect, t.pendingGen, t.pendingHoldID
+	template, expect, pendingGen, holdID, wcID := t.pending, t.pendingExpect, t.pendingGen, t.pendingHoldID, t.pendingWC
 	t.mu.Unlock()
 	if template == nil {
-		return "", errors.New("no pending transaction")
+		return nil, errors.New("no pending transaction")
 	}
 	// Re-assert any prepare-time policy gate (e.g. governance testnet-only)
 	// before publishing. Like the mainnet guard: refuse WITHOUT clearing, so the
 	// user can reconnect to the right network and retry.
 	if expect.policy != nil {
 		if err := expect.policy(); err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 	if holdId == 0 || holdId != holdID {
 		// Held block ≠ the one the confirm dialog displayed (or no identity was
-		// supplied at all — fail closed). Refuse without clearing: the divergence
-		// self-heals (the stale hold is released by its own prepare's cleanup or
-		// superseded by the next prepare).
-		return "", errors.New("the pending transaction changed since it was displayed; please review and confirm again")
+		// supplied at all — fail closed). Refuse without clearing: only the owner
+		// of the actual hold may cancel or confirm it.
+		return nil, errors.New("the pending transaction changed since it was displayed; please review and confirm again")
 	}
 
 	// Refuse if the wallet was locked, its session changed, or the active
@@ -260,69 +305,137 @@ func (t *TxService) ConfirmPublish(holdId uint64) (string, error) {
 	// from the CURRENT keypair at signing time.
 	if addr, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != pendingGen || addr != expect.from {
 		t.clearPendingIf(holdID)
-		return "", errors.New("wallet locked or changed; not publishing")
+		return nil, errors.New("wallet locked or changed; not publishing")
 	}
 	// Re-assert the approved effect on the held template BEFORE the expensive PoW
 	// (and again on the built block after). PrepareBlock never alters the funds-
 	// moving fields, so a template match guarantees the built block matches.
 	if err := assertMatches(template, expect); err != nil {
 		t.clearPendingIf(holdID)
-		return "", err
+		return nil, err
 	}
 	kp, err := t.wallet.signingKeyPair()
 	if err != nil {
 		t.clearPendingIf(holdID)
-		return "", err
+		return nil, err
 	}
 	client := t.node.currentClient()
 	if client == nil {
-		return "", errors.New("not connected")
+		return nil, errors.New("not connected")
 	}
 	// Chain check BEFORE the expensive PoW. The template is still un-PoW'd, so a
 	// mismatch keeps it for retry after the user reconnects to the right network.
 	if template.ChainIdentifier != t.node.currentChainID() {
-		return "", fmt.Errorf("configured Chain ID (%d) does not match the connected node's chain (%d); set the correct Chain ID in Settings or connect to a matching node", template.ChainIdentifier, t.node.currentChainID())
+		return nil, fmt.Errorf("configured Chain ID (%d) does not match the connected node's chain (%d); set the correct Chain ID in Settings or connect to a matching node", template.ChainIdentifier, t.node.currentChainID())
 	}
 
 	// The slow part, now that the user has approved: autofill against the current
 	// frontier, PoW (generate plasma), hash, and sign. The template is mutated
 	// here, so any failure from this point clears pending (a retry re-prepares).
-	z := zenon.NewZenon(client)
-	if t.ctx != nil {
-		z.PowCallback = func(s pow.PowStatus) {
-			runtime.EventsEmit(t.ctx, EventTxPowProgress, map[string]string{"state": s.String()})
+	prepare := t.prepareBlockFn
+	if prepare == nil {
+		prepare = func(client *rpc_client.RpcClient, tpl *nom.AccountBlock, kp *sdkwallet.KeyPair) (*nom.AccountBlock, error) {
+			z := zenon.NewZenon(client)
+			if t.ctx != nil {
+				z.PowCallback = func(s pow.PowStatus) {
+					runtime.EventsEmit(t.ctx, EventTxPowProgress, map[string]string{"state": s.String()})
+				}
+			}
+			return z.PrepareBlock(tpl, kp)
 		}
 	}
-	built, err := z.PrepareBlock(template, kp)
+	built, err := prepare(client, template, kp)
 	if err != nil {
 		t.clearPendingIf(holdID)
-		return "", err
+		return nil, err
 	}
 	// Re-assert the session after PoW (it took seconds — a lock or account
 	// switch could have raced).
 	if addr, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != pendingGen || addr != expect.from {
 		t.clearPendingIf(holdID)
-		return "", errors.New("wallet locked or changed; not publishing")
+		return nil, errors.New("wallet locked or changed; not publishing")
 	}
 	// Confirm-what-you-sign: the built block must move exactly the approved effect.
 	if err := assertMatches(built, expect); err != nil {
 		t.clearPendingIf(holdID)
-		return "", err
+		return nil, err
 	}
 	if built.ChainIdentifier != t.node.currentChainID() {
 		t.clearPendingIf(holdID)
-		return "", fmt.Errorf("configured Chain ID (%d) does not match the connected node's chain (%d)", built.ChainIdentifier, t.node.currentChainID())
+		return nil, fmt.Errorf("configured Chain ID (%d) does not match the connected node's chain (%d)", built.ChainIdentifier, t.node.currentChainID())
 	}
-	if err := client.LedgerApi.PublishRawTransaction(built); err != nil {
+	// Final mainnet-consent check immediately before broadcast: the early guard
+	// ran before PoW, which takes seconds — the user may have revoked the
+	// opt-in meanwhile. Refuse WITHOUT clearing (like the early guard) so the
+	// approved block survives for an explicit retry.
+	if err := t.guardChain(built.ChainIdentifier); err != nil {
+		return nil, err
+	}
+	// WC-01: persist the finalized signed block BEFORE the first broadcast
+	// attempt. From here the journal — not the in-memory hold — owns duplicate
+	// protection for this WalletConnect request; if persistence fails, refuse
+	// to broadcast at all (a definite non-publication).
+	if wcID != nil {
+		blockJSON, err := json.Marshal(built)
+		if err != nil {
+			t.clearPendingIf(holdID)
+			return nil, fmt.Errorf("cannot encode the signed block: %v", err)
+		}
+		rec := wcPublicationRecord{
+			Topic:      wcID.Topic,
+			RequestID:  wcID.ID,
+			IntentHash: wcID.IntentHash,
+			State:      wcStateSigned,
+			BlockJSON:  blockJSON,
+			Hash:       built.Hash.String(),
+			CreatedAt:  time.Now().Unix(),
+		}
+		if err := t.wcJournal.put(wcJournalKey(wcID.Topic, wcID.ID), rec); err != nil {
+			t.clearPendingIf(holdID)
+			return nil, fmt.Errorf("refusing to broadcast: cannot persist the signed block for duplicate protection: %v", err)
+		}
+	}
+	publish := t.publishFn
+	if publish == nil {
+		publish = func(c *rpc_client.RpcClient, b *nom.AccountBlock) error {
+			return c.LedgerApi.PublishRawTransaction(b)
+		}
+	}
+	if err := publish(client, built); err != nil {
 		t.clearPendingIf(holdID)
-		return "", err
+		if wcID != nil {
+			// A broadcast error does NOT prove the node rejected the block. The
+			// journaled record stays "signed": the outcome is unknown and only
+			// reconciliation (query by hash / rebroadcast of the exact block)
+			// may resolve it. Never report this as a definite rejection.
+			return nil, fmt.Errorf("%s: %v. The signed block %s is preserved; check the outcome instead of retrying the request", wcOutcomeUnknownMarker, err, built.Hash.String())
+		}
+		return nil, err
+	}
+	if wcID != nil {
+		// Best-effort: the node accepted the block; a failure here degrades to
+		// an extra reconcile, never to a duplicate.
+		_ = t.wcJournal.markPublished(wcJournalKey(wcID.Topic, wcID.ID))
 	}
 	hash := built.Hash.String()
 	t.clearPendingIf(holdID)
 	if t.ctx != nil {
 		runtime.EventsEmit(t.ctx, EventTxPublished, map[string]string{"hash": hash})
 	}
-	return hash, nil
+	return built, nil
+}
+
+// attachWalletConnectIdentity binds the WalletConnect request identity to a
+// live hold. It fails (false) if the hold is no longer current — the caller
+// must then treat the prepare as lost rather than proceed unjournaled.
+func (t *TxService) attachWalletConnectIdentity(holdID uint64, topic string, requestID uint64, intentHash string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if holdID == 0 || t.pendingHoldID != holdID {
+		return false
+	}
+	t.pendingWC = &wcRequestIdentity{Topic: topic, ID: requestID, IntentHash: intentHash}
+	return true
 }
 
 // prepareCall builds, PoWs, and signs an embedded-contract call template (without
@@ -334,6 +447,15 @@ func (t *TxService) prepareCall(template *nom.AccountBlock, expect callExpect, s
 // prepareCallWithEffect is prepareCall plus a decoded TransactionEffect for the
 // confirm dialog (used by flows whose material parameters live in ABI data).
 func (t *TxService) prepareCallWithEffect(template *nom.AccountBlock, expect callExpect, summary string, effect *TransactionEffect) (CallPreview, error) {
+	return t.prepareCallWithEffectDecimals(template, expect, summary, effect, nil)
+}
+
+// prepareCallWithEffectDecimals additionally accepts a pre-resolved decimals
+// value. WalletConnect resolves decimals strictly (missing metadata fails) and
+// stamps THAT value here, so a second fail-open lookup can never replace it in
+// the confirmation. nil keeps the fail-open display resolution used by
+// first-party flows.
+func (t *TxService) prepareCallWithEffectDecimals(template *nom.AccountBlock, expect callExpect, summary string, effect *TransactionEffect, decimals *int) (CallPreview, error) {
 	if err := t.guard(); err != nil {
 		return CallPreview{}, err
 	}
@@ -362,14 +484,23 @@ func (t *TxService) prepareCallWithEffect(template *nom.AccountBlock, expect cal
 	if t.wallet.sessionGen() != gen {
 		return CallPreview{}, errors.New("wallet state changed during prepare")
 	}
-	holdID := t.holdPending(template, callExpect{from: from, to: expect.to, zts: expect.zts, amount: new(big.Int).Set(expect.amount), data: append([]byte(nil), expect.data...), policy: expect.policy}, gen)
+	holdID, err := t.holdPending(template, callExpect{from: from, to: expect.to, zts: expect.zts, amount: new(big.Int).Set(expect.amount), data: append([]byte(nil), expect.data...), policy: expect.policy}, gen)
+	if err != nil {
+		return CallPreview{}, err
+	}
+	dec := 0
+	if decimals != nil {
+		dec = *decimals
+	} else {
+		dec = resolveDecimals(template.TokenStandard.String(), clientTokenDecimals(client))
+	}
 	return CallPreview{
 		FromAddress: from.String(),
 		ToAddress:   template.ToAddress.String(),
 		Zts:         template.TokenStandard.String(),
 		Symbol:      t.symbolFor(template.TokenStandard.String()),
 		Amount:      template.Amount.String(),
-		Decimals:    resolveDecimals(template.TokenStandard.String(), clientTokenDecimals(client)),
+		Decimals:    dec,
 		Summary:     summary,
 		Effect:      effect,
 		NeedsPoW:    needsPoW,
@@ -447,6 +578,7 @@ func (t *TxService) clearPendingLocked() {
 	t.pendingExpect = callExpect{}
 	t.pendingGen = 0
 	t.pendingHoldID = 0
+	t.pendingWC = nil
 }
 
 func (t *TxService) clearPending() {
@@ -456,8 +588,8 @@ func (t *TxService) clearPending() {
 }
 
 // clearPendingIf zeroes the hold only if it is still the one identified by id.
-// ConfirmPublish's terminal clears use this: a publish finishing after a newer
-// Prepare replaced the hold must not wipe the newer block.
+// Terminal confirms and asynchronous cancels use this identity check so stale
+// frontend work can never clear a different reviewed block.
 func (t *TxService) clearPendingIf(id uint64) {
 	t.mu.Lock()
 	if t.pendingHoldID == id {

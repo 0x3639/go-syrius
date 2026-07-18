@@ -18,6 +18,10 @@ let toast: ReturnType<typeof useToast> | undefined
 try { toast = useToast() } catch { toast = undefined }
 
 async function onSend(intent: { recipient: string; zts: string; amountDecimal: string }) {
+  // A retryable confirm failure may still own its backend hold. The transfer
+  // page renders a new form in error state, so release that exact old hold and
+  // await the local binding before preparing the replacement transaction.
+  if (tx.status === 'error') await tx.discard()
   const tok = items.value.find((b) => b.zts === intent.zts)
   await tx.prepare(intent.recipient, intent.zts, toBase(intent.amountDecimal, tok?.decimals ?? 8))
 }

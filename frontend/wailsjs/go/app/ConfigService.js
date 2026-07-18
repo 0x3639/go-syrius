@@ -18,6 +18,10 @@ export function ListContacts() {
   return window['go']['app']['ConfigService']['ListContacts']();
 }
 
+export function SetAllowMainnetSend(arg1) {
+  return window['go']['app']['ConfigService']['SetAllowMainnetSend'](arg1);
+}
+
 export function SetAutoReceive(arg1) {
   return window['go']['app']['ConfigService']['SetAutoReceive'](arg1);
 }

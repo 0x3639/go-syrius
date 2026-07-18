@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+
 	"github.com/0x3639/znn-sdk-go/rpc_client"
 	"github.com/zenon-network/go-zenon/common/types"
 )
@@ -37,9 +39,38 @@ func resolveDecimals(zts string, lookup ztsDecimalsLookup) int {
 	return d
 }
 
+// resolveDecimalsChecked is the confirmation-strict variant of resolveDecimals:
+// ZNN and QSR resolve to their protocol-fixed 8 without a node call, but a
+// custom token whose decimals cannot be resolved is an ERROR, never a guessed
+// 8 — a confirmation dialog must not render an amount with assumed decimals.
+func resolveDecimalsChecked(zts string, lookup ztsDecimalsLookup) (int, error) {
+	switch zts {
+	case types.ZnnTokenStandard.String(), types.QsrTokenStandard.String():
+		return defaultDecimals, nil
+	}
+	parsed, err := types.ParseZTS(zts)
+	if err != nil {
+		return 0, fmt.Errorf("cannot resolve token decimals: invalid ZTS %q: %w", zts, err)
+	}
+	if lookup == nil {
+		return 0, fmt.Errorf("cannot resolve decimals for token %s: no node lookup available", zts)
+	}
+	d, err := lookup(parsed)
+	if err != nil {
+		return 0, fmt.Errorf("cannot resolve decimals for token %s: %w", zts, err)
+	}
+	return d, nil
+}
+
+// errTokenNotFound reports token metadata that does not exist on the connected
+// node. Display paths (resolveDecimals) degrade to defaultDecimals; the strict
+// confirmation path (resolveDecimalsChecked) must treat it as a failure — a
+// confirmation can never render an amount with guessed decimals.
+var errTokenNotFound = fmt.Errorf("token metadata not found on the connected node")
+
 // clientTokenDecimals returns a lookup that reads a token's decimals from the
 // node's TokenApi (the same GetByZts path GetTokenByZts uses). A nil/missing
-// token reports defaultDecimals via a nil error so the caller renders 8.
+// token is an ERROR; fail-open callers fall back to 8 themselves.
 func clientTokenDecimals(client *rpc_client.RpcClient) ztsDecimalsLookup {
 	return func(zts types.ZenonTokenStandard) (int, error) {
 		tok, err := client.TokenApi.GetByZts(zts)
@@ -47,7 +78,7 @@ func clientTokenDecimals(client *rpc_client.RpcClient) ztsDecimalsLookup {
 			return defaultDecimals, err
 		}
 		if tok == nil || tok.TokenStandard == types.ZeroTokenStandard {
-			return defaultDecimals, nil
+			return 0, errTokenNotFound
 		}
 		return int(tok.Decimals), nil
 	}

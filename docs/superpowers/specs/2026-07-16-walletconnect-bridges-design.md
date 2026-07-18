@@ -1,0 +1,343 @@
+# WalletConnect bridge integration design
+
+**Date:** 2026-07-16
+**Status:** approved implementation direction
+
+## Goal
+
+Allow go-syrius to pair with both the deployed `0x3639/bridge-dapp` and the new `nom-bridge` without bridge-specific code, while preserving the binding-boundary and confirm-what-you-sign invariants.
+
+## Shared protocol
+
+Both dapps use WalletConnect v2 with the same CAIP contract:
+
+- namespace: `zenon`
+- chain: `zenon:1`
+- account: `zenon:1:<z1 address>`
+- methods: `znn_info`, `znn_sign`, `znn_send`
+- events: `chainIdChange`, `addressChange`
+
+WalletConnect SignClient 2.23.x may normalize the unregistered custom `zenon` namespace from a dapp's required namespace into the wallet proposal's `optionalNamespaces`, leaving `requiredNamespaces` empty. The wallet accepts the exact frozen Zenon contract from either proposal field, omits unrelated optional namespaces, and still rejects every unsupported required namespace.
+
+`znn_info` returns `{ address, chainId, nodeUrl? }`. It reads `NodeService.NodeStatus()` for every handshake rather than trusting the event-driven Pinia snapshot, so a reconnect cannot reject a valid session using stale chain state. A configured node URL containing username/password, query-string, or fragment credentials is omitted from the response. Automatic request failures are also retained in the WalletConnect screen because dapps may collapse multiple protocol codes into a generic rejection message. `znn_send` supplies `{ fromAddress, accountBlock }`, where `accountBlock` is the JSON output of the TypeScript SDK's `AccountBlockTemplate.toJson()`.
+
+## Trust boundary
+
+WalletConnect transport and session state run in the Vue WebView. No key, mnemonic, decrypted keystore, signing key, or signing primitive crosses into it.
+
+For `znn_send`, Go accepts only the immutable intent fields (`chainIdentifier`, `blockType`, `address`, `toAddress`, `amount`, `tokenStandard`, and base64 `data`). Contract templates may carry the zero address; any populated sender must match the active account. Go rejects the wrong chain, wrong sender, non-user-send block type, unknown destinations, malformed values, and non-canonical ABI payloads. It reconstructs a clean block and never trusts dapp-supplied hash, frontier, height, plasma, nonce, public key, or signature fields.
+
+The first release permits only calls to the embedded Bridge contract. `WrapToken` must attach a positive amount. `Redeem` must attach zero ZNN, matching the canonical SDK template; a funded or non-ZNN redeem is rejected before confirmation. That is sufficient for token bridging in both dapps and avoids granting a connected website a generic transaction surface. Additional embedded contracts can be added deliberately later using the same exact ABI decode and preview path.
+
+Go derives the confirmation preview from the reconstructed block and byte-exact decoded ABI call. Only one backend block may await confirmation; a racing WalletConnect or first-party prepare is refused rather than replacing the block already displayed. After the user confirms, the held-block gate rechecks the wallet session, active account, mainnet opt-in, connected chain, destination, token, amount, and call data before frontier fill, PoW, signing, and publish.
+
+`znn_sign` is advertised for compatibility but arbitrary payload signing is not enabled in this phase. Requests fail explicitly until a domain-separated signing format and user-facing semantic preview are specified.
+
+## Mainnet policy
+
+Chain ID 1 and a mainnet remote node can be configured today, but writes are fail-closed behind `AllowMainnetSend`. Settings gains an explicit, warning-backed mainnet-transactions toggle. WalletConnect uses the same guard; pairing never bypasses it.
+
+## UX
+
+The WalletConnect screen provides:
+
+1. a `wc:` URI field and pair action;
+2. a session proposal showing dapp name/URL, requested chain, methods, and the account to expose;
+3. connected-session cards with disconnect;
+4. a request approval dialog showing the Go-derived Bridge method, exact decoded fields, amount/token, sender, destination, and PoW status.
+
+Pairing requires `VITE_WALLETCONNECT_PROJECT_ID`, a project id owned by the wallet application. It is never a secret, but production builds must configure it rather than reuse either dapp's identity.
+
+## Compatibility and lifecycle
+
+The WalletConnect client uses the same v2 SignClient protocol version exercised by both bridges. Sessions persist using the WalletConnect client storage and are reconciled to the active account after unlock. Wallet lock rejects requests that have not started publication with wallet-locked code `9000`; it never pre-empts an in-flight publish. User rejection uses code `5000`. Account changes cancel an awaiting preview before updating the session and emitting `addressChange`. Session deletion/expiry releases an awaiting backend hold without attempting a response on the ended topic.
+
+Publication and WalletConnect result delivery are separate states. Once Go returns a published block, the wallet records its result/hash and can only retry delivering that success result. A relay failure, session end, account change, or wallet lock can never convert an already-published request into an error response; the UI warns that the transaction moved and must not be submitted again. If publication fails after the session ends, the exact retained hold is cancelled before local request state is dropped.
+
+## Verification
+
+- Go unit tests cover malformed input, wrong sender/chain/block type, non-Bridge destinations, canonical Wrap/Redeem funding, non-canonical ABI, occupied and mismatched held-block identity, all WalletConnect prepare gates, and returned published JSON.
+- Frontend tests cover namespace validation, authoritative `znn_info`, credential-safe node URL disclosure, locked request rejection, rejection/cancellation ordering, result-delivery failure after publication, lock during publication, session deletion, duplicate request serialization, account reconciliation, SignClient initialization retry, and the consent-state behavior of the mainnet toggle.
+- Typecheck, Vitest, Go tests, and frontend production build must pass.
+- Manual acceptance pairs each bridge independently, reads `znn_info`, previews a Bridge request, rejects one request, and publishes one small mainnet request after the explicit opt-in.
+
+### Acceptance progress (2026-07-16)
+
+- `bridge.0x3639.com`: live WalletConnect pairing approved successfully and go-syrius displayed the deployed Zenon Bridge session with the expected `zenon:1:<active-address>` account.
+- No transaction was requested or published during this connection-only check.
+- The deployed WalletConnect modal's copy control did not populate the in-app browser clipboard; decoding the displayed QR into the same `wc:` URI and pasting it into go-syrius paired successfully. This did not affect the WalletConnect protocol handshake.
+- `nom-bridge`: live WalletConnect pairing approved successfully against the local dapp and go-syrius displayed the NoM Bridge session with the expected `zenon:1:<active-address>` account. SignClient delivered its custom namespace under `optionalNamespaces`; compatibility is covered by the frozen-namespace tests. Transaction preview/rejection/publication acceptance remains to be run with a deliberately small mainnet amount.
+- A follow-up lifecycle/security review was applied locally: published-result delivery is terminal, lock/session/account races are fail-safe, racing prepares cannot replace a held block, canonical method funding is enforced, initialization is retryable, and the test claims above now correspond to implemented tests. No real-funds transaction was submitted during this review.
+
+### Audit remediation (2026-07-17)
+
+All eight findings of `docs/walletconnect-audit-2026-07-17.md` are remediated:
+
+- **WC-01** — publication is durable and idempotent: a per-request journal in
+  the backend data directory persists the signed block before broadcast,
+  classifies broadcast errors as *unknown* (reconciled by hash query or exact
+  rebroadcast, never a rebuilt block), and replays journaled outcomes for
+  redelivered requests. See
+  `docs/superpowers/specs/2026-07-17-walletconnect-durable-publication.md`.
+- **WC-02** — `session_request_expire` cancels preparing/awaiting requests
+  without a response; `expiryTimestamp` is re-checked at approval; expiry
+  during publication never invents a rejection.
+- **WC-03** — custom-token decimals must resolve or preparation fails; the
+  confirmation always shows the held block's exact base-unit amount.
+- **WC-04** — the mainnet opt-in is re-read immediately before broadcast,
+  keyed off the built block's chain identifier.
+- **WC-05** — the SignClient Verify context is surfaced on proposals and
+  requests; scam-flagged peers cannot be approved; unverified origins carry an
+  explicit warning.
+- **WC-06** — `znn_info` discloses only bare `ws(s)://host[:port]` origins;
+  URLs with userinfo, query, fragment, or any path are omitted.
+- **WC-07** — peer metadata icons are never fetched; a local placeholder
+  renders instead. (A production CSP remains a deliberate follow-up: it must
+  be validated live against the Wails runtime, the WalletConnect relay, and
+  the pre-existing lottie-web `eval` dependency.)
+- **WC-08** — `proposal_expire` clears only the matching proposal; approval
+  re-checks the proposal deadline.
+
+Verification after remediation: Go tests (including new journal/reconcile/
+expiry/guard-ordering coverage), `go vet`, Vitest (46 WalletConnect-specific
+tests), vue-tsc, and the production build all pass. The mainnet acceptance run
+(pair, `znn_info`, preview, reject, one small publish) is still outstanding.
+
+#### Round-2 review fixes (2026-07-17)
+
+A follow-up review of the remediation commit surfaced six findings, all fixed:
+
+1. Journaled requests now resolve **before** the locked-wallet/chain/node
+   gates (sender-independent intent validation), so a known outcome is never
+   answered with an ordinary rejection; the frontend consults the backend for
+   `znn_send` even while locked and maps only *fresh* requests to code 9000.
+2. The journal cap no longer evicts: every retained record is duplicate
+   protection, so a full journal refuses **new** writes (and therefore new
+   broadcasts) while existing records stay updatable for reconciliation.
+3. Custom-token decimals are resolved exactly once — missing token metadata is
+   an error, and the checked value is stamped into the confirmation preview
+   (no second fail-open lookup).
+4. Reconciliation serializes under the publication mutex and requires the
+   connected node to be on the journaled block's chain before a "not found"
+   query result counts as evidence or a rebroadcast is attempted.
+5. The Verify known-scam block now runs before *any* method dispatch,
+   including `znn_info`.
+6. A failed delivery of a replayed published result keeps the standard
+   retryable delivery-error state (with the journaled result) instead of a
+   dead global error.
+
+#### Round-3 review fixes (2026-07-17)
+
+A third review pass surfaced one remaining P1 and two P2 edge cases, all fixed:
+
+1. **[P1] Journal replay now precedes the frontend policy gates.** A new
+   journal-only `Tx.LookupWalletConnectPublication` (no wallet/node gate, never
+   creates a hold) resolves a redelivered `znn_send` before the scam,
+   existing-request, and busy-`tx.status` gates, so a published/unknown outcome
+   is never turned into code 5000 or `-32000`. A fresh (unjournaled) request
+   still passes through all those gates and `PrepareWalletConnectSend`; a reused
+   id with a different intent fails closed.
+2. **[P2] Reconciliation reads the client and chain in one snapshot.**
+   `NodeService.connectionSnapshot()` returns both under a single read lock, so
+   a node transition can't pair an old client with the new chain identifier
+   between the two accessor calls.
+3. **[P2] Session end during replay delivery is preserved.** A
+   `session_delete`/expire that lands while a replayed result's `respond()` is
+   in flight now carries `sessionEnded` into the retained delivery-error state
+   (with the ended-session message), so no retry button targets a dead session.
+
+#### Round-4 review fixes (2026-07-17)
+
+A fourth review pass found three race/classification edge cases in the
+round-3 replay path, all fixed:
+
+1. **[P1] Lookup no longer hijacks the shared `preparingRequest` slot.** The
+   journal lookup runs without mutating `preparingRequest`, so an earlier
+   in-flight preparation keeps receiving its own `session_delete` / expiry
+   events. Replay delivery claims the slot only when it is free (to track a
+   session that ends during its `respond()`), and never while another request
+   is in flight.
+2. **[P1] A journal-read failure is unknown, not a rejection.** Reused-id /
+   different-intent is now a resolved Go `conflict` outcome (frontend →
+   code 5000, a safe refusal of the never-approved new intent); a genuine
+   lookup throw (journal read / IPC failure) leaves the true outcome unknown
+   and answers with a retryable `-32000`, never a definite 5000.
+3. **[P2] Replays never clobber a displayed request.** An unknown replay or a
+   failed replayed delivery arriving while another request occupies the modal
+   no longer overwrites it (which would orphan that request's backend hold):
+   the journal record survives for a later redelivery and the condition is
+   surfaced non-destructively.
+
+#### Round-5 review fixes (2026-07-17)
+
+A fifth pass found two P1 lifecycle gaps in the round-4 lookup path plus a
+retry improvement:
+
+1. **[P1] The looked-up request now tracks its own lifecycle.** A keyed
+   `lookupMarkers` collection (separate from the shared `preparingRequest`
+   slot) marks the exact request under lookup, so a `session_request_expire` /
+   `session_delete` arriving while `LookupWalletConnectPublication` is awaiting
+   is observed — an expired request aborts instead of falling through to a
+   fresh, approvable hold.
+2. **[P1] A journal-read failure no longer answers the dapp at all.** A lookup
+   throw leaves the outcome unknown (the block may be published), so sending
+   any JSON-RPC response — even `-32000` — is removed: a terminal error could
+   make the dapp retry under a NEW id and bypass the journal identity. The
+   failure is kept local and retryable; a same-id redelivery re-runs the
+   idempotent lookup.
+3. **[P2] A pending-replay queue** surfaces an unknown replay or a
+   delivery-failed published result promptly when the modal/preparation slot
+   clears, instead of relying on the dapp to redeliver. The journal remains the
+   durable source of truth; the queue is drained on every request-clearing path
+   and purged on session end/expiry.
+
+#### Round-6 review fixes (2026-07-17)
+
+A sixth pass found the round-5 lookup-failure handling and replay queue still
+had gaps:
+
+1. **[P1] Failed journal lookups are now actively retried.** SignClient
+   suppresses same-id `session_request` re-emission for a client's lifetime, so
+   "leave it unanswered and let the dapp redeliver" would not actually retry —
+   the request could expire and the dapp reissue under a NEW id (bypassing the
+   journal identity) while the original block may have published. The znn_send
+   flow is extracted into a shared `resolveZnnSend`; a lookup throw now retains
+   the request and schedules bounded backoff retries of the SAME-id lookup,
+   stopping at the request's expiry or a max attempt count. A resolved retry
+   delivers the original outcome (published → deliver, unknown → reconcile,
+   none → fresh) under the original id.
+2. **[P2] Slot release and queue drain are centralized.** `drainPendingReplays`
+   now loops so multiple queued published results all deliver; the
+   fresh-preparation `finally` drains after releasing its marker (so a replay
+   queued behind a preparation that ends without a modal still surfaces); and
+   approval-time expiry drains too. The delivery retain-vs-queue decision now
+   accounts for an in-flight preparation (not just a displayed request), and
+   marker identity is compared by token rather than object identity (Pinia
+   wraps stored markers in a reactive proxy).
+
+#### Round-7 review fixes (2026-07-17)
+
+A seventh pass found three lifecycle gaps in the round-6 retry/drain work:
+
+1. **[P1] Failed-lookup retries are cancelled on session end/expiry.**
+   `handleSessionEnded` (by topic) and `handleRequestExpired` (by id) now purge
+   `failedLookups`, so a scheduled retry that fires after a `session_delete`
+   becomes a no-op instead of falling through to a fresh hold for a dead
+   session.
+2. **[P1] Same-id protection holds until the request actually expires.** The
+   fixed 6-attempt cap (≈1 min of backoff, often shorter than a request's
+   lifetime) is replaced: when an expiry is known, retries continue at the
+   capped backoff until that expiry; only an expiry-less request falls back to
+   a generous total-attempt bound. This prevents abandoning same-id protection
+   while the original request is still live (which could let a later new-id
+   reissue bypass the journal identity after the first block published).
+3. **[P2] Publish-failure-after-session-end drains the queue.** When
+   `ConfirmWalletConnectPublish` fails after the session ended, clearing the
+   displayed request now also drains pending replays, so a replay queued behind
+   the publishing request is no longer stranded.
+
+#### Round-8 review fixes (2026-07-17)
+
+An eighth pass found the remaining new-ID bypass: the journal keys on
+`topic#requestId`, so a dapp reissuing the identical transfer under a NEW id
+(SignClient suppresses same-id re-emission, so a stuck request is reissued
+under a fresh id after it expires) found no record for its own id and could
+build a **second** block for the same transfer even though the first may have
+published.
+
+- **[P1] Retained records are matched by validated intent hash, not only by
+  request id.** `LookupWalletConnectPublication`, after missing on the exact
+  `topic#id`, scans (`wcJournal.findByIntent`) for a retained record with the
+  same intent hash **within the same topic/session**, and replays its outcome
+  (published → deliver, signed/unresolved → reconcile) instead of returning
+  `none`. So a new-id duplicate never reaches a fresh hold. Records now store
+  their `topic`/`requestId`, and the prepare result carries the owning
+  `journalTopic`/`journalRequestId` so the frontend delivers to the new id but
+  reconciles/acknowledges the **original** record. Matching is scoped to one
+  topic to avoid false-positives across unrelated dapps that share an identical
+  intent; the residual cross-session (re-pair under a new topic) case is a
+  documented gap, mitigated because the primary defense — actively resolving
+  the original id so the dapp never reissues — remains in place. A backend test
+  journals id 100, submits the identical intent as id 101, and proves no fresh
+  hold is created.
+
+#### Round-9 review fixes (2026-07-17)
+
+Two remaining new-ID/new-topic duplicate gaps from round-8:
+
+1. **[P1] Cross-topic (re-pair) duplicate protection, fail-closed.** When the
+   original session expires and the dapp re-pairs under a new topic, the
+   identical intent arrives under both a new id and a new topic. Lookup now,
+   after the same-topic scan, does a global scan (`findByIntentAnyTopic`) for a
+   retained record with the same intent in ANY other session. A cross-topic
+   match is **not** auto-replayed (it may be an unrelated dapp that shares the
+   intent) — it returns a blocking `duplicate` outcome: the frontend refuses the
+   new request (5000, no disclosure of the old result, no hold) and surfaces the
+   retained record — keyed to its owning `journalTopic`/`journalRequestId` — as
+   a reconcile prompt so the user can resolve or clear it before retrying. This
+   covers both unresolved `signed` and retained (undelivered) `published`
+   records.
+2. **[P1] Legacy record ownership is backfilled.** Records written before the
+   `topic`/`requestId` fields existed deserialize with empty/zero ownership, so
+   intent-matching would miss them. `loadLocked` now derives ownership from each
+   map key (`topic#requestId`), so the duplicate defenses work for durable
+   records already on disk. An upgrade test writes legacy-shaped JSON, loads it,
+   and proves an identical intent under a new id matches (no fresh hold).
+
+#### Round-10 review fixes (2026-07-18)
+
+Three frontend recovery issues in the round-9 cross-topic `duplicate` flow:
+
+1. **[P1] The retained record uses a neutral identity.** The surfaced
+   recovery request no longer inherits the newly-rejected dapp's Verify
+   attestation (which would show that dapp's VALID origin beside an old
+   transaction from a different session). It is presented with a neutral
+   UNKNOWN identity on both the direct and queued paths.
+2. **[P2] Cross-topic recovery is local-only.** Reconciling a retained record
+   whose original session is gone no longer responds on the dead topic (which
+   SignClient rejects, leaving it stuck in delivery-error and the record
+   permanently blocking the intent). It resolves the record, shows the result
+   locally as a new `recovered` state, and an explicit "Acknowledge and clear"
+   action deletes the record (the only path that clears it, so an identical
+   intent is never silently unblocked).
+3. **[P2] The duplicate handler runs for the prepare-time recheck too.** A
+   cross-topic record appearing during the lookup→prepare window makes Prepare
+   return `duplicate`; that branch previously fell through and installed an
+   approvable hold-zero `awaiting` request. The duplicate handling is factored
+   into `refuseDuplicateAndRecover` and invoked from both the initial lookup
+   and the Prepare result.
+
+#### Round-11 review fixes (2026-07-18)
+
+Three issues in the round-10 `recovered` recovery state:
+
+1. **[P1] Generic dialog dismissal is non-destructive.** Escape / backdrop /
+   the X no longer call `acknowledgeRecovered` (which would delete the durable
+   duplicate guard). Generic dismissal only hides the modal; the labeled
+   "Acknowledge and clear" button is the sole path that acknowledges/deletes
+   the record. A component test emits `update:open=false` and asserts Ack is
+   not called.
+2. **[P2] Acknowledgement failure keeps the record visible.** `acknowledge-
+   Recovered` now awaits the Ack and clears the modal only on success; a failed
+   Ack (journal read/write error) is no longer swallowed — the recovered state
+   stays with an actionable error so the guard is not falsely reported cleared.
+3. **[P2] Local recovery survives lifecycle events.** A `localRecovery` record
+   is journal-owned and independent of any session, so `handleSessionEnded`,
+   `handleRequestExpired`, and `walletLocked` now leave it untouched (no
+   discard, and no error-9000 response to the dead original session).
+
+#### Round-12 review fixes (2026-07-18)
+
+Two follow-ons to the round-11 recovery handling:
+
+1. **[P2] Queued local recoveries survive lifecycle events too.** The
+   `pendingReplays` purges in `handleSessionEnded` (by topic) and
+   `handleRequestExpired` (by id) ran before the `localRecovery` guard, so a
+   recovery queued behind another modal was discarded when the old session
+   ended or the id expired. Those purges now skip `localRecovery` entries, so a
+   queued recovery surfaces when the slot clears instead of being stranded.
+2. **[P2] Acknowledgement errors are rendered.** The `recovered` dialog now
+   displays `request.error` with `role="alert"`, so a failed
+   "Acknowledge and clear" is visible (previously the store set the error but
+   the template never showed it, so the user could not tell the record was not
+   cleared).

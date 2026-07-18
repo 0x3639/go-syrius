@@ -97,7 +97,7 @@ func (j *wcJournal) loadLocked() (map[string]wcPublicationRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := os.ReadFile(p)
+	raw, err := os.ReadFile(p) // #nosec G304 -- constant filename within the app data dir
 	if os.IsNotExist(err) {
 		return map[string]wcPublicationRecord{}, nil
 	}

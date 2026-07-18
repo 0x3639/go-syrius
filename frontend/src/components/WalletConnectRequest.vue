@@ -92,12 +92,13 @@ const open = computed({
           </div>
         </div>
         <div v-else-if="wc.request.status === 'recovered'" class="space-y-2">
-          <p class="text-sm text-success" role="alert">
+          <p class="text-sm text-success">
             The outcome of this transfer from another WalletConnect session has been resolved.
           </p>
           <p v-if="wc.request.publishedHash" class="break-all text-xs font-mono text-muted-foreground">
             Transaction: {{ wc.request.publishedHash }}
           </p>
+          <p v-if="wc.request.error" class="text-sm text-destructive" role="alert">{{ wc.request.error }}</p>
           <Button class="w-full" @click="wc.acknowledgeRecovered()">Acknowledge and clear</Button>
         </div>
         <div v-else-if="wc.request.status === 'error'" class="space-y-2">

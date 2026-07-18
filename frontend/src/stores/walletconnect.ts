@@ -1006,9 +1006,11 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       }
       // Drop queued replays and retained failed-lookup retries for a session
       // that no longer exists — a scheduled retry that later fired could
-      // otherwise proceed to a fresh hold for a dead session.
+      // otherwise proceed to a fresh hold for a dead session. A queued
+      // local-recovery entry is journal-owned and independent of any session,
+      // so it is preserved.
       for (let i = pendingReplays.length - 1; i >= 0; i--) {
-        if (pendingReplays[i].topic === topic) pendingReplays.splice(i, 1)
+        if (pendingReplays[i].topic === topic && !pendingReplays[i].localRecovery) pendingReplays.splice(i, 1)
       }
       for (const [k, entry] of failedLookups) {
         if (entry.topic === topic) failedLookups.delete(k)
@@ -1045,7 +1047,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         if (marker.id === id) marker.ended = true
       }
       for (let i = pendingReplays.length - 1; i >= 0; i--) {
-        if (pendingReplays[i].id === id) pendingReplays.splice(i, 1)
+        if (pendingReplays[i].id === id && !pendingReplays[i].localRecovery) pendingReplays.splice(i, 1)
       }
       for (const [k, entry] of failedLookups) {
         if (entry.id === id) failedLookups.delete(k)

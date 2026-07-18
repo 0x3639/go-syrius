@@ -325,3 +325,19 @@ Three issues in the round-10 `recovered` recovery state:
    is journal-owned and independent of any session, so `handleSessionEnded`,
    `handleRequestExpired`, and `walletLocked` now leave it untouched (no
    discard, and no error-9000 response to the dead original session).
+
+#### Round-12 review fixes (2026-07-18)
+
+Two follow-ons to the round-11 recovery handling:
+
+1. **[P2] Queued local recoveries survive lifecycle events too.** The
+   `pendingReplays` purges in `handleSessionEnded` (by topic) and
+   `handleRequestExpired` (by id) ran before the `localRecovery` guard, so a
+   recovery queued behind another modal was discarded when the old session
+   ended or the id expired. Those purges now skip `localRecovery` entries, so a
+   queued recovery surfaces when the slot clears instead of being stranded.
+2. **[P2] Acknowledgement errors are rendered.** The `recovered` dialog now
+   displays `request.error` with `role="alert"`, so a failed
+   "Acknowledge and clear" is visible (previously the store set the error but
+   the template never showed it, so the user could not tell the record was not
+   cleared).

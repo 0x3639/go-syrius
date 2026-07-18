@@ -933,6 +933,37 @@ describe('WalletConnect request handling', () => {
     expect(h.cancel).not.toHaveBeenCalled()
   })
 
+  it('does not purge a queued local-recovery entry on session end or expiry', async () => {
+    // Round-12 P2: a cross-topic recovery queued behind another modal is
+    // journal-owned; the old session ending / request expiring must not discard
+    // it, or reconciliation is stranded until another duplicate arrives.
+    unlock()
+    const wc = useWalletConnectStore()
+    // Occupy the modal with an unrelated awaiting request.
+    wc.request = {
+      topic: 'busy-sess', id: 600, dapp: 'Busy', preview: { ...preview, holdId: 6 },
+      status: 'awaiting', error: '', publishedResult: null, publishedHash: '',
+      sessionEnded: false, verifiedOrigin: '', validation: 'UNKNOWN', isScam: false,
+    } as any
+    // A cross-topic duplicate arrives → refused + queued (localRecovery).
+    h.lookup.mockResolvedValueOnce({
+      outcome: 'duplicate', preview: { ...preview, holdId: 0 }, publishedHash: 'blk',
+      journalTopic: 'old-sess', journalRequestId: 100,
+    })
+    await wc.handleRequest(sendEvent(500, 'new-sess'))
+    expect(wc.request?.id).toBe(600) // still the busy modal
+
+    // Lifecycle events for the old session / id must NOT drop the queued entry.
+    await wc.handleSessionEnded({ topic: 'old-sess' })
+    await wc.handleRequestExpired(100)
+
+    // Clear the busy modal → the preserved recovery must surface.
+    await wc.rejectRequest()
+    await vi.waitFor(() => expect(wc.request?.topic).toBe('old-sess'))
+    expect(wc.request?.status).toBe('unknown')
+    expect(wc.request?.localRecovery).toBe(true)
+  })
+
   it('handles a duplicate returned by the prepare-time recheck', async () => {
     // Round-10: a cross-topic record can appear during the lookup->prepare
     // window; Prepare then returns duplicate. It must refuse + recover, never

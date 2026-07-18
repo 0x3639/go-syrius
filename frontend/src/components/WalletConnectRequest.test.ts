@@ -106,6 +106,15 @@ describe('WalletConnectRequest confirm-what-you-sign rendering', () => {
     expect(ackSpy).not.toHaveBeenCalled()
   })
 
+  it('renders an acknowledgement failure error in the recovered state', () => {
+    const wc = useWalletConnectStore()
+    wc.request = request({ status: 'recovered', publishedHash: 'blk', localRecovery: true, error: 'Could not clear the recovered record: disk full. Try again.', publishedResult: { hash: 'blk' } })
+
+    const w = mount(WalletConnectRequest)
+    const alerts = w.findAll('[role="alert"]')
+    expect(alerts.some((a) => a.text().includes('Could not clear'))).toBe(true)
+  })
+
   it('renders the recovered state with an acknowledge-and-clear action', () => {
     const wc = useWalletConnectStore()
     wc.request = request({ status: 'recovered', publishedHash: 'recovered-block', localRecovery: true, publishedResult: { hash: 'recovered-block' } })

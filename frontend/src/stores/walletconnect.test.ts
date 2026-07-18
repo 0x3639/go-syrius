@@ -824,6 +824,79 @@ describe('WalletConnect request handling', () => {
     expect(wc.request).toBeNull()
   })
 
+  it('cancels a retained failed lookup when the session ends, creating no hold', async () => {
+    // Round-7 finding P1a: a scheduled retry must not run after session_delete
+    // and fall through to a fresh hold for a dead session.
+    unlock()
+    const wc = useWalletConnectStore()
+    h.lookup.mockRejectedValueOnce(new Error('cannot read the publication journal: disk error'))
+    await wc.handleRequest(sendEvent(92, 'dead-session'))
+
+    await wc.handleSessionEnded({ topic: 'dead-session' })
+
+    // The retry timer fires after the session ended → must be a no-op.
+    h.lookup.mockClear()
+    h.prepare.mockClear()
+    h.lookup.mockResolvedValueOnce({ outcome: 'none' })
+    await wc.retryFailedLookup('dead-session', 92)
+
+    expect(h.lookup).not.toHaveBeenCalled()
+    expect(h.prepare).not.toHaveBeenCalled()
+    expect(wc.request).toBeNull()
+  })
+
+  it('keeps retrying a failed lookup past the attempt count until the request expires', async () => {
+    // Round-7 finding P1b: with an expiry known, same-id protection must hold
+    // until expiry, not be abandoned after a fixed attempt count.
+    unlock()
+    const wc = useWalletConnectStore()
+    const farExpiry = Math.floor(Date.now() / 1000) + 3600
+    h.lookup.mockRejectedValueOnce(new Error('disk error'))
+    await wc.handleRequest(sendEvent(93, 'long-lived', farExpiry))
+
+    // Simulate many failed retries; the entry must survive (not be dropped)
+    // because the request has not expired.
+    for (let i = 0; i < 12; i++) {
+      h.lookup.mockRejectedValueOnce(new Error('disk error'))
+      await wc.retryFailedLookup('long-lived', 93)
+    }
+
+    // Still protected: a subsequent successful retry delivers under the same id.
+    h.lookup.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'late-hash' }, publishedHash: 'late-hash' })
+    await wc.retryFailedLookup('long-lived', 93)
+    await vi.waitFor(() => expect(h.ack).toHaveBeenCalledWith('long-lived', 93))
+  })
+
+  it('drains a queued replay after a session-ended publish fails', async () => {
+    // Round-7 finding P2: publish fails after the session ended → the request
+    // clears, and a replay queued behind it must surface.
+    unlock()
+    const wc = useWalletConnectStore()
+    // A fresh request prepared and awaiting.
+    h.lookup.mockResolvedValueOnce({ outcome: 'none' })
+    h.prepare.mockResolvedValueOnce({ outcome: 'prepare', preview: { ...preview, holdId: 30 } })
+    await wc.handleRequest(sendEvent(94, 'pub-topic'))
+    expect(wc.request?.status).toBe('awaiting')
+
+    // A replay for another dapp queues behind it (slot busy).
+    h.lookup.mockResolvedValueOnce({ outcome: 'published', published: { hash: 'queued-after-pub' }, publishedHash: 'queued-after-pub' })
+    h.respond.mockRejectedValueOnce(new Error('busy'))
+    await wc.handleRequest(sendEvent(95, 'queued-after-pub-topic'))
+    expect(wc.request?.id).toBe(94)
+
+    // Approve; the session ends during publish and the publish then fails.
+    let failPublish!: (e: Error) => void
+    h.confirm.mockReturnValue(new Promise((_, reject) => { failPublish = reject }))
+    const approving = wc.approveRequest()
+    await Promise.resolve()
+    await wc.handleSessionEnded({ topic: 'pub-topic' })
+    h.respond.mockResolvedValue(undefined)
+    failPublish(new Error('not connected'))
+    await approving
+
+    await vi.waitFor(() => expect(h.ack).toHaveBeenCalledWith('queued-after-pub-topic', 95))
+  })
+
   it('retries a failed journal lookup and delivers the resolved result', async () => {
     // Round-6 finding P1: an unanswered lookup failure must be actively
     // retried (SignClient suppresses same-id redelivery until restart), so the

@@ -89,7 +89,10 @@ const pendingReplays: PendingReplay[] = []
 // bounded by the request's expiry and a max attempt count.
 type FailedLookup = { topic: string; id: number; requestParams: any; expiryTimestamp?: number; verify: WalletConnectVerify; attempts: number }
 const failedLookups = new Map<string, FailedLookup>()
-const MAX_LOOKUP_RETRIES = 6
+// A request with a known expiry retries until that expiry (no fixed cap). Only
+// an expiry-less request uses this generous bound (~ tens of minutes at the
+// capped backoff) as a last resort before giving up.
+const MAX_LOOKUP_RETRIES_NO_EXPIRY = 60
 function lookupRetryDelayMs(attempts: number): number {
   return Math.min(1500 * 2 ** attempts, 20000)
 }
@@ -478,9 +481,15 @@ export const useWalletConnectStore = defineStore('walletconnect', {
           failedLookups.delete(key)
           return
         }
-        if (attempts >= MAX_LOOKUP_RETRIES) {
+        // Same-id protection must hold until the request actually expires, since
+        // SignClient will not re-emit the id and a later new-id retry would
+        // bypass the journal identity. So when an expiry is known, keep
+        // retrying (at the capped backoff) until it passes — never abandon on a
+        // fixed attempt count. Only an expiry-less request falls back to a
+        // generous total-attempt bound.
+        if (!expiryTimestamp && attempts >= MAX_LOOKUP_RETRIES_NO_EXPIRY) {
           failedLookups.delete(key)
-          this.error = `Could not resolve a WalletConnect request's status after several attempts (${messageOf(error)}); it was left unanswered to avoid a duplicate.`
+          this.error = `Could not resolve a WalletConnect request's status after many attempts (${messageOf(error)}); it was left unanswered to avoid a duplicate.`
           return
         }
         failedLookups.set(key, { topic, id, requestParams, expiryTimestamp, verify, attempts })
@@ -768,6 +777,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
           const holdID = current.preview.holdId ?? 0
           if (holdID) await Tx.CancelPending(holdID).catch(() => {})
           if (this.request === current) this.request = null
+          void this.drainPendingReplays()
           return
         }
         current.status = 'error'
@@ -892,9 +902,14 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       for (const marker of lookupMarkers.values()) {
         if (marker.topic === topic) marker.ended = true
       }
-      // Drop queued replays for a session that no longer exists.
+      // Drop queued replays and retained failed-lookup retries for a session
+      // that no longer exists — a scheduled retry that later fired could
+      // otherwise proceed to a fresh hold for a dead session.
       for (let i = pendingReplays.length - 1; i >= 0; i--) {
         if (pendingReplays[i].topic === topic) pendingReplays.splice(i, 1)
+      }
+      for (const [k, entry] of failedLookups) {
+        if (entry.topic === topic) failedLookups.delete(k)
       }
       const preparing = this.preparingRequest
       if (preparing && preparing.topic === topic) preparing.sessionEnded = true
@@ -925,6 +940,9 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       }
       for (let i = pendingReplays.length - 1; i >= 0; i--) {
         if (pendingReplays[i].id === id) pendingReplays.splice(i, 1)
+      }
+      for (const [k, entry] of failedLookups) {
+        if (entry.id === id) failedLookups.delete(k)
       }
       const preparing = this.preparingRequest
       // The expired request no longer exists at the relay, so there is nothing

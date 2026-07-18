@@ -214,3 +214,24 @@ had gaps:
    accounts for an in-flight preparation (not just a displayed request), and
    marker identity is compared by token rather than object identity (Pinia
    wraps stored markers in a reactive proxy).
+
+#### Round-7 review fixes (2026-07-17)
+
+A seventh pass found three lifecycle gaps in the round-6 retry/drain work:
+
+1. **[P1] Failed-lookup retries are cancelled on session end/expiry.**
+   `handleSessionEnded` (by topic) and `handleRequestExpired` (by id) now purge
+   `failedLookups`, so a scheduled retry that fires after a `session_delete`
+   becomes a no-op instead of falling through to a fresh hold for a dead
+   session.
+2. **[P1] Same-id protection holds until the request actually expires.** The
+   fixed 6-attempt cap (≈1 min of backoff, often shorter than a request's
+   lifetime) is replaced: when an expiry is known, retries continue at the
+   capped backoff until that expiry; only an expiry-less request falls back to
+   a generous total-attempt bound. This prevents abandoning same-id protection
+   while the original request is still live (which could let a later new-id
+   reissue bypass the journal identity after the first block published).
+3. **[P2] Publish-failure-after-session-end drains the queue.** When
+   `ConfirmWalletConnectPublish` fails after the session ended, clearing the
+   displayed request now also drains pending replays, so a replay queued behind
+   the publishing request is no longer stranded.

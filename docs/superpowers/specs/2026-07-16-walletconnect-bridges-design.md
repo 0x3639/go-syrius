@@ -283,3 +283,26 @@ Two remaining new-ID/new-topic duplicate gaps from round-8:
    map key (`topic#requestId`), so the duplicate defenses work for durable
    records already on disk. An upgrade test writes legacy-shaped JSON, loads it,
    and proves an identical intent under a new id matches (no fresh hold).
+
+#### Round-10 review fixes (2026-07-18)
+
+Three frontend recovery issues in the round-9 cross-topic `duplicate` flow:
+
+1. **[P1] The retained record uses a neutral identity.** The surfaced
+   recovery request no longer inherits the newly-rejected dapp's Verify
+   attestation (which would show that dapp's VALID origin beside an old
+   transaction from a different session). It is presented with a neutral
+   UNKNOWN identity on both the direct and queued paths.
+2. **[P2] Cross-topic recovery is local-only.** Reconciling a retained record
+   whose original session is gone no longer responds on the dead topic (which
+   SignClient rejects, leaving it stuck in delivery-error and the record
+   permanently blocking the intent). It resolves the record, shows the result
+   locally as a new `recovered` state, and an explicit "Acknowledge and clear"
+   action deletes the record (the only path that clears it, so an identical
+   intent is never silently unblocked).
+3. **[P2] The duplicate handler runs for the prepare-time recheck too.** A
+   cross-topic record appearing during the lookup→prepare window makes Prepare
+   return `duplicate`; that branch previously fell through and installed an
+   approvable hold-zero `awaiting` request. The duplicate handling is factored
+   into `refuseDuplicateAndRecover` and invoked from both the initial lookup
+   and the Prepare result.

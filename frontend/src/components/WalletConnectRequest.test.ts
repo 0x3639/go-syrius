@@ -91,6 +91,18 @@ describe('WalletConnectRequest confirm-what-you-sign rendering', () => {
     expect(w.text().toLowerCase()).not.toContain('reject')
   })
 
+  it('renders the recovered state with an acknowledge-and-clear action', () => {
+    const wc = useWalletConnectStore()
+    wc.request = request({ status: 'recovered', publishedHash: 'recovered-block', localRecovery: true, publishedResult: { hash: 'recovered-block' } })
+
+    const w = mount(WalletConnectRequest)
+
+    expect(w.text()).toContain('recovered-block')
+    expect(w.text().toLowerCase()).toContain('acknowledge')
+    expect(w.text().toLowerCase()).not.toContain('approve and publish')
+    expect(w.text().toLowerCase()).not.toContain('check outcome')
+  })
+
   it('warns when the dapp origin is not verified', () => {
     const wc = useWalletConnectStore()
     wc.request = request({ validation: 'UNKNOWN' })

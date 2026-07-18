@@ -824,10 +824,11 @@ describe('WalletConnect request handling', () => {
     expect(wc.request).toBeNull()
   })
 
-  it('refuses a cross-topic duplicate and surfaces the retained record to reconcile', async () => {
-    // P1 (round-9): an identical intent from ANOTHER session must not be auto-
-    // replayed to the new dapp, must not build a hold, and must let the user
-    // reconcile/clear the retained record.
+  it('refuses a cross-topic duplicate with a neutral identity and recovers locally', async () => {
+    // Round-10: an identical intent from ANOTHER session must not be auto-
+    // replayed, must not build a hold, must NOT inherit the new (rejected)
+    // dapp's Verify identity, and its recovery must be local-only (the original
+    // session is gone) — reconcile, show the result, then explicitly clear.
     unlock()
     const wc = useWalletConnectStore()
     h.lookup.mockResolvedValueOnce({
@@ -837,8 +838,10 @@ describe('WalletConnect request handling', () => {
       journalTopic: 'old-sess',
       journalRequestId: 100,
     })
+    const event = sendEvent(500, 'new-sess')
+    ;(event as any).verifyContext = { verified: { origin: 'https://new-dapp.example', validation: 'VALID', isScam: false } }
 
-    await wc.handleRequest(sendEvent(500, 'new-sess'))
+    await wc.handleRequest(event)
 
     // The new dapp request is refused (no hold, no disclosure of the old result).
     expect(h.prepare).not.toHaveBeenCalled()
@@ -846,16 +849,54 @@ describe('WalletConnect request handling', () => {
       topic: 'new-sess',
       response: expect.objectContaining({ id: 500, error: expect.objectContaining({ code: 5000 }) }),
     }))
-    // The retained record is surfaced for reconciliation, keyed to its owner.
+    // The retained record is surfaced with a NEUTRAL identity — never the new
+    // (VALID) dapp's origin next to an old transaction.
     expect(wc.request?.status).toBe('unknown')
     expect(wc.request?.topic).toBe('old-sess')
     expect(wc.request?.journalRequestId).toBe(100)
+    expect(wc.request?.validation).toBe('UNKNOWN')
+    expect(wc.request?.verifiedOrigin).toBe('')
 
-    // Reconciling it targets the retained record's key.
+    // Local-only recovery: reconcile the original key; NO response is sent to
+    // the (dead) original session; the result is shown locally.
+    h.respond.mockClear()
     h.reconcile.mockResolvedValueOnce({ hash: 'other-block' })
     await wc.reconcileRequest()
     expect(h.reconcile).toHaveBeenCalledWith('old-sess', 100)
+    expect(h.respond).not.toHaveBeenCalled()
+    expect(wc.request?.status).toBe('recovered')
+    expect(h.ack).not.toHaveBeenCalled()
+
+    // Explicit clear acknowledges (deletes) the original record.
+    await wc.acknowledgeRecovered()
     expect(h.ack).toHaveBeenCalledWith('old-sess', 100)
+    expect(wc.request).toBeNull()
+  })
+
+  it('handles a duplicate returned by the prepare-time recheck', async () => {
+    // Round-10: a cross-topic record can appear during the lookup->prepare
+    // window; Prepare then returns duplicate. It must refuse + recover, never
+    // install an approvable awaiting request.
+    unlock()
+    const wc = useWalletConnectStore()
+    h.lookup.mockResolvedValueOnce({ outcome: 'none' })
+    h.prepare.mockResolvedValueOnce({
+      outcome: 'duplicate',
+      preview: { ...preview, holdId: 0 },
+      publishedHash: 'race-block',
+      journalTopic: 'old-sess',
+      journalRequestId: 100,
+    })
+
+    await wc.handleRequest(sendEvent(501, 'new-sess'))
+
+    expect(h.respond).toHaveBeenCalledWith(expect.objectContaining({
+      topic: 'new-sess',
+      response: expect.objectContaining({ id: 501, error: expect.objectContaining({ code: 5000 }) }),
+    }))
+    expect(wc.request?.status).toBe('unknown')
+    expect(wc.request?.topic).toBe('old-sess')
+    expect(wc.request?.validation).toBe('UNKNOWN')
   })
 
   it('delivers a cross-id published replay to the new id but acks the original journal key', async () => {

@@ -45,12 +45,17 @@ export type WalletConnectRequest = WalletConnectVerify & {
   id: number
   dapp: string
   preview: SendPreview
-  status: 'awaiting' | 'publishing' | 'notifying' | 'error' | 'delivery-error' | 'unknown'
+  status: 'awaiting' | 'publishing' | 'notifying' | 'error' | 'delivery-error' | 'unknown' | 'recovered'
   error: string
   publishedResult: unknown | null
   publishedHash: string
   sessionEnded: boolean
   expiryTimestamp?: number
+  // True for a cross-topic retained record surfaced for LOCAL recovery: its
+  // originating session is gone, so reconciliation must resolve the record and
+  // show the result locally (no response to the dead session) and an explicit
+  // acknowledgement clears it.
+  localRecovery?: boolean
   // The journal record that owns this request's outcome. Differs from
   // topic/id only when the outcome was matched by intent to a record under a
   // different id (a dapp reissuing under a new id). reconcile/ack use these.
@@ -84,8 +89,13 @@ const lookupMarkers = new Map<string, LookupMarker>()
 // another request occupied the modal. The journal is the durable source of
 // truth; this queue just surfaces them promptly when the slot clears instead
 // of waiting for the dapp to redeliver. Deduped by `${topic}#${id}`.
-type PendingReplay = { topic: string; id: number; replay: WalletConnectPrepareOutcome; verify: WalletConnectVerify }
+type PendingReplay = { topic: string; id: number; replay: WalletConnectPrepareOutcome; verify: WalletConnectVerify; localRecovery?: boolean }
 const pendingReplays: PendingReplay[] = []
+
+// A cross-topic retained record is surfaced with a neutral identity — never the
+// (rejected) new dapp's Verify attestation, which must not appear beside an old
+// transaction from a different session.
+const NEUTRAL_VERIFY: WalletConnectVerify = { verifiedOrigin: '', validation: 'UNKNOWN', isScam: false }
 
 // A znn_send whose journal lookup failed (read / IPC error). Its true outcome
 // is unknown — the block may already be published — so it is left unanswered
@@ -519,34 +529,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         return
       }
       if (replay.outcome === 'duplicate') {
-        // An identical transfer is still retained from ANOTHER WalletConnect
-        // session. It may be an unrelated dapp, so its result is NOT disclosed
-        // to this one and no second block is built. Refuse this request, and
-        // surface the retained record (keyed to its owner) so the user can
-        // reconcile or clear it before retrying.
-        await this.failRequest(topic, id, 5000, 'An identical transfer is still unresolved from another WalletConnect session; reconcile or clear it in the wallet before retrying.')
-        const jt = replay.journalTopic ?? topic
-        const jid = replay.journalRequestId ?? id
-        const retained: WalletConnectPrepareOutcome = { outcome: 'unknown', preview: replay.preview, publishedHash: replay.publishedHash, journalTopic: jt, journalRequestId: jid }
-        if (this.request || this.preparingRequest) {
-          enqueuePendingReplay({ topic: jt, id: jid, replay: retained, verify })
-          return
-        }
-        const session = this.sessions.find((item) => item.topic === jt)
-        this.request = {
-          topic: jt,
-          id: jid,
-          dapp: session?.name ?? 'Connected dapp',
-          preview: (replay.preview ?? {}) as SendPreview,
-          status: 'unknown',
-          error: 'An identical transfer from another WalletConnect session is unresolved. Check its outcome to clear it.',
-          publishedResult: null,
-          publishedHash: replay.publishedHash ?? '',
-          sessionEnded: false,
-          journalTopic: jt,
-          journalRequestId: jid,
-          ...verify,
-        }
+        await this.refuseDuplicateAndRecover(topic, id, replay)
         return
       }
       if (replay.outcome === 'published' && replay.published) {
@@ -610,7 +593,13 @@ export const useWalletConnectStore = defineStore('walletconnect', {
           { ...(requestParams as any), topic, requestId: id } as any,
         ) as unknown as WalletConnectPrepareOutcome
         // A journal record could appear between lookup and prepare (a race);
-        // Prepare re-checks the journal, so honor a replay result here too.
+        // Prepare re-checks the journal, so honor a replay result here too —
+        // including a cross-topic duplicate that must refuse + recover rather
+        // than install an approvable awaiting request.
+        if (result.outcome === 'duplicate') {
+          await this.refuseDuplicateAndRecover(topic, id, result)
+          return
+        }
         if (result.outcome === 'published' && result.published) {
           await this.deliverReplayPublished(topic, id, result, verify)
           return
@@ -790,6 +779,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
             sessionEnded: false,
             journalTopic: next.replay.journalTopic ?? next.topic,
             journalRequestId: next.replay.journalRequestId ?? next.id,
+            localRecovery: next.localRecovery,
             ...next.verify,
           }
           return
@@ -873,6 +863,36 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       current.error = ''
       await this.deliverPublishedResult(current)
     },
+    // refuseDuplicateAndRecover handles a cross-topic duplicate: refuse the new
+    // dapp's request (no hold, no disclosure of the retained result), then
+    // surface the RETAINED record — keyed to its owner and with a NEUTRAL
+    // identity (never the new dapp's attestation) — for local-only recovery.
+    async refuseDuplicateAndRecover(topic: string, id: number, replay: WalletConnectPrepareOutcome) {
+      await this.failRequest(topic, id, 5000, 'An identical transfer is still unresolved from another WalletConnect session; reconcile or clear it in the wallet before retrying.')
+      const jt = replay.journalTopic ?? topic
+      const jid = replay.journalRequestId ?? id
+      const retained: WalletConnectPrepareOutcome = { outcome: 'unknown', preview: replay.preview, publishedHash: replay.publishedHash, journalTopic: jt, journalRequestId: jid }
+      if (this.request || this.preparingRequest) {
+        enqueuePendingReplay({ topic: jt, id: jid, replay: retained, verify: NEUTRAL_VERIFY, localRecovery: true })
+        return
+      }
+      const session = this.sessions.find((item) => item.topic === jt)
+      this.request = {
+        topic: jt,
+        id: jid,
+        dapp: session?.name ?? 'Connected dapp',
+        preview: (replay.preview ?? {}) as SendPreview,
+        status: 'unknown',
+        error: 'An identical transfer from another WalletConnect session is unresolved. Check its outcome to clear it.',
+        publishedResult: null,
+        publishedHash: replay.publishedHash ?? '',
+        sessionEnded: false,
+        journalTopic: jt,
+        journalRequestId: jid,
+        localRecovery: true,
+        ...NEUTRAL_VERIFY,
+      }
+    },
     async reconcileRequest() {
       const current = this.request
       if (!current || current.status !== 'unknown') return
@@ -881,6 +901,13 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         const result = await Tx.ReconcileWalletConnectPublication(current.journalTopic ?? current.topic, current.journalRequestId ?? current.id)
         current.publishedResult = result
         current.publishedHash = String((result as any)?.hash ?? current.publishedHash ?? '')
+        if (current.localRecovery) {
+          // The originating session is gone — never respond to it. Show the
+          // resolved result locally; an explicit acknowledgement clears the
+          // record (see acknowledgeRecovered).
+          current.status = 'recovered'
+          return
+        }
         current.status = 'notifying'
         await this.deliverPublishedResult(current)
       } catch (error) {
@@ -888,6 +915,17 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         current.status = 'unknown'
         current.error = messageOf(error)
       }
+    },
+    // acknowledgeRecovered clears a locally-recovered cross-topic record: the
+    // outcome has been shown to the user, so delete the journal record (this is
+    // the ONLY path that clears it — closing without acknowledging keeps it, so
+    // an identical intent is not silently unblocked).
+    async acknowledgeRecovered() {
+      if (!this.request || this.request.status !== 'recovered') return
+      const current = this.request
+      this.request = null
+      await Tx.AckWalletConnectResult(current.journalTopic ?? current.topic, current.journalRequestId ?? current.id).catch(() => {})
+      void this.drainPendingReplays()
     },
     clearPublishedRequest() {
       // Closing locally never acks: the journal record must survive so a

@@ -569,3 +569,27 @@ func TestSupersededEmbeddedStartCannotInstall(t *testing.T) {
 		t.Fatal("the superseded embedded transition's node must have been stopped by the remote transition")
 	}
 }
+
+// The embedded sync poller must feed the live ledger height into the status
+// height: during bulk sync the momentum subscription delivers only every few
+// minutes, so without this bump the UI height pill lags the real sync progress
+// by whole epochs (observed live: status height 408k vs sync height 538k).
+func TestNoteSyncHeight_BumpsStatusMonotonically(t *testing.T) {
+	n := newTestNode(t)
+	n.mu.Lock()
+	n.height = 100
+	n.mu.Unlock()
+
+	n.noteSyncHeight(150)
+	if got := n.NodeStatus().Height; got != 150 {
+		t.Fatalf("sync sample must raise status height: got %d want 150", got)
+	}
+	n.noteSyncHeight(120) // a lower/stale sample must never regress the height
+	if got := n.NodeStatus().Height; got != 150 {
+		t.Fatalf("height must be monotonic: got %d want 150", got)
+	}
+	n.noteSyncHeight(0) // a not-ready sample is ignored
+	if got := n.NodeStatus().Height; got != 150 {
+		t.Fatalf("zero sample must be ignored: got %d want 150", got)
+	}
+}

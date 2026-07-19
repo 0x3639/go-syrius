@@ -304,7 +304,7 @@ function hide() { revealed.value = '' }
       </div>
     </section>
 
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+    <section v-if="ui.governanceFeatureEnabled" class="rounded-xl border border-border bg-card p-5 space-y-2">
       <h2 class="text-sm text-muted-foreground">Testnet features</h2>
       <label class="flex items-center gap-2 text-foreground">
         <input

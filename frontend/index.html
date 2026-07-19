@@ -3,6 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Baseline Content-Security-Policy. Only the directives that cannot break
+         the app are set: the WebView renders no <object>/<embed>, uses no <base>
+         tag, and is never framed. Note: frame-ancestors is IGNORED in
+         meta-delivered policies per the CSP spec — it is kept only for parity if
+         this policy ever moves to a header; the real anti-framing protection is
+         that a desktop WebView is never framed. script-src and connect-src are
+         DELIBERATELY left open here. The WebView runs the Wails-injected runtime and makes
+         direct connections the wallet depends on — the WalletConnect relay
+         (wss://relay.walletconnect.com plus its Verify/explorer HTTP APIs) and
+         the price feed (https://api.zenon.info). Restricting script-src or
+         connect-src must be designed against exactly those endpoints and
+         smoke-tested in a production `wails build` (it cannot be verified under
+         `wails dev`/vitest), or it would silently break WalletConnect or the
+         backend binding. Do not tighten this without that production test. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    />
     <title>syrius</title>
     <!-- Paint the dark theme background instantly. The app's stylesheet is
          injected by JS (Vite dev) / loaded async, so without this the page

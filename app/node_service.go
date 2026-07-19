@@ -452,6 +452,26 @@ func (n *NodeService) stopEmbedded() {
 	}
 }
 
+// noteSyncHeight folds a sync-poller ledger-height sample into the status
+// height (monotonic, zero samples ignored). During embedded bulk sync the
+// momentum subscription delivers only sparsely, so without this the status
+// height — the sidebar pill — lags the live sync progress by whole epochs.
+// Emits node:status only when the height actually advances. The monotonic
+// guard also neutralizes a straggler sample from a dying poller after a mode
+// switch: it can never drag a fresher connection's height backwards.
+func (n *NodeService) noteSyncHeight(h uint64) {
+	if h == 0 {
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if h <= n.height {
+		return
+	}
+	n.height = h
+	n.emitStatusLocked(true)
+}
+
 // startSyncPoller polls StatsApi sync info every 2s and emits node:sync.
 func (n *NodeService) startSyncPoller() {
 	n.mu.Lock()
@@ -489,6 +509,7 @@ func (n *NodeService) startSyncPoller() {
 				}
 				st := computeSync(samples, info.CurrentHeight, info.TargetHeight, peers, mapSyncState(info.State))
 				runtime.EventsEmit(ctx, EventNodeSync, st)
+				n.noteSyncHeight(info.CurrentHeight)
 			}
 		}
 	}()

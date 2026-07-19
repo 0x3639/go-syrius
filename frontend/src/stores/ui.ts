@@ -7,6 +7,9 @@ import { useNodeStore } from './node'
 export const useUiStore = defineStore('ui', {
   state: () => ({
     showGovernance: false,
+    // TEMPORARY kill switch mirror (ConfigService.IsGovernanceFeatureEnabled):
+    // governance is fully disabled pending an SDK update. Fails CLOSED.
+    governanceFeatureEnabled: false,
     theme: 'dark' as 'dark' | 'light',
     // Whether the logo intro animation plays on launch. On by default; users can
     // turn it off in Settings. Frontend-only preference, persisted to localStorage
@@ -19,7 +22,7 @@ export const useUiStore = defineStore('ui', {
     // drift. Fails CLOSED: chainId 0 = not known yet (pre-connect), 1 =
     // mainnet; only a confirmed testnet (> 1) allows Governance.
     governanceAllowed(): boolean {
-      return this.showGovernance && useNodeStore().chainId > 1
+      return this.governanceFeatureEnabled && this.showGovernance && useNodeStore().chainId > 1
     },
   },
   actions: {
@@ -48,6 +51,11 @@ export const useUiStore = defineStore('ui', {
         this.showGovernance = (await Cfg.GetSettings()).showGovernance ?? false
       } catch {
         /* offline/locked — keep the default */
+      }
+      try {
+        this.governanceFeatureEnabled = (await Cfg.IsGovernanceFeatureEnabled()) === true
+      } catch {
+        /* keep false — fail closed */
       }
     },
     async setShowGovernance(v: boolean) {

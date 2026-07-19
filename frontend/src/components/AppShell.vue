@@ -88,7 +88,7 @@ onMounted(async () => {
   tx.initEvents() // wires tx:pow-progress so the confirm dialog shows live PoW state
   node.initEvents(refresh) // wires node:status/sync/momentum:tick + drives the sync pill + live refresh
   refresh() // initial aggregate load (balances etc.)
-  ui.init() // restore persisted theme + showGovernance
+  ui.init() // restore persisted theme + showGovernance + governance kill-switch flag
   await autoReceive.init(wallet.activeIndex)
   if (walletConnect.projectId()) {
     try {

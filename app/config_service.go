@@ -199,3 +199,11 @@ func (c *ConfigService) SetShowGovernance(v bool) error {
 		return nil
 	})
 }
+
+// IsGovernanceFeatureEnabled reports the temporary governance kill switch
+// (governanceFeatureEnabled in nom_governance.go). Read-only and deliberately
+// NOT part of Settings: compile-time state must never persist to — or be
+// resurrected from — settings.json.
+func (c *ConfigService) IsGovernanceFeatureEnabled() bool {
+	return governanceFeatureEnabled
+}

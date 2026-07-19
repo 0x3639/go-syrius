@@ -48,6 +48,7 @@ func TestActionDTO_MapsFieldsAndVotes(t *testing.T) {
 }
 
 func TestGovernancePrepares_BlockedOnMainnet(t *testing.T) {
+	enableGovernance(t)
 	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
 	s.node.chainID = mainnetChainID // simulate being connected to mainnet
 	valid := "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
@@ -70,6 +71,7 @@ func TestActionDTO_NilSafe(t *testing.T) {
 }
 
 func TestGetActions_NotConnected(t *testing.T) {
+	enableGovernance(t)
 	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
 	if _, err := s.GetActions(0, 20); err == nil || err.Error() != "not connected" {
 		t.Fatalf("want not connected; got %v", err)
@@ -77,6 +79,7 @@ func TestGetActions_NotConnected(t *testing.T) {
 }
 
 func TestGetAction_BadId(t *testing.T) {
+	enableGovernance(t)
 	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
 	if _, err := s.GetAction("not-a-hash"); err == nil {
 		t.Fatal("bad id must error")
@@ -84,6 +87,7 @@ func TestGetAction_BadId(t *testing.T) {
 }
 
 func TestPrepareGovernanceVote_Validation(t *testing.T) {
+	enableGovernance(t)
 	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
 	if _, err := s.PrepareGovernanceVote("bad-id", "P1", 0); err == nil {
 		t.Fatal("bad id must error")
@@ -101,6 +105,7 @@ func TestPrepareGovernanceVote_Validation(t *testing.T) {
 }
 
 func TestPrepareExecuteAction_Validation(t *testing.T) {
+	enableGovernance(t)
 	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
 	if _, err := s.PrepareExecuteAction("bad-id"); err == nil {
 		t.Fatal("bad id must error")

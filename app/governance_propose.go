@@ -598,6 +598,9 @@ func buildProposalPayload(api *governance.API, kind string, p map[string]string)
 // GetProposeKinds returns the static catalog of proposable action kinds + their
 // input schema. No node I/O; safe before connection (the form renders from it).
 func (s *NomService) GetProposeKinds() ([]ProposeKindDTO, error) {
+	if err := s.requireGovernanceEnabled(); err != nil {
+		return nil, err
+	}
 	return proposeKinds(), nil
 }
 

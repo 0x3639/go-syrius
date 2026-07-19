@@ -40,6 +40,29 @@ func actionDTO(a *governance.Action) ActionDTO {
 	}
 }
 
+// governanceFeatureEnabled is a TEMPORARY kill switch: it gates ALL governance
+// functionality (reads and writes) until the SDK's final governance
+// implementation lands. To re-enable: re-pin the updated znn-sdk-go, adapt the
+// governance code to its final API, and flip this to true — nothing else
+// changes (the Settings opt-in and testnet-only gates resume as before). A
+// var, not a const, so the governance test suites can enable the feature
+// under test (see enableGovernance in governance_disabled_test.go).
+var governanceFeatureEnabled = false
+
+// errGovernanceDisabled is the kill-switch error. Users never see it — the UI
+// is hidden while disabled — it is the devtools/defense-in-depth backstop.
+var errGovernanceDisabled = errors.New("governance is temporarily disabled pending an SDK update")
+
+// requireGovernanceEnabled blocks every governance entry point while the
+// feature is disabled. Checked first in requireTestnet (covering all write
+// paths and their sign-time policy re-checks) and explicitly in the reads.
+func (s *NomService) requireGovernanceEnabled() error {
+	if !governanceFeatureEnabled {
+		return errGovernanceDisabled
+	}
+	return nil
+}
+
 // errGovernanceMainnet is returned by the governance WRITE paths when connected
 // to mainnet — governance is testnet-only in this release.
 var errGovernanceMainnet = errors.New("governance is testnet-only in this release and is disabled on mainnet")
@@ -49,6 +72,9 @@ var errGovernanceMainnet = errors.New("governance is testnet-only in this releas
 // mainnetChainID only on mainnet, so this passes when disconnected or on any
 // non-mainnet chain. The Governance UI tab is also hidden on mainnet.
 func (s *NomService) requireTestnet() error {
+	if err := s.requireGovernanceEnabled(); err != nil {
+		return err
+	}
 	if s.node.currentChainID() == mainnetChainID {
 		return errGovernanceMainnet
 	}
@@ -59,6 +85,9 @@ func (s *NomService) requireTestnet() error {
 // clamped to [1,50]. This is also the source the frontend Vote view filters to
 // open actions in Phase 1.
 func (s *NomService) GetActions(pageIndex, pageSize uint32) (ActionListDTO, error) {
+	if err := s.requireGovernanceEnabled(); err != nil {
+		return ActionListDTO{}, err
+	}
 	if pageSize == 0 || pageSize > 50 {
 		pageSize = 50
 	}
@@ -79,6 +108,9 @@ func (s *NomService) GetActions(pageIndex, pageSize uint32) (ActionListDTO, erro
 
 // GetAction returns a single governance action by id.
 func (s *NomService) GetAction(id string) (ActionDTO, error) {
+	if err := s.requireGovernanceEnabled(); err != nil {
+		return ActionDTO{}, err
+	}
 	h, err := parseHash(id)
 	if err != nil {
 		return ActionDTO{}, fmt.Errorf("invalid action id: %w", err)

@@ -10,6 +10,7 @@ import (
 )
 
 func TestGetProposeKinds_HasSporkNotCustom(t *testing.T) {
+	enableGovernance(t)
 	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
 	kinds, err := s.GetProposeKinds()
 	if err != nil {
@@ -62,6 +63,7 @@ func TestBuildProposalPayload_UnknownKind(t *testing.T) {
 }
 
 func TestPrepareProposeAction_Validation(t *testing.T) {
+	enableGovernance(t)
 	s := newNomService(newTestNode(t), newTestWalletService(t), nil)
 	good := map[string]string{"name": "S", "description": "d"}
 	if _, err := s.PrepareProposeAction("", "d", "https://zenon.org", "spork.create", good); err == nil {

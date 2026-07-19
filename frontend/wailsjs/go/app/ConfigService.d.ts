@@ -8,6 +8,8 @@ export function DeleteContact(arg1:string):Promise<Array<app.Contact>>;
 
 export function GetSettings():Promise<app.Settings>;
 
+export function IsGovernanceFeatureEnabled():Promise<boolean>;
+
 export function ListContacts():Promise<Array<app.Contact>>;
 
 export function SetAllowMainnetSend(arg1:boolean):Promise<void>;

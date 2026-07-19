@@ -14,6 +14,10 @@ export function GetSettings() {
   return window['go']['app']['ConfigService']['GetSettings']();
 }
 
+export function IsGovernanceFeatureEnabled() {
+  return window['go']['app']['ConfigService']['IsGovernanceFeatureEnabled']();
+}
+
 export function ListContacts() {
   return window['go']['app']['ConfigService']['ListContacts']();
 }

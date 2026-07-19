@@ -38,3 +38,16 @@ func TestGovernanceDisabled_AllBoundMethodsBlocked(t *testing.T) {
 		t.Fatalf("PrepareProposeAction: want errGovernanceDisabled, got %v", err)
 	}
 }
+
+// The frontend learns the kill switch via this read-only binding — it is
+// deliberately NOT part of Settings, which round-trips to settings.json.
+func TestGovernanceDisabled_ConfigReportsFlag(t *testing.T) {
+	c := &ConfigService{}
+	if c.IsGovernanceFeatureEnabled() {
+		t.Fatal("flag must default to disabled")
+	}
+	enableGovernance(t)
+	if !c.IsGovernanceFeatureEnabled() {
+		t.Fatal("flag must report enabled when flipped")
+	}
+}

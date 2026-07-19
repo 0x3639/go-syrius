@@ -54,7 +54,9 @@ watch(
        section reads consistently instead of sprawling full-width. -->
   <div class="mx-auto max-w-[48rem]">
     <p v-if="governanceBlocked" class="text-sm text-muted-foreground">
-      Governance is testnet-only. Enable it in Settings and connect to a testnet node.
+      {{ ui.governanceFeatureEnabled
+        ? 'Governance is testnet-only. Enable it in Settings and connect to a testnet node.'
+        : 'Governance is temporarily disabled pending an SDK update.' }}
     </p>
     <component :is="panel" v-else v-bind="panelKey === 'accelerator' ? { initialSub } : {}" />
   </div>

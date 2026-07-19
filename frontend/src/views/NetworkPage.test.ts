@@ -55,6 +55,18 @@ describe('NetworkPage', () => {
     expect(w.find('.gov-stub').exists()).toBe(false)
   })
 
+  // While the kill switch is off the Settings toggle doesn't exist, so the
+  // blocked message must not point users at it.
+  it('shows the kill-switch copy while the feature flag is off', () => {
+    routeState.meta.panel = 'governance'
+    const ui = useUiStore(); ui.showGovernance = true
+    const node = useNodeStore(); node.chainId = 2
+    const w = mount(NetworkPage, { global: { stubs } })
+    expect(w.find('.gov-stub').exists()).toBe(false)
+    expect(w.text()).toContain('temporarily disabled pending an SDK update')
+    expect(w.text()).not.toContain('Enable it in Settings')
+  })
+
   it('fails closed while chainId is unknown (0, pre-connect)', () => {
     routeState.meta.panel = 'governance'
     const ui = useUiStore(); ui.governanceFeatureEnabled = true; ui.showGovernance = true

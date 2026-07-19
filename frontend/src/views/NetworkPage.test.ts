@@ -35,7 +35,7 @@ describe('NetworkPage', () => {
   // while the route is open removes the interactive UI immediately.
   it('blocks Governance on mainnet (chainId 1) even when opted in', async () => {
     routeState.meta.panel = 'governance'
-    const ui = useUiStore(); ui.showGovernance = true
+    const ui = useUiStore(); ui.governanceFeatureEnabled = true; ui.showGovernance = true
     const node = useNodeStore(); node.chainId = 1
     const w = mount(NetworkPage, { global: { stubs } })
     expect(w.find('.gov-stub').exists()).toBe(false)
@@ -57,7 +57,7 @@ describe('NetworkPage', () => {
 
   it('fails closed while chainId is unknown (0, pre-connect)', () => {
     routeState.meta.panel = 'governance'
-    const ui = useUiStore(); ui.showGovernance = true
+    const ui = useUiStore(); ui.governanceFeatureEnabled = true; ui.showGovernance = true
     const node = useNodeStore(); node.chainId = 0
     const w = mount(NetworkPage, { global: { stubs } })
     expect(w.find('.gov-stub').exists()).toBe(false)
@@ -65,7 +65,7 @@ describe('NetworkPage', () => {
 
   it('discards a prepared (awaiting) tx when the gate slams shut', async () => {
     routeState.meta.panel = 'governance'
-    const ui = useUiStore(); ui.showGovernance = true
+    const ui = useUiStore(); ui.governanceFeatureEnabled = true; ui.showGovernance = true
     const node = useNodeStore(); node.chainId = 2
     const tx = useTxStore()
     tx.status = 'awaiting' // a built governance block is held, dialog open
@@ -82,7 +82,7 @@ describe('NetworkPage', () => {
 
   it('discards a Prepare that resolves AFTER the gate has closed', async () => {
     routeState.meta.panel = 'governance'
-    const ui = useUiStore(); ui.showGovernance = true
+    const ui = useUiStore(); ui.governanceFeatureEnabled = true; ui.showGovernance = true
     const node = useNodeStore(); node.chainId = 2
     const tx = useTxStore()
     const discard = vi.spyOn(tx, 'discard').mockResolvedValue(undefined)
@@ -99,7 +99,7 @@ describe('NetworkPage', () => {
 
   it('does not disturb a tx already publishing when the gate closes', async () => {
     routeState.meta.panel = 'governance'
-    const ui = useUiStore(); ui.showGovernance = true
+    const ui = useUiStore(); ui.governanceFeatureEnabled = true; ui.showGovernance = true
     const node = useNodeStore(); node.chainId = 2
     const tx = useTxStore()
     tx.status = 'publishing' // ConfirmPublish already in flight

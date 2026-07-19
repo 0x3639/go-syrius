@@ -20,11 +20,15 @@ describe('Sidebar', () => {
     }
   })
 
-  it('hides Governance unless opted in on testnet', async () => {
+  it('hides Governance unless the feature flag, opt-in, and testnet all hold', async () => {
     const w = mountSidebar()
     expect(w.text()).not.toContain('Governance')
     const ui = useUiStore(); const node = useNodeStore()
     ui.showGovernance = true; node.chainId = 2
+    await w.vm.$nextTick()
+    // kill switch off → still hidden even when opted in on testnet
+    expect(w.text()).not.toContain('Governance')
+    ui.governanceFeatureEnabled = true
     await w.vm.$nextTick()
     expect(w.text()).toContain('Governance')
   })

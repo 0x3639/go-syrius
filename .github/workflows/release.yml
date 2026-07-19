@@ -102,13 +102,15 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           fail_on_unmatched_files: true
+          # Keep this body release-agnostic (it is stamped on EVERY tag, testnet
+          # or mainnet). Release-specific highlights are added to the published
+          # release afterwards (gh release edit); generate_release_notes appends
+          # the PR changelog automatically.
           body: |
-            ## ${{ github.ref_name }} — testnet pre-release (unsigned)
+            ## ${{ github.ref_name }} (unsigned build)
 
-            **For testnet testing only — not for mainnet funds.** Governance is
-            gated to testnet and hard-blocked on mainnet in this build.
-
-            These binaries are **not code-signed or notarized**, so your OS will warn:
+            These binaries are **not code-signed or notarized** (signing lands in
+            Phase 7c), so your OS will warn:
             - **macOS:** right-click the app → Open → Open (bypasses Gatekeeper), or
               `xattr -dr com.apple.quarantine syrius.app` before first launch.
             - **Windows:** SmartScreen → *More info* → *Run anyway*.

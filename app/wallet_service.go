@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	stdruntime "runtime"
 	"strings"
 
 	"sync"
@@ -584,6 +585,16 @@ func (w *WalletService) activeAddressLocked() (types.Address, bool) {
 	return kp.Address, true
 }
 
+// zeroBytes overwrites b with zeros. stdruntime.KeepAlive keeps the slice live
+// until the writes complete so the compiler cannot elide them as dead stores
+// (mirrors the SDK's own secure-zero in znn-sdk-go/wallet).
+func zeroBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
+	stdruntime.KeepAlive(b)
+}
+
 // signingKeyPair derives the SDK keypair for the active account from the
 // unlocked mnemonic and asserts it matches the go-zenon active address (the
 // Phase-0 cross-check). The mnemonic and keypair stay backend-only.
@@ -597,6 +608,19 @@ func (w *WalletService) signingKeyPair() (*sdkwallet.KeyPair, error) {
 	if err != nil {
 		return nil, err
 	}
+	// GetKeyPair copies the derived Ed25519 key out of the BIP32 child seed
+	// (ed25519.NewKeyFromSeed allocates a fresh private key), so the returned
+	// keypair is independent of this keystore. Zero the transient BIP39 seed and
+	// entropy once derivation is done instead of leaving them for the GC. This is
+	// defense-in-depth — the unlocked go-zenon keystore intentionally holds the
+	// mnemonic for the whole session — but there is no reason to keep a second,
+	// derived-seed copy alive after the keypair exists. (The Mnemonic field is an
+	// immutable string aliasing the resident mnemonic and cannot/need not be
+	// zeroed.)
+	defer func() {
+		zeroBytes(sdkKs.Seed)
+		zeroBytes(sdkKs.Entropy)
+	}()
 	kp, err := sdkKs.GetKeyPair(w.active)
 	if err != nil {
 		return nil, err

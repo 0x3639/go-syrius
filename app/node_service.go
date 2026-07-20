@@ -7,6 +7,7 @@ import (
 	neturl "net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -90,13 +91,13 @@ func (n *NodeService) setNode(url string) error {
 		// A dial can take seconds; only emit if this call still owns the
 		// connection intent — never over a newer connection's status.
 		n.emitDisconnectedIfCurrent(gen)
-		return fmt.Errorf("connect: %w", err)
+		return fmt.Errorf("connect: %s", redactURLUserinfo(err.Error(), url))
 	}
 	m, err := client.LedgerApi.GetFrontierMomentum()
 	if err != nil {
 		client.Stop()
 		n.emitDisconnectedIfCurrent(gen)
-		return fmt.Errorf("node unreachable: %w", err)
+		return fmt.Errorf("node unreachable: %s", redactURLUserinfo(err.Error(), url))
 	}
 	// Governance is not exposed by the stable v0.2 SDK surface.
 	// Keep the shipped testnet feature through the app-local adapter, using its
@@ -105,7 +106,7 @@ func (n *NodeService) setNode(url string) error {
 	if err != nil {
 		client.Stop()
 		n.emitDisconnectedIfCurrent(gen)
-		return fmt.Errorf("connect governance transport: %w", err)
+		return fmt.Errorf("connect governance transport: %s", redactURLUserinfo(err.Error(), url))
 	}
 	governanceAPI := governance.NewAPI(governanceClient)
 
@@ -402,6 +403,17 @@ func (n *NodeService) startEmbedded() error {
 	return nil
 }
 
+// redactURLUserinfo scrubs URL credentials from an error message bound for the
+// frontend: the websocket dial error text embeds the full URL, userinfo
+// included (GS-11).
+func redactURLUserinfo(msg, rawURL string) string {
+	u, err := neturl.Parse(rawURL)
+	if err != nil || u.User == nil {
+		return msg
+	}
+	return strings.ReplaceAll(msg, u.User.String()+"@", "***@")
+}
+
 // SetNodeURL persists a mode's URL (validated) and reconnects if it is active.
 func (n *NodeService) SetNodeURL(mode, url string) error {
 	if mode == "embedded" {
@@ -413,6 +425,13 @@ func (n *NodeService) SetNodeURL(mode, url string) error {
 	u, perr := neturl.Parse(url)
 	if perr != nil || (u.Scheme != "ws" && u.Scheme != "wss") || u.Host == "" {
 		return fmt.Errorf("node url must be a ws:// or wss:// URL with a host")
+	}
+	// Query strings and fragments have no websocket-RPC meaning and would
+	// persist tokens/keys into settings.json; reject them. Userinfo is
+	// deliberately ALLOWED — it is legitimate basic-auth to the user's own
+	// node — but is scrubbed from any error surfaced to the frontend (GS-11).
+	if u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("node url must not contain a query string or fragment")
 	}
 	// Serialized with mode transitions: persisting a URL and reconnecting to it
 	// is itself a transition step and must not interleave with SetNodeMode.

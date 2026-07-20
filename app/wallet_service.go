@@ -69,6 +69,13 @@ type WalletService struct {
 	// settings disk I/O, and Unlock's slow KDF runs before taking it.
 	selMu sync.Mutex
 
+	// manifestMu serializes every manifest read-modify-write. The manifest is
+	// mutated from multiple bound methods (import/rename/list-reconcile) and an
+	// unsynchronized load→mutate→save loses one writer's update (audit GS-05).
+	// It is a leaf lock: the wrapped regions only do file I/O and never call a
+	// method that takes w.mu or w.selMu, so no lock-order cycle is possible.
+	manifestMu sync.Mutex
+
 	// Auto-lock watchdog state. autoMu is separate from w.mu so activity pings
 	// and the 15s tick never contend with wallet operations; it is only ever
 	// taken alone or strictly after a released w.mu (never nested inside it).
@@ -113,6 +120,10 @@ func (w *WalletService) walletPath(name string) (string, error) {
 // returns the entries in manifest order. No keystore content is modified; no
 // file is renamed or moved.
 func (w *WalletService) ListWallets() ([]WalletMeta, error) {
+	// Serialize the whole load→reconcile→save against other manifest writers
+	// (GS-05). manifestMu is a leaf: everything below is file I/O only.
+	w.manifestMu.Lock()
+	defer w.manifestMu.Unlock()
 	dir, err := w.config.walletsDir()
 	if err != nil {
 		return nil, err
@@ -202,6 +213,9 @@ func (w *WalletService) ImportKeystore(srcPath, name string) (WalletMeta, error)
 
 // addToManifest loads the manifest, appends meta, and persists it atomically.
 func (w *WalletService) addToManifest(meta WalletMeta) error {
+	// Serialize the load→append→save against other manifest writers (GS-05).
+	w.manifestMu.Lock()
+	defer w.manifestMu.Unlock()
 	m, err := w.loadManifest()
 	if err != nil {
 		return err
@@ -217,6 +231,9 @@ func (w *WalletService) RenameWallet(id, newName string) error {
 	if strings.TrimSpace(newName) == "" {
 		return errors.New("wallet name must not be empty")
 	}
+	// Serialize the load→mutate→save against other manifest writers (GS-05).
+	w.manifestMu.Lock()
+	defer w.manifestMu.Unlock()
 	m, err := w.loadManifest()
 	if err != nil {
 		return err

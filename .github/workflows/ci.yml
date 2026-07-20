@@ -22,11 +22,11 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10.17.1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -38,10 +38,25 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
+      # GS-06/GS-10 regression guard: every third-party action must be pinned
+      # to a full commit SHA and no scanner may float on @latest — reject any
+      # PR that reintroduces a mutable ref.
+      - name: Enforce pinned action/scanner refs
+        shell: bash
+        run: |
+          if grep -En 'uses: [^ ]+@(v[0-9]|main|master|latest)' .github/workflows/*.yml; then
+            echo "::error::unpinned action ref found — pin to a full commit SHA with a # vX.Y.Z comment"
+            exit 1
+          fi
+          if grep -En 'go install [^ ]*@latest' .github/workflows/*.yml; then
+            echo "::error::floating @latest scanner install found — pin to an exact version"
+            exit 1
+          fi
+          echo "all action and scanner refs pinned"
       # package main has //go:embed all:frontend/dist; provide a stub so the Go
       # tooling can compile it. The security scanners analyze Go source, not the
       # frontend bundle, so a placeholder is sufficient here.
@@ -49,7 +64,11 @@ jobs:
         run: mkdir -p frontend/dist && touch frontend/dist/index.html
       - name: govulncheck (allowlist gate)
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          # Pinned (GS-10): the vuln gate must not depend on whatever @latest
+          # resolves to at run time. go-install version pins are immutable via
+          # the Go module checksum DB (which is why gosec@v2.27.1 and
+          # wails@v2.12.0 need no change).
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
           bash scripts/govulncheck-gate.sh
       - name: gosec
         run: |
@@ -63,8 +82,8 @@ jobs:
   race:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
       - name: Stub frontend/dist for //go:embed
@@ -83,14 +102,14 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10.17.1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm

@@ -23,7 +23,18 @@ async function onSend(intent: { recipient: string; zts: string; amountDecimal: s
   // await the local binding before preparing the replacement transaction.
   if (tx.status === 'error') await tx.discard()
   const tok = items.value.find((b) => b.zts === intent.zts)
-  await tx.prepare(intent.recipient, intent.zts, toBase(intent.amountDecimal, tok?.decimals ?? 8))
+  // toBase is now strict (GS-12) and throws on malformed input. SendForm's
+  // canSend blocks most bad values, but regex-rejected forms like '1e3'/'Infinity'
+  // still pass its Number(x) > 0 check — catch here so the throw surfaces as a
+  // handled error toast instead of an unhandled rejection in the event handler.
+  let amount: string
+  try {
+    amount = toBase(intent.amountDecimal, tok?.decimals ?? 8)
+  } catch (e: unknown) {
+    toast?.show(e instanceof Error ? e.message : String(e), 'error')
+    return
+  }
+  await tx.prepare(intent.recipient, intent.zts, amount)
 }
 
 watch(status, (s) => { if (s === 'done') toast?.show('Transaction published', 'success') })

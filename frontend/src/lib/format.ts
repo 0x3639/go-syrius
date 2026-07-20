@@ -1,8 +1,15 @@
 // toBase converts a decimal string to its base-unit integer string at `decimals`
-// precision (verbatim from the Svelte SendModal). Inverse of formatAmountExact;
-// used to build the amount for tx.prepare. The backend re-validates authoritatively.
+// precision. Inverse of formatAmountExact; used to build the amount for
+// tx.prepare. STRICT (GS-12): digits with at most one dot, no sign — anything
+// else throws instead of silently normalizing ('1.2.3'→1.2, '-0.5'→0.5 were
+// the old bugs). The backend re-validates authoritatively. Excess fractional
+// digits beyond `decimals` are truncated (unchanged behavior).
 export function toBase(decimal: string, decimals: number): string {
-  const [i, f = ''] = decimal.split('.')
+  const s = decimal.trim()
+  if (!/^(\d+(\.\d*)?|\.\d+)$/.test(s)) {
+    throw new Error(`invalid amount: ${decimal}`)
+  }
+  const [i, f = ''] = s.split('.')
   const frac = (f + '0'.repeat(decimals)).slice(0, decimals)
   return (BigInt(i || '0') * 10n ** BigInt(decimals) + BigInt(frac || '0')).toString()
 }

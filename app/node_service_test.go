@@ -593,3 +593,34 @@ func TestNoteSyncHeight_BumpsStatusMonotonically(t *testing.T) {
 		t.Fatalf("zero sample must be ignored: got %d want 150", got)
 	}
 }
+
+// GS-11: node URLs must not persist query/fragment; userinfo stays allowed
+// (legitimate basic-auth to the user's own node) but is scrubbed from errors.
+func TestSetNodeURL_RejectsQueryAndFragment(t *testing.T) {
+	n := newTestNode(t)
+	for _, bad := range []string{"wss://h:35998?apikey=x", "wss://h:35998#frag", "ws://h:35998/path?a=b"} {
+		if err := n.SetNodeURL("remote", bad); err == nil {
+			t.Fatalf("url %q must be rejected", bad)
+		}
+	}
+	// Userinfo must pass validation. Use the non-active mode (local) so it
+	// persists without dialing — the active mode is remote and would otherwise
+	// make this a network-dependent (flaky) test of the validation path.
+	if err := n.SetNodeURL("local", "wss://user:pass@h:35998"); err != nil {
+		t.Fatalf("basic-auth userinfo must remain allowed: %v", err)
+	}
+}
+
+func TestRedactURLUserinfo(t *testing.T) {
+	got := redactURLUserinfo("dial ws://user:pass@h:1/ failed", "ws://user:pass@h:1")
+	if strings.Contains(got, "pass") {
+		t.Fatalf("credentials leaked: %q", got)
+	}
+	if !strings.Contains(got, "***@") {
+		t.Fatalf("redaction marker missing: %q", got)
+	}
+	// URLs without userinfo pass through untouched.
+	if msg := redactURLUserinfo("connect refused", "wss://h:1"); msg != "connect refused" {
+		t.Fatalf("no-userinfo message altered: %q", msg)
+	}
+}

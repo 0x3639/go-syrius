@@ -68,6 +68,16 @@ func resolveDecimalsChecked(zts string, lookup ztsDecimalsLookup) (int, error) {
 // confirmation can never render an amount with guessed decimals.
 var errTokenNotFound = fmt.Errorf("token metadata not found on the connected node")
 
+// boundTokenDecimals rejects node-reported decimals outside the protocol range
+// [0,18] (issuance validates 0..18 on-chain, nom_service.go; a node reporting
+// anything else is lying and must not skew the human-readable amount — GS-07).
+func boundTokenDecimals(d int, zts types.ZenonTokenStandard) (int, error) {
+	if d < 0 || d > 18 {
+		return 0, fmt.Errorf("node reports implausible decimals %d for %s (valid range 0-18)", d, zts)
+	}
+	return d, nil
+}
+
 // clientTokenDecimals returns a lookup that reads a token's decimals from the
 // node's TokenApi (the same GetByZts path GetTokenByZts uses). A nil/missing
 // token is an ERROR; fail-open callers fall back to 8 themselves.
@@ -80,7 +90,7 @@ func clientTokenDecimals(client *rpc_client.RpcClient) ztsDecimalsLookup {
 		if tok == nil || tok.TokenStandard == types.ZeroTokenStandard {
 			return 0, errTokenNotFound
 		}
-		return int(tok.Decimals), nil
+		return boundTokenDecimals(int(tok.Decimals), zts)
 	}
 }
 

@@ -232,6 +232,68 @@ func TestDecodeAcceleratorTemplates(t *testing.T) {
 	})
 }
 
+// TestDecodeNomWriteTemplates decodes the exact templates the first-party NoM
+// prepare paths hold, proving the MATERIAL ABI parameters (mint receiver,
+// token owner, pillar producer/reward addresses) surface from the signed
+// bytes, not just a form-derived summary (audit GS-04).
+func TestDecodeNomWriteTemplates(t *testing.T) {
+	addrA := effAddr1 // any valid z1 fixture already used in this package
+	a, err := types.ParseAddress(addrA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zts := types.ZnnTokenStandard
+
+	t.Run("Plasma.Fuse", func(t *testing.T) {
+		tmpl := embedded.NewPlasmaApi(nil).Fuse(a, mustBig(t, "5000000000"))
+		effect, err := decodeContractCall(tmpl.ToAddress, tmpl.Data)
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		assertEffectHasValues(t, effect, addrA)
+	})
+	t.Run("Pillar.Register", func(t *testing.T) {
+		tmpl := embedded.NewPillarApi(nil).Register("MyPillar", a, a, 10, 90)
+		effect, err := decodeContractCall(tmpl.ToAddress, tmpl.Data)
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		assertEffectHasValues(t, effect, "MyPillar", addrA)
+	})
+	t.Run("Pillar.UpdatePillar", func(t *testing.T) {
+		tmpl := embedded.NewPillarApi(nil).UpdatePillar("MyPillar", a, a, 10, 90)
+		effect, err := decodeContractCall(tmpl.ToAddress, tmpl.Data)
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		assertEffectHasValues(t, effect, "MyPillar", addrA)
+	})
+	t.Run("Token.IssueToken", func(t *testing.T) {
+		tmpl := embedded.NewTokenApi(nil).IssueToken("My Token", "MYT", "example.com", mustBig(t, "1000"), mustBig(t, "2000"), 8, true, true, false)
+		effect, err := decodeContractCall(tmpl.ToAddress, tmpl.Data)
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		assertEffectHasValues(t, effect, "My Token", "MYT", "1000", "2000")
+	})
+	t.Run("Token.Mint", func(t *testing.T) {
+		tmpl := embedded.NewTokenApi(nil).Mint(zts, mustBig(t, "777"), a)
+		effect, err := decodeContractCall(tmpl.ToAddress, tmpl.Data)
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		assertEffectHasValues(t, effect, "777", addrA)
+	})
+	t.Run("Token.UpdateToken", func(t *testing.T) {
+		tmpl := embedded.NewTokenApi(nil).UpdateToken(zts, a, true, false)
+		effect, err := decodeContractCall(tmpl.ToAddress, tmpl.Data)
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		assertEffectHasValues(t, effect, addrA)
+	})
+}
+
 func assertEffectHasValues(t *testing.T, effect *TransactionEffect, want ...string) {
 	t.Helper()
 	rendered := make([]string, 0, len(effect.Fields))

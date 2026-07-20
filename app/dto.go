@@ -40,6 +40,10 @@ type Settings struct {
 	AllowMainnetSend bool   `json:"allowMainnetSend"`
 	ChainID          uint64 `json:"chainId"`
 	AutoReceive      bool   `json:"autoReceive"`
+	// AutoLockMinutes is the inactivity auto-lock timeout in minutes; 0 = Never.
+	// A pointer so an absent field (pre-feature settings.json) is distinguishable
+	// from an explicit Never — migration defaults absent to defaultAutoLockMinutes.
+	AutoLockMinutes *int `json:"autoLockMinutes"`
 	// ShowGovernance reveals the (experimental, testnet-only) Governance tab in
 	// the navigation. Off by default.
 	ShowGovernance bool `json:"showGovernance"`

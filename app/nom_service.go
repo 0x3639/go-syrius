@@ -336,21 +336,19 @@ func (s *NomService) GetPillarList() ([]PillarSummary, error) {
 	if client == nil {
 		return nil, errors.New("not connected")
 	}
-	out := []PillarSummary{}
-	var pageIndex uint32 = 0
-	const pageSize uint32 = 100
-	for {
-		list, err := client.PillarApi.GetAll(pageIndex, pageSize)
+	raw, err := collectPaged(func(pageIndex uint32) ([]*embedded.PillarInfo, int, error) {
+		list, err := client.PillarApi.GetAll(pageIndex, 50)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		for _, p := range list.List {
-			out = append(out, pillarSummaryDTO(p))
-		}
-		if len(out) >= list.Count || len(list.List) == 0 {
-			break
-		}
-		pageIndex++
+		return list.List, list.Count, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PillarSummary, 0, len(raw))
+	for _, p := range raw {
+		out = append(out, pillarSummaryDTO(p))
 	}
 	sortPillarsByRank(out)
 	return out, nil
@@ -862,21 +860,19 @@ func (s *NomService) GetMyTokens() ([]TokenInfo, error) {
 	if !ok {
 		return nil, errLocked
 	}
-	out := []TokenInfo{}
-	var pageIndex uint32 = 0
-	const pageSize uint32 = 50
-	for {
-		list, err := client.TokenApi.GetByOwner(addr, pageIndex, pageSize)
+	raw, err := collectPaged(func(pageIndex uint32) ([]*embedded.Token, int, error) {
+		list, err := client.TokenApi.GetByOwner(addr, pageIndex, 50)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		for _, t := range list.List {
-			out = append(out, tokenInfoDTO(t))
-		}
-		if len(out) >= list.Count || len(list.List) == 0 {
-			break
-		}
-		pageIndex++
+		return list.List, list.Count, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TokenInfo, 0, len(raw))
+	for _, t := range raw {
+		out = append(out, tokenInfoDTO(t))
 	}
 	return out, nil
 }

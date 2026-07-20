@@ -430,19 +430,15 @@ func (s *NomService) GetVotableForMyPillars() ([]VotableItem, error) {
 	}
 
 	// Collect all projects (page through GetAll).
-	all := make([]*embedded.Project, 0)
-	var pageIndex uint32 = 0
-	const pageSize uint32 = 50
-	for {
-		list, err := client.AcceleratorApi.GetAll(pageIndex, pageSize)
+	all, err := collectPaged(func(pageIndex uint32) ([]*embedded.Project, int, error) {
+		list, err := client.AcceleratorApi.GetAll(pageIndex, 50)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		all = append(all, list.List...)
-		if len(all) >= list.Count || len(list.List) == 0 {
-			break
-		}
-		pageIndex++
+		return list.List, list.Count, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Chain time, not wall-clock: the voting window is enforced on-chain against
@@ -509,21 +505,16 @@ func (s *NomService) GetMyProjects() ([]ProjectDTO, error) {
 	if client == nil {
 		return nil, errors.New("not connected")
 	}
-	out := []ProjectDTO{}
-	var pageIndex uint32 = 0
-	const pageSize uint32 = 50
-	seen := 0
-	for {
-		list, err := client.AcceleratorApi.GetAll(pageIndex, pageSize)
+	all, err := collectPaged(func(pageIndex uint32) ([]*embedded.Project, int, error) {
+		list, err := client.AcceleratorApi.GetAll(pageIndex, 50)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		out = append(out, myActiveProjects(list.List, addr)...)
-		seen += len(list.List)
-		if seen >= list.Count || len(list.List) == 0 {
-			break
-		}
-		pageIndex++
+		return list.List, list.Count, nil
+	})
+	if err != nil {
+		return nil, err
 	}
+	out := myActiveProjects(all, addr)
 	return out, nil
 }

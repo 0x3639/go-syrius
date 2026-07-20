@@ -700,6 +700,7 @@ export namespace app {
 	    allowMainnetSend: boolean;
 	    chainId: number;
 	    autoReceive: boolean;
+	    autoLockMinutes?: number;
 	    showGovernance: boolean;
 	    accountLabels: Record<string, string>;
 	    accountCounts: Record<string, number>;
@@ -721,6 +722,7 @@ export namespace app {
 	        this.allowMainnetSend = source["allowMainnetSend"];
 	        this.chainId = source["chainId"];
 	        this.autoReceive = source["autoReceive"];
+	        this.autoLockMinutes = source["autoLockMinutes"];
 	        this.showGovernance = source["showGovernance"];
 	        this.accountLabels = source["accountLabels"];
 	        this.accountCounts = source["accountCounts"];

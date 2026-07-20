@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	stdruntime "runtime"
 	"strings"
+	"time"
 
 	"sync"
 
@@ -67,6 +68,15 @@ type WalletService struct {
 	// separate from w.mu on purpose: other wallet methods must not block on
 	// settings disk I/O, and Unlock's slow KDF runs before taking it.
 	selMu sync.Mutex
+
+	// Auto-lock watchdog state. autoMu is separate from w.mu so activity pings
+	// and the 15s tick never contend with wallet operations; it is only ever
+	// taken alone or strictly after a released w.mu (never nested inside it).
+	autoMu       sync.Mutex
+	lastActivity time.Time
+	autoLockMins int           // 0 = Never
+	autoLockStop chan struct{} // non-nil while the watchdog runs
+	autoLockTick time.Duration // test seam; zero → 15s
 
 	// beforeSelectPersist, when non-nil, runs between a selection's in-memory
 	// switch and its persistence — a test hook for deterministic interleaving.
@@ -329,6 +339,7 @@ func (w *WalletService) Unlock(name, password string) error {
 	w.activeWallet = name
 	w.gen++
 	w.mu.Unlock()
+	w.startAutoLock()
 	return nil
 }
 
@@ -382,6 +393,7 @@ func (w *WalletService) Lock() error {
 	w.gen++
 	onChange := w.onSessionChange
 	w.mu.Unlock()
+	w.stopAutoLock()
 
 	if onChange != nil {
 		onChange()
@@ -390,6 +402,105 @@ func (w *WalletService) Lock() error {
 		runtime.EventsEmit(w.ctx, EventWalletLocked)
 	}
 	return nil
+}
+
+// NoteActivity records user activity for the auto-lock watchdog. The frontend
+// calls it (throttled) on genuine user input; every call is cheap and it never
+// errors. No-op while locked.
+func (w *WalletService) NoteActivity() {
+	w.mu.Lock()
+	locked := w.keystore == nil
+	w.mu.Unlock()
+	if locked {
+		return
+	}
+	w.autoMu.Lock()
+	w.lastActivity = time.Now()
+	w.autoMu.Unlock()
+}
+
+// validAutoLockMinutes reports whether m is one of the Settings presets.
+func validAutoLockMinutes(m int) bool {
+	switch m {
+	case 0, 1, 5, 15, 30:
+		return true
+	}
+	return false
+}
+
+// SetAutoLockMinutes updates the live watchdog timeout and persists it.
+// The live value updates even if persistence fails (in-memory wins for the
+// session); 0 disables auto-lock ("Never").
+func (w *WalletService) SetAutoLockMinutes(m int) error {
+	if !validAutoLockMinutes(m) {
+		return fmt.Errorf("auto-lock minutes must be one of 0, 1, 5, 15, 30; got %d", m)
+	}
+	w.autoMu.Lock()
+	w.autoLockMins = m
+	w.autoMu.Unlock()
+	return w.config.updateSettings(func(s *Settings) error {
+		s.AutoLockMinutes = intPtr(m)
+		return nil
+	})
+}
+
+// autoLockExpired reports whether inactivity exceeded the configured timeout.
+func (w *WalletService) autoLockExpired(now time.Time) bool {
+	w.autoMu.Lock()
+	defer w.autoMu.Unlock()
+	if w.autoLockMins <= 0 {
+		return false
+	}
+	return now.Sub(w.lastActivity) > time.Duration(w.autoLockMins)*time.Minute
+}
+
+// startAutoLock (re)starts the inactivity watchdog. Called on Unlock. The
+// keystore's owner enforces the deadline (fails CLOSED: a wedged WebView stops
+// pinging and the wallet still locks). Worst-case lock is timeout + one tick.
+func (w *WalletService) startAutoLock() {
+	minutes := defaultAutoLockMinutes
+	if s, err := w.config.GetSettings(); err == nil && s.AutoLockMinutes != nil {
+		minutes = *s.AutoLockMinutes
+	}
+	w.autoMu.Lock()
+	if w.autoLockStop != nil {
+		close(w.autoLockStop)
+	}
+	stop := make(chan struct{})
+	w.autoLockStop = stop
+	w.autoLockMins = minutes
+	w.lastActivity = time.Now()
+	tick := w.autoLockTick
+	if tick == 0 {
+		tick = 15 * time.Second
+	}
+	w.autoMu.Unlock()
+
+	go func() {
+		t := time.NewTicker(tick)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				if w.autoLockExpired(time.Now()) {
+					_ = w.Lock() // Lock() also stops this watchdog
+					return
+				}
+			}
+		}
+	}()
+}
+
+// stopAutoLock halts the watchdog (called by Lock, manual or automatic).
+func (w *WalletService) stopAutoLock() {
+	w.autoMu.Lock()
+	if w.autoLockStop != nil {
+		close(w.autoLockStop)
+		w.autoLockStop = nil
+	}
+	w.autoMu.Unlock()
 }
 
 // sessionGen returns the current session generation under the lock. It changes

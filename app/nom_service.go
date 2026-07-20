@@ -128,11 +128,15 @@ func (s *NomService) PrepareFuse(beneficiary, qsrAmount string) (CallPreview, er
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.PlasmaApi.Fuse(addr, amt)
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
 	// The callExpect zts MUST match the SDK template's TokenStandard or
 	// TxService.ConfirmPublish's assertMatches rejects the block. The SDK's
 	// PlasmaApi.Fuse builds the block with TokenStandard: types.QsrTokenStandard.
-	return s.tx.prepareCall(template, callExpect{to: types.PlasmaContract, zts: types.QsrTokenStandard, amount: amt, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Fuse %s QSR for %s", formatBaseAmount(qsrAmount, 8), beneficiary))
+	return s.tx.prepareCallWithEffect(template, callExpect{to: types.PlasmaContract, zts: types.QsrTokenStandard, amount: amt, data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Fuse %s QSR for %s", formatBaseAmount(qsrAmount, 8), beneficiary), effect)
 }
 
 // PrepareCancelFuse builds a Cancel template for a fusion id (no funds move; the
@@ -147,13 +151,17 @@ func (s *NomService) PrepareCancelFuse(id string) (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.PlasmaApi.Cancel(hash)
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
 	// The callExpect zts MUST match the SDK template's TokenStandard or
 	// TxService.ConfirmPublish's assertMatches rejects the block. The SDK's
 	// PlasmaApi.Cancel builds the block with TokenStandard: types.ZnnTokenStandard
 	// (Amount common.Big0) — NOT QSR, unlike Fuse. amount big.NewInt(0)
 	// Cmp-equals common.Big0.
-	return s.tx.prepareCall(template, callExpect{to: types.PlasmaContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Cancel fusion %s", id))
+	return s.tx.prepareCallWithEffect(template, callExpect{to: types.PlasmaContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
+		fmt.Sprintf("Cancel fusion %s", id), effect)
 }
 
 const stakeTimeUnitSec int64 = 2_592_000 // 30 days; go-zenon StakeTimeUnitSec
@@ -256,9 +264,13 @@ func (s *NomService) PrepareStake(amountZnn, durationMonths string) (CallPreview
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.StakeApi.Stake(int64(months)*stakeTimeUnitSec, amt)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.StakeContract, zts: types.ZnnTokenStandard, amount: amt, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Stake %s ZNN for %d months", formatBaseAmount(amountZnn, 8), months))
+		fmt.Sprintf("Stake %s ZNN for %d months", formatBaseAmount(amountZnn, 8), months), effect)
 }
 
 // PrepareCancelStake builds a Cancel template for a matured stake id.
@@ -272,9 +284,13 @@ func (s *NomService) PrepareCancelStake(id string) (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.StakeApi.Cancel(hash)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.StakeContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Cancel stake %s", id))
+		fmt.Sprintf("Cancel stake %s", id), effect)
 }
 
 // PrepareCollectReward builds the zero-value Stake.CollectReward call that
@@ -392,9 +408,13 @@ func (s *NomService) PrepareDelegate(name string) (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.PillarApi.Delegate(name)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Delegate to %s", name))
+		fmt.Sprintf("Delegate to %s", name), effect)
 }
 
 // PrepareUndelegate builds an Undelegate template (removes the current delegation).
@@ -404,9 +424,13 @@ func (s *NomService) PrepareUndelegate() (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.PillarApi.Undelegate()
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		"Undelegate from current pillar")
+		"Undelegate from current pillar", effect)
 }
 
 // PrepareCollectPillarReward builds a CollectReward template (claims accrued
@@ -417,9 +441,13 @@ func (s *NomService) PrepareCollectPillarReward() (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.PillarApi.CollectReward()
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		"Collect delegation rewards")
+		"Collect delegation rewards", effect)
 }
 
 // GetPillarReward returns the active address's uncollected delegation reward.
@@ -570,9 +598,13 @@ func (s *NomService) PreparePillarDepositQsr(qsr string) (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.PillarApi.DepositQsr(amt)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.PillarContract, zts: types.QsrTokenStandard, amount: amt, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Deposit %s QSR for pillar (burned on registration)", formatBaseAmount(amt.String(), 8)))
+		fmt.Sprintf("Deposit %s QSR for pillar (burned on registration)", formatBaseAmount(amt.String(), 8)), effect)
 }
 
 // PreparePillarWithdrawQsr builds a WithdrawQsr template (recovers escrowed QSR
@@ -583,9 +615,13 @@ func (s *NomService) PreparePillarWithdrawQsr() (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.PillarApi.WithdrawQsr()
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		"Withdraw deposited pillar QSR")
+		"Withdraw deposited pillar QSR", effect)
 }
 
 // PrepareRegisterPillar builds a Register template (sends the 15,000 ZNN
@@ -612,9 +648,13 @@ func (s *NomService) PrepareRegisterPillar(name, producer, reward string, moment
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.PillarApi.Register(name, producerAddr, rewardAddr, momentumPct, delegatePct)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
-		pillarConfigSummary("Register", name, producerAddr, rewardAddr, momentumPct, delegatePct)+" (15,000 ZNN collateral)")
+		pillarConfigSummary("Register", name, producerAddr, rewardAddr, momentumPct, delegatePct)+" (15,000 ZNN collateral)", effect)
 }
 
 // pillarConfigSummary renders the verifiable effect of a register/update for the
@@ -651,9 +691,13 @@ func (s *NomService) PrepareUpdatePillar(name, producer, reward string, momentum
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.PillarApi.UpdatePillar(name, producerAddr, rewardAddr, momentumPct, delegatePct)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		pillarConfigSummary("Update", name, producerAddr, rewardAddr, momentumPct, delegatePct))
+		pillarConfigSummary("Update", name, producerAddr, rewardAddr, momentumPct, delegatePct), effect)
 }
 
 // PrepareRevokePillar builds a Revoke template (returns the 15,000 ZNN collateral
@@ -668,9 +712,13 @@ func (s *NomService) PrepareRevokePillar(name string) (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.PillarApi.Revoke(name)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.PillarContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Revoke pillar %q", name))
+		fmt.Sprintf("Revoke pillar %q", name), effect)
 }
 
 // sentinelDTO maps an SDK SentinelInfo to the DTO. A nil result or a zero
@@ -738,9 +786,13 @@ func (s *NomService) PrepareDepositQsr(qsr string) (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.SentinelApi.DepositQsr(amt)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.SentinelContract, zts: types.QsrTokenStandard, amount: amt, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Deposit %s QSR for sentinel", formatBaseAmount(amt.String(), 8)))
+		fmt.Sprintf("Deposit %s QSR for sentinel", formatBaseAmount(amt.String(), 8)), effect)
 }
 
 // PrepareRegisterSentinel builds a Register template (sends the 5,000 ZNN
@@ -752,9 +804,13 @@ func (s *NomService) PrepareRegisterSentinel() (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.SentinelApi.Register()
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.SentinelContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
-		"Register sentinel (5,000 ZNN)")
+		"Register sentinel (5,000 ZNN)", effect)
 }
 
 // PrepareCollectSentinelReward builds a CollectReward template.
@@ -764,9 +820,13 @@ func (s *NomService) PrepareCollectSentinelReward() (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.SentinelApi.CollectReward()
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.SentinelContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		"Collect sentinel rewards")
+		"Collect sentinel rewards", effect)
 }
 
 // PrepareRevokeSentinel builds a Revoke template (returns the collateral after
@@ -777,9 +837,13 @@ func (s *NomService) PrepareRevokeSentinel() (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.SentinelApi.Revoke()
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.SentinelContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		"Revoke sentinel")
+		"Revoke sentinel", effect)
 }
 
 // PrepareWithdrawQsr builds a WithdrawQsr template (recovers escrowed QSR not
@@ -790,9 +854,13 @@ func (s *NomService) PrepareWithdrawQsr() (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.SentinelApi.WithdrawQsr()
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.SentinelContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		"Withdraw deposited QSR")
+		"Withdraw deposited QSR", effect)
 }
 
 // GetSentinelReward returns the active address's uncollected sentinel reward.
@@ -1005,11 +1073,15 @@ func (s *NomService) PrepareIssueToken(name, symbol, domain, totalSupply, maxSup
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.TokenApi.IssueToken(name, symbol, domain, total, max, uint8(decimals), isMintable, isBurnable, isUtility)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.TokenContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
 		fmt.Sprintf("Issue token %q (%s) — total supply %s, max supply %s, %d decimals, %s",
 			name, symbol, formatBaseAmount(total.String(), decimals), formatBaseAmount(max.String(), decimals),
-			decimals, tokenFlagsSummary(isMintable, isBurnable, isUtility)))
+			decimals, tokenFlagsSummary(isMintable, isBurnable, isUtility)), effect)
 }
 
 // tokenFlagsSummary renders the token capability flags for the confirm dialog —
@@ -1050,9 +1122,13 @@ func (s *NomService) PrepareMint(zts, amount, receiver string) (CallPreview, err
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.TokenApi.Mint(parsedZts, amt, recv)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.TokenContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Mint %s %s to %s", amt.String(), parsedZts.String(), recv.String()))
+		fmt.Sprintf("Mint %s %s to %s", amt.String(), parsedZts.String(), recv.String()), effect)
 }
 
 // PrepareBurn builds a Burn template. The burned token IS the block's token
@@ -1071,9 +1147,13 @@ func (s *NomService) PrepareBurn(zts, amount string) (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.TokenApi.Burn(parsedZts, amt)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.TokenContract, zts: parsedZts, amount: amt, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Burn %s %s", amt.String(), parsedZts.String()))
+		fmt.Sprintf("Burn %s %s", amt.String(), parsedZts.String()), effect)
 }
 
 // PrepareUpdateToken builds an UpdateToken template (transfer owner / one-way
@@ -1092,6 +1172,10 @@ func (s *NomService) PrepareUpdateToken(zts, newOwner string, isMintable, isBurn
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.TokenApi.UpdateToken(parsedZts, owner, isMintable, isBurnable)
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
 	// The summary must surface the full material effect: the (possibly new)
 	// owner and the mint/burn flags — disabling either is IRREVERSIBLE on-chain.
 	mint, burn := "no", "no"
@@ -1101,8 +1185,8 @@ func (s *NomService) PrepareUpdateToken(zts, newOwner string, isMintable, isBurn
 	if isBurnable {
 		burn = "yes"
 	}
-	return s.tx.prepareCall(template,
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.TokenContract, zts: types.ZnnTokenStandard, amount: big.NewInt(0), data: append([]byte(nil), template.Data...)},
 		fmt.Sprintf("Update token %s — owner %s, mintable %s, burnable %s (disabling mint or burn is permanent)",
-			parsedZts.String(), owner.String(), mint, burn))
+			parsedZts.String(), owner.String(), mint, burn), effect)
 }

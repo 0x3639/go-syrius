@@ -265,9 +265,13 @@ func (s *NomService) PrepareDonate(amount, token string) (CallPreview, error) {
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.AcceleratorApi.Donate(amt, ts)
-	return s.tx.prepareCall(template,
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.AcceleratorContract, zts: ts, amount: template.Amount, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Donate %s %s to Accelerator-Z", formatBaseAmount(amt.String(), 8), symbol))
+		fmt.Sprintf("Donate %s %s to Accelerator-Z", formatBaseAmount(amt.String(), 8), symbol), effect)
 }
 
 // PrepareVote builds a VoteByName template for one of the active address's
@@ -290,10 +294,14 @@ func (s *NomService) PrepareVote(id, pillarName string, vote uint8) (CallPreview
 		return CallPreview{}, errors.New("not connected")
 	}
 	template := client.AcceleratorApi.VoteByName(h, name, vote)
+	effect, err := decodeContractCall(template.ToAddress, template.Data)
+	if err != nil {
+		return CallPreview{}, fmt.Errorf("cannot render the exact contract call: %w", err)
+	}
 	label := map[uint8]string{embedded.VoteYes: "yes", embedded.VoteNo: "no", embedded.VoteAbstain: "abstain"}[vote]
-	return s.tx.prepareCall(template,
+	return s.tx.prepareCallWithEffect(template,
 		callExpect{to: types.AcceleratorContract, zts: types.ZnnTokenStandard, amount: template.Amount, data: append([]byte(nil), template.Data...)},
-		fmt.Sprintf("Vote %s on %s as %s", label, id, name))
+		fmt.Sprintf("Vote %s on %s as %s", label, id, name), effect)
 }
 
 // PrepareCreateProject builds a CreateProject template. The 1 ZNN fee is read

@@ -141,3 +141,19 @@ func TestClientTokenDecimalsContractTreatsMissingTokenAsError(t *testing.T) {
 		t.Fatalf("display fallback = %d, want 8", d)
 	}
 }
+
+// GS-07: node-supplied token decimals must be bounded to the protocol range
+// [0,18] (issuance enforces it on-chain; a lying node must not skew display).
+func TestBoundTokenDecimals(t *testing.T) {
+	zts := types.ZnnTokenStandard
+	for _, ok := range []int{0, 8, 18} {
+		if d, err := boundTokenDecimals(ok, zts); err != nil || d != ok {
+			t.Fatalf("valid decimals %d rejected: %d, %v", ok, d, err)
+		}
+	}
+	for _, bad := range []int{-1, 19, 200} {
+		if _, err := boundTokenDecimals(bad, zts); err == nil {
+			t.Fatalf("implausible decimals %d must be rejected", bad)
+		}
+	}
+}

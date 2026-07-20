@@ -23,7 +23,6 @@ let walletSession = 0
 
 // wallet:locked listener bookkeeping (module-level, like `selecting` above).
 let lockEventInit = false
-let onLockedCb: (() => void) | null = null
 
 export const useWalletStore = defineStore('wallet', {
   // `active` holds the active wallet's id (keystore filename), not its name.
@@ -69,18 +68,18 @@ export const useWalletStore = defineStore('wallet', {
       this.accounts = []
       this.activeIndex = 0
     },
-    // Wires the backend-initiated lock (auto-lock watchdog). Registered once;
-    // the callback is re-pointed on every call so each AppShell mount drives
-    // navigation. Idempotent: Go's Lock() also emits wallet:locked on manual
-    // lock, when the store is already locked — that must be a no-op.
-    initLockEvent(onLocked: () => void) {
-      onLockedCb = onLocked
+    // Wires the backend-initiated lock (auto-lock watchdog). Registered once.
+    // Navigation is owned by App.vue's `wallet.locked` watcher (App.vue:34-39),
+    // which pushes /unlock whenever `locked` flips — so this listener's only job
+    // is local session teardown for backend-initiated locks. Idempotent: Go's
+    // Lock() also emits wallet:locked on manual lock, when the store is already
+    // locked — that must be a no-op.
+    initLockEvent() {
       if (lockEventInit) return
       lockEventInit = true
       EventsOn('wallet:locked', () => {
         if (this.locked) return
         this._applyLocked()
-        onLockedCb?.()
       })
     },
     async loadAccounts() {

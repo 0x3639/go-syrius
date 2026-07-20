@@ -74,6 +74,7 @@ func TestAutoLock_ZeroMeansNever(t *testing.T) {
 	w := newTestWalletService(t)
 	unlockTestWallet(t, w)
 	w.startAutoLock()
+	t.Cleanup(w.stopAutoLock)
 	if err := w.SetAutoLockMinutes(0); err != nil {
 		t.Fatalf("SetAutoLockMinutes(0): %v", err)
 	}

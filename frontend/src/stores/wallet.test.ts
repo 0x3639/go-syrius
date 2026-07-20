@@ -67,32 +67,47 @@ describe('wallet store', () => {
     await s.select(0)
     expect(s.activeIndex).toBe(0)
   })
-  it('backend-initiated wallet:locked locks the UI and fires the callback once', async () => {
+  // The two lock-event tests reset modules (to clear the module-level
+  // `lockEventInit`) and rebuild a fresh Pinia so the runtime mock's captured
+  // wallet:locked handler binds THIS test's store — otherwise the second test
+  // would fire the first test's stale closure.
+  it('backend-initiated wallet:locked tears down the local session; already-locked is a no-op', async () => {
+    vi.resetModules()
+    const { setActivePinia, createPinia } = await import('pinia')
+    setActivePinia(createPinia())
+    const { useWalletStore } = await import('./wallet')
     const s = useWalletStore()
     await s.unlock('Main.dat', 'pw')
-    const onLocked = vi.fn()
-    s.initLockEvent(onLocked)
+    s.initLockEvent()
 
     eventHandlers['wallet:locked']()
     expect(s.locked).toBe(true)
     expect(s.active).toBe('')
     expect(s.accounts).toEqual([])
-    expect(onLocked).toHaveBeenCalledTimes(1)
 
-    // Idempotent: the event also fires on manual lock — already-locked is a no-op.
-    eventHandlers['wallet:locked']()
-    expect(onLocked).toHaveBeenCalledTimes(1)
+    // Idempotent: the event also fires on manual lock — firing again on an
+    // already-locked store leaves state unchanged and does not throw.
+    expect(() => eventHandlers['wallet:locked']()).not.toThrow()
+    expect(s.locked).toBe(true)
+    expect(s.active).toBe('')
+    expect(s.accounts).toEqual([])
   })
 
   it('manual lock() does not double-teardown via its own wallet:locked event', async () => {
+    vi.resetModules()
+    const { setActivePinia, createPinia } = await import('pinia')
+    setActivePinia(createPinia())
+    const { useWalletStore } = await import('./wallet')
     const s = useWalletStore()
     await s.unlock('Main.dat', 'pw')
-    const onLocked = vi.fn()
-    s.initLockEvent(onLocked)
+    s.initLockEvent()
     s.lock()
     expect(s.locked).toBe(true)
-    eventHandlers['wallet:locked']() // Go Lock() emits this after manual lock too
-    expect(onLocked).not.toHaveBeenCalled() // already locked locally → no callback
+    // Go Lock() emits wallet:locked after manual lock too; already-locked → no-op.
+    expect(() => eventHandlers['wallet:locked']()).not.toThrow()
+    expect(s.locked).toBe(true)
+    expect(s.active).toBe('')
+    expect(s.accounts).toEqual([])
   })
 })
 

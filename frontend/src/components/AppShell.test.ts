@@ -140,7 +140,9 @@ describe('AppShell', () => {
     const { wallet } = stubStores()
     mountShell()
     expect(wallet.initLockEvent).toHaveBeenCalledTimes(1)
-    expect(typeof (wallet.initLockEvent as any).mock.calls[0][0]).toBe('function')
+    // Navigation is owned by App.vue's wallet.locked watcher, so the listener is
+    // registered with no callback argument.
+    expect((wallet.initLockEvent as any).mock.calls[0]).toEqual([])
   })
 
   it('pings NoteActivity on user input, throttled, and unregisters on unmount', async () => {

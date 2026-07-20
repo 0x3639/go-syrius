@@ -245,3 +245,24 @@ func TestAutoLockMinutes_DefaultAndExplicitZero(t *testing.T) {
 		t.Fatalf("explicit 0 must round-trip, got %v (err %v)", s.AutoLockMinutes, err)
 	}
 }
+
+// A truly pre-feature settings.json (field absent) must migrate to the 5-minute
+// default — this exercises migrateSettings' nil-fill on the real JSON path
+// (defaultSettings-based writes always carry the field, so the earlier
+// round-trip test cannot cover absence).
+func TestAutoLockMinutes_AbsentFieldMigrates(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GO_SYRIUS_DATA_DIR", dir)
+	raw := []byte(`{"nodeMode":"remote","remoteNodeUrl":"wss://x","localNodeUrl":"ws://127.0.0.1:35998","theme":"dark"}`)
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), raw, 0o600); err != nil {
+		t.Fatalf("seed settings.json: %v", err)
+	}
+	c := newConfigService()
+	s, err := c.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	if s.AutoLockMinutes == nil || *s.AutoLockMinutes != 5 {
+		t.Fatalf("absent autoLockMinutes must migrate to 5, got %v", s.AutoLockMinutes)
+	}
+}

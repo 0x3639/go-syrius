@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import Sidebar from './Sidebar.vue'
 import TopBar from './TopBar.vue'
 import NomConfirm from './NomConfirm.vue'
@@ -21,7 +21,6 @@ import { useWalletConnectStore } from '../stores/walletconnect'
 import { NoteActivity } from '../../wailsjs/go/app/WalletService'
 
 const route = useRoute()
-const router = useRouter()
 const price = usePriceStore()
 const node = useNodeStore()
 const balances = useBalancesStore()
@@ -102,9 +101,10 @@ onMounted(async () => {
   price.start()
   tx.initEvents() // wires tx:pow-progress so the confirm dialog shows live PoW state
   node.initEvents(refresh) // wires node:status/sync/momentum:tick + drives the sync pill + live refresh
-  // Backend-initiated locks (auto-lock) must navigate; the router guard alone
-  // only evaluates on navigation.
-  wallet.initLockEvent(() => router.push({ name: 'unlock' }))
+  // Register the backend-initiated lock listener (auto-lock watchdog) for local
+  // session teardown. Navigation on lock is owned by App.vue's `wallet.locked`
+  // watcher (App.vue:34-39), not this call.
+  wallet.initLockEvent()
   for (const e of ACTIVITY_EVENTS) window.addEventListener(e, onUserActivity, { capture: true, passive: true })
   refresh() // initial aggregate load (balances etc.)
   ui.init() // restore persisted theme + showGovernance + governance kill-switch flag

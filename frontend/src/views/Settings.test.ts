@@ -27,11 +27,13 @@ const RevealMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue('alpha bravo c
 const ChangePassword = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const RenameWallet = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const ListWallets = vi.hoisted(() => vi.fn().mockResolvedValue([{ id: 'abc.dat', name: 'Main', baseAddress: 'z1' }]))
+const SetAutoLockMinutes = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('../../wailsjs/go/app/WalletService', () => ({
   ListWallets,
   RevealMnemonic,
   ChangePassword,
   RenameWallet,
+  SetAutoLockMinutes,
   Lock: vi.fn(),
 }))
 
@@ -223,5 +225,23 @@ describe('Settings.vue', () => {
     await flush()
 
     expect(w.text()).toContain("differs from the connected node's chain 1")
+  })
+
+  it('renders the persisted auto-lock timeout', async () => {
+    GetSettings.mockResolvedValue({ chainId: 73404, autoLockMinutes: 15 })
+    const w = mount(Settings)
+    await flush()
+    const sel = w.find('select[aria-label="auto-lock timeout"]')
+    expect((sel.element as HTMLSelectElement).value).toBe('15')
+  })
+
+  it('changing auto-lock persists via SetAutoLockMinutes', async () => {
+    GetSettings.mockResolvedValue({ chainId: 73404, autoLockMinutes: 5 })
+    const w = mount(Settings)
+    await flush()
+    const sel = w.find('select[aria-label="auto-lock timeout"]')
+    await sel.setValue('0')
+    await flush()
+    expect(SetAutoLockMinutes).toHaveBeenCalledWith(0)
   })
 })

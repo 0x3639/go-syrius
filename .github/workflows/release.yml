@@ -27,8 +27,22 @@ jobs:
     # into a run: shell — a crafted tag name would be a command-injection vector).
     env:
       VERSION: ${{ github.ref_name }}
+      # Baked into the frontend bundle at Vite build time (NOT a secret — WC
+      # project ids ship in every bundle by design). Locally this comes from
+      # gitignored frontend/.env.local; CI must inject it or WalletConnect is
+      # silently dead in shipped binaries (the v0.3.0/v0.3.1 regression).
+      VITE_WALLETCONNECT_PROJECT_ID: ${{ vars.VITE_WALLETCONNECT_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
+      # Fail LOUDLY if the id is missing — a release without it builds fine but
+      # ships a feature-dead WalletConnect screen, discovered only by users.
+      - name: Require WalletConnect project id
+        shell: bash
+        run: |
+          if [ -z "$VITE_WALLETCONNECT_PROJECT_ID" ]; then
+            echo "::error::VITE_WALLETCONNECT_PROJECT_ID is unset — configure the repo Actions variable before cutting a release."
+            exit 1
+          fi
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod

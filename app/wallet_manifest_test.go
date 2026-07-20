@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -182,5 +183,50 @@ func TestListWalletsDropsMissingKeystore(t *testing.T) {
 		if e.ID == "phantom.dat" {
 			t.Fatal("phantom entry should have been dropped")
 		}
+	}
+}
+
+// TestManifest_ConcurrentRenamesBothSurvive drives two concurrent manifest
+// read-modify-writes. GS-05: the old fixed ".tmp" path plus a missing mutex let
+// one load→mutate→save clobber the other's update, and a fixed temp path can
+// leave a stray file behind. Both renames must survive and no "*.tmp" file may
+// remain. (-race does not observe this file-level race; these assertions do.)
+func TestManifest_ConcurrentRenamesBothSurvive(t *testing.T) {
+	w := newTestWalletService(t)
+	seed := walletManifest{Wallets: []WalletMeta{
+		{ID: "a.dat", Name: "A", BaseAddress: "z1qa"},
+		{ID: "b.dat", Name: "B", BaseAddress: "z1qb"},
+	}}
+	if err := w.saveManifest(seed); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	var wg sync.WaitGroup
+	for _, r := range []struct{ id, name string }{{"a.dat", "A2"}, {"b.dat", "B2"}} {
+		wg.Add(1)
+		go func(id, name string) {
+			defer wg.Done()
+			if err := w.RenameWallet(id, name); err != nil {
+				t.Errorf("RenameWallet(%s): %v", id, err)
+			}
+		}(r.id, r.name)
+	}
+	wg.Wait()
+
+	m, err := w.loadManifest()
+	if err != nil {
+		t.Fatalf("loadManifest: %v", err)
+	}
+	byID := map[string]string{}
+	for _, e := range m.Wallets {
+		byID[e.ID] = e.Name
+	}
+	if byID["a.dat"] != "A2" || byID["b.dat"] != "B2" {
+		t.Fatalf("a rename was lost: %+v", m.Wallets)
+	}
+
+	dir, _ := w.config.walletsDir()
+	tmps, _ := filepath.Glob(filepath.Join(dir, "*.tmp"))
+	if len(tmps) != 0 {
+		t.Fatalf("temp files left behind: %v", tmps)
 	}
 }

@@ -57,6 +57,12 @@ func (w *WalletService) loadManifest() (walletManifest, error) {
 	return m, nil
 }
 
+// saveManifest persists the manifest as JSON atomically: a UNIQUE temp file in
+// the same directory, fsync, then rename over wallets.json. The unique name (vs
+// a fixed p+".tmp") means concurrent writers never fight over one temp path, and
+// the fsync guarantees an interrupted write can never leave truncated JSON or a
+// stray temp behind (audit GS-05). Callers serialize the surrounding
+// read-modify-write with w.manifestMu; this function does not lock itself.
 func (w *WalletService) saveManifest(m walletManifest) error {
 	p, err := w.manifestPath()
 	if err != nil {
@@ -66,9 +72,27 @@ func (w *WalletService) saveManifest(m walletManifest) error {
 	if err != nil {
 		return err
 	}
-	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(p), "manifest-*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, p) // atomic
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Rename(tmp.Name(), p); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	return nil
 }

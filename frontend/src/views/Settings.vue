@@ -6,6 +6,7 @@ import { useNodeStore } from '../stores/node'
 import { useWalletStore } from '../stores/wallet'
 import { useUiStore } from '../stores/ui'
 import * as Cfg from '../../wailsjs/go/app/ConfigService'
+import { SetAutoLockMinutes } from '../../wailsjs/go/app/WalletService'
 
 const node = useNodeStore()
 const wallet = useWalletStore()
@@ -29,6 +30,16 @@ const embeddedSize = ref(0)
 
 async function refreshEmbedded() {
   try { embeddedSize.value = (await node.getEmbeddedInfo()).sizeBytes } catch {}
+}
+
+const autoLockMinutes = ref(5)
+const autoLockErr = ref('')
+async function applyAutoLock(v: number) {
+  autoLockErr.value = ''
+  autoLockMinutes.value = v
+  try {
+    await SetAutoLockMinutes(v)
+  } catch (e: any) { autoLockErr.value = e?.message ?? String(e) }
 }
 
 const chainId = ref(1)
@@ -91,6 +102,7 @@ onMounted(async () => {
     const settings = await Cfg.GetSettings()
     chainId.value = settings.chainId || 1
     allowMainnetSend.value = settings.allowMainnetSend ?? false
+    autoLockMinutes.value = settings.autoLockMinutes ?? 5
   } catch {}
   await ui.init()
   if (!wallet.wallets.length) await wallet.loadWallets()
@@ -220,6 +232,30 @@ function hide() { revealed.value = '' }
         <Button @click="doReveal">Reveal</Button>
       </template>
       <p v-if="revErr" class="text-destructive text-sm" role="alert">{{ revErr }}</p>
+    </section>
+
+    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+      <h2 class="text-sm text-muted-foreground">Auto-lock</h2>
+      <label class="flex items-center gap-2 text-foreground">
+        Lock the wallet after
+        <select
+          aria-label="auto-lock timeout"
+          class="rounded border border-border bg-background px-2 py-1 text-sm"
+          :value="String(autoLockMinutes)"
+          @change="applyAutoLock(Number(($event.target as HTMLSelectElement).value))"
+        >
+          <option value="1">1 minute</option>
+          <option value="5">5 minutes</option>
+          <option value="15">15 minutes</option>
+          <option value="30">30 minutes</option>
+          <option value="0">Never</option>
+        </select>
+        of inactivity
+      </label>
+      <p class="text-xs text-muted-foreground">
+        The wallet locks itself and returns to the unlock screen after this much inactivity.
+      </p>
+      <p v-if="autoLockErr" class="text-destructive text-sm" role="alert">{{ autoLockErr }}</p>
     </section>
 
     <section class="rounded-xl border border-border bg-card p-5 space-y-2">

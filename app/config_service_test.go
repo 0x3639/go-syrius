@@ -211,3 +211,58 @@ func TestUpdateSettingsErrorAbortsWrite(t *testing.T) {
 		t.Fatalf("an erroring update must not persist, got ChainID %d", s.ChainID)
 	}
 }
+
+// Auto-lock timeout persistence. The field is a *int so migration can tell
+// "absent" (pre-feature settings.json → default 5) from an explicit 0 (Never).
+func TestAutoLockMinutes_DefaultAndExplicitZero(t *testing.T) {
+	t.Setenv("GO_SYRIUS_DATA_DIR", t.TempDir())
+	c := newConfigService()
+
+	// Fresh install: no settings.json → default 5.
+	s, err := c.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	if s.AutoLockMinutes == nil || *s.AutoLockMinutes != 5 {
+		t.Fatalf("fresh settings must default auto-lock to 5, got %v", s.AutoLockMinutes)
+	}
+
+	// Pre-feature settings.json (field absent) → migrated to 5 on read.
+	if err := c.SetChainID(1); err != nil { // forces a settings.json write
+		t.Fatalf("SetChainID: %v", err)
+	}
+	s, err = c.GetSettings()
+	if err != nil || s.AutoLockMinutes == nil || *s.AutoLockMinutes != 5 {
+		t.Fatalf("absent field must migrate to 5, got %v (err %v)", s.AutoLockMinutes, err)
+	}
+
+	// Explicit 0 (Never) must survive a persist → read round-trip.
+	if err := c.updateSettings(func(s *Settings) error { s.AutoLockMinutes = intPtr(0); return nil }); err != nil {
+		t.Fatalf("persist 0: %v", err)
+	}
+	s, err = c.GetSettings()
+	if err != nil || s.AutoLockMinutes == nil || *s.AutoLockMinutes != 0 {
+		t.Fatalf("explicit 0 must round-trip, got %v (err %v)", s.AutoLockMinutes, err)
+	}
+}
+
+// A truly pre-feature settings.json (field absent) must migrate to the 5-minute
+// default — this exercises migrateSettings' nil-fill on the real JSON path
+// (defaultSettings-based writes always carry the field, so the earlier
+// round-trip test cannot cover absence).
+func TestAutoLockMinutes_AbsentFieldMigrates(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GO_SYRIUS_DATA_DIR", dir)
+	raw := []byte(`{"nodeMode":"remote","remoteNodeUrl":"wss://x","localNodeUrl":"ws://127.0.0.1:35998","theme":"dark"}`)
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), raw, 0o600); err != nil {
+		t.Fatalf("seed settings.json: %v", err)
+	}
+	c := newConfigService()
+	s, err := c.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	if s.AutoLockMinutes == nil || *s.AutoLockMinutes != 5 {
+		t.Fatalf("absent autoLockMinutes must migrate to 5, got %v", s.AutoLockMinutes)
+	}
+}

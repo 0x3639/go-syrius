@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import * as W from '../../wailsjs/go/app/WalletService'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { bumpRequestEpoch } from '../lib/requestEpoch'
 
 export type AccountInfo = { index: number; address: string; label: string }
@@ -19,6 +20,9 @@ let queuedIndex: number | null = null
 // response that resolves after the wallet changed belongs to the PREVIOUS
 // wallet and must not be committed (nor may its queued follow-ups run).
 let walletSession = 0
+
+// wallet:locked listener bookkeeping (module-level, like `selecting` above).
+let lockEventInit = false
 
 export const useWalletStore = defineStore('wallet', {
   // `active` holds the active wallet's id (keystore filename), not its name.
@@ -51,6 +55,11 @@ export const useWalletStore = defineStore('wallet', {
       // Re-lock the keystore in the Go backend, not just the UI — otherwise the
       // wallet shows locked while the backend keystore stays decrypted.
       W.Lock().catch(() => {})
+      this._applyLocked()
+    },
+    // Local session teardown shared by manual lock() and the backend-initiated
+    // wallet:locked event (auto-lock watchdog).
+    _applyLocked() {
       walletSession++
       queuedIndex = null
       bumpRequestEpoch()
@@ -58,6 +67,20 @@ export const useWalletStore = defineStore('wallet', {
       this.active = ''
       this.accounts = []
       this.activeIndex = 0
+    },
+    // Wires the backend-initiated lock (auto-lock watchdog). Registered once.
+    // Navigation is owned by App.vue's `wallet.locked` watcher (App.vue:34-39),
+    // which pushes /unlock whenever `locked` flips — so this listener's only job
+    // is local session teardown for backend-initiated locks. Idempotent: Go's
+    // Lock() also emits wallet:locked on manual lock, when the store is already
+    // locked — that must be a no-op.
+    initLockEvent() {
+      if (lockEventInit) return
+      lockEventInit = true
+      EventsOn('wallet:locked', () => {
+        if (this.locked) return
+        this._applyLocked()
+      })
     },
     async loadAccounts() {
       try { this.accounts = (await W.CurrentAccounts()) as unknown as AccountInfo[] } catch { this.accounts = [] }

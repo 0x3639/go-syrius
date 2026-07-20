@@ -21,6 +21,11 @@ vi.mock('../../wailsjs/go/app/WalletService', () => ({
   SelectAccount: vi.fn().mockResolvedValue(undefined),
   SetAccountLabel: vi.fn().mockResolvedValue(undefined),
 }))
+// Captures the wallet:locked handler so tests can fire backend-initiated locks.
+const eventHandlers = vi.hoisted(() => ({} as Record<string, (...a: any[]) => void>))
+vi.mock('../../wailsjs/runtime/runtime', () => ({
+  EventsOn: (name: string, cb: (...a: any[]) => void) => { eventHandlers[name] = cb },
+}))
 import { useWalletStore } from './wallet'
 beforeEach(() => setActivePinia(createPinia()))
 describe('wallet store', () => {
@@ -61,6 +66,48 @@ describe('wallet store', () => {
     expect(s.activeAddress()).toBe('z1qxxx')
     await s.select(0)
     expect(s.activeIndex).toBe(0)
+  })
+  // The two lock-event tests reset modules (to clear the module-level
+  // `lockEventInit`) and rebuild a fresh Pinia so the runtime mock's captured
+  // wallet:locked handler binds THIS test's store — otherwise the second test
+  // would fire the first test's stale closure.
+  it('backend-initiated wallet:locked tears down the local session; already-locked is a no-op', async () => {
+    vi.resetModules()
+    const { setActivePinia, createPinia } = await import('pinia')
+    setActivePinia(createPinia())
+    const { useWalletStore } = await import('./wallet')
+    const s = useWalletStore()
+    await s.unlock('Main.dat', 'pw')
+    s.initLockEvent()
+
+    eventHandlers['wallet:locked']()
+    expect(s.locked).toBe(true)
+    expect(s.active).toBe('')
+    expect(s.accounts).toEqual([])
+
+    // Idempotent: the event also fires on manual lock — firing again on an
+    // already-locked store leaves state unchanged and does not throw.
+    expect(() => eventHandlers['wallet:locked']()).not.toThrow()
+    expect(s.locked).toBe(true)
+    expect(s.active).toBe('')
+    expect(s.accounts).toEqual([])
+  })
+
+  it('manual lock() does not double-teardown via its own wallet:locked event', async () => {
+    vi.resetModules()
+    const { setActivePinia, createPinia } = await import('pinia')
+    setActivePinia(createPinia())
+    const { useWalletStore } = await import('./wallet')
+    const s = useWalletStore()
+    await s.unlock('Main.dat', 'pw')
+    s.initLockEvent()
+    s.lock()
+    expect(s.locked).toBe(true)
+    // Go Lock() emits wallet:locked after manual lock too; already-locked → no-op.
+    expect(() => eventHandlers['wallet:locked']()).not.toThrow()
+    expect(s.locked).toBe(true)
+    expect(s.active).toBe('')
+    expect(s.accounts).toEqual([])
   })
 })
 

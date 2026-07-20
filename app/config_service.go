@@ -51,13 +51,20 @@ func (c *ConfigService) walletsDir() (string, error) {
 	return wd, nil
 }
 
+// defaultAutoLockMinutes is the inactivity auto-lock default (spec: 5 minutes).
+const defaultAutoLockMinutes = 5
+
+// intPtr returns a pointer to v (for optional-int settings fields).
+func intPtr(v int) *int { return &v }
+
 func defaultSettings() Settings {
 	return Settings{
-		NodeMode:      "remote",
-		RemoteNodeURL: defaultNodeURL,
-		LocalNodeURL:  defaultLocalNodeURL,
-		Theme:         "dark",
-		ActiveAccount: 0,
+		NodeMode:        "remote",
+		RemoteNodeURL:   defaultNodeURL,
+		LocalNodeURL:    defaultLocalNodeURL,
+		Theme:           "dark",
+		ActiveAccount:   0,
+		AutoLockMinutes: intPtr(defaultAutoLockMinutes),
 	}
 }
 
@@ -79,6 +86,9 @@ func migrateSettings(s *Settings) {
 	}
 	if s.Theme == "" {
 		s.Theme = "dark"
+	}
+	if s.AutoLockMinutes == nil {
+		s.AutoLockMinutes = intPtr(defaultAutoLockMinutes)
 	}
 	s.NodeURL = "" // stop persisting the deprecated field
 }

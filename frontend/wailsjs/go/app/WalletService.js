@@ -34,6 +34,10 @@ export function Lock() {
   return window['go']['app']['WalletService']['Lock']();
 }
 
+export function NoteActivity() {
+  return window['go']['app']['WalletService']['NoteActivity']();
+}
+
 export function PickKeystoreFile() {
   return window['go']['app']['WalletService']['PickKeystoreFile']();
 }
@@ -52,6 +56,10 @@ export function SelectAccount(arg1) {
 
 export function SetAccountLabel(arg1, arg2) {
   return window['go']['app']['WalletService']['SetAccountLabel'](arg1, arg2);
+}
+
+export function SetAutoLockMinutes(arg1) {
+  return window['go']['app']['WalletService']['SetAutoLockMinutes'](arg1);
 }
 
 export function Unlock(arg1, arg2) {

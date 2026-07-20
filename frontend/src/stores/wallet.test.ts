@@ -21,6 +21,11 @@ vi.mock('../../wailsjs/go/app/WalletService', () => ({
   SelectAccount: vi.fn().mockResolvedValue(undefined),
   SetAccountLabel: vi.fn().mockResolvedValue(undefined),
 }))
+// Captures the wallet:locked handler so tests can fire backend-initiated locks.
+const eventHandlers = vi.hoisted(() => ({} as Record<string, (...a: any[]) => void>))
+vi.mock('../../wailsjs/runtime/runtime', () => ({
+  EventsOn: (name: string, cb: (...a: any[]) => void) => { eventHandlers[name] = cb },
+}))
 import { useWalletStore } from './wallet'
 beforeEach(() => setActivePinia(createPinia()))
 describe('wallet store', () => {
@@ -61,6 +66,33 @@ describe('wallet store', () => {
     expect(s.activeAddress()).toBe('z1qxxx')
     await s.select(0)
     expect(s.activeIndex).toBe(0)
+  })
+  it('backend-initiated wallet:locked locks the UI and fires the callback once', async () => {
+    const s = useWalletStore()
+    await s.unlock('Main.dat', 'pw')
+    const onLocked = vi.fn()
+    s.initLockEvent(onLocked)
+
+    eventHandlers['wallet:locked']()
+    expect(s.locked).toBe(true)
+    expect(s.active).toBe('')
+    expect(s.accounts).toEqual([])
+    expect(onLocked).toHaveBeenCalledTimes(1)
+
+    // Idempotent: the event also fires on manual lock — already-locked is a no-op.
+    eventHandlers['wallet:locked']()
+    expect(onLocked).toHaveBeenCalledTimes(1)
+  })
+
+  it('manual lock() does not double-teardown via its own wallet:locked event', async () => {
+    const s = useWalletStore()
+    await s.unlock('Main.dat', 'pw')
+    const onLocked = vi.fn()
+    s.initLockEvent(onLocked)
+    s.lock()
+    expect(s.locked).toBe(true)
+    eventHandlers['wallet:locked']() // Go Lock() emits this after manual lock too
+    expect(onLocked).not.toHaveBeenCalled() // already locked locally → no callback
   })
 })
 

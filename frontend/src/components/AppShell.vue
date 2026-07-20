@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Sidebar from './Sidebar.vue'
 import TopBar from './TopBar.vue'
 import NomConfirm from './NomConfirm.vue'
@@ -18,8 +18,10 @@ import { useAutoReceiveStore } from '../stores/autoReceive'
 import { useWalletStore } from '../stores/wallet'
 import { useTxStore } from '../stores/tx'
 import { useWalletConnectStore } from '../stores/walletconnect'
+import { NoteActivity } from '../../wailsjs/go/app/WalletService'
 
 const route = useRoute()
+const router = useRouter()
 const price = usePriceStore()
 const node = useNodeStore()
 const balances = useBalancesStore()
@@ -83,10 +85,27 @@ watch(
   (i) => { if (i >= 0) onActiveChange(i) },
 )
 
+// Activity pings for the backend auto-lock watchdog. Throttled: the watchdog
+// only needs coarse "user is here" signals, one binding call per 15s max.
+// pointerdown/keydown/wheel cover genuine interaction without mousemove chatter.
+const ACTIVITY_THROTTLE_MS = 15_000
+const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'wheel'] as const
+let lastActivityPing = 0
+function onUserActivity() {
+  const now = Date.now()
+  if (now - lastActivityPing < ACTIVITY_THROTTLE_MS) return
+  lastActivityPing = now
+  NoteActivity().catch(() => {})
+}
+
 onMounted(async () => {
   price.start()
   tx.initEvents() // wires tx:pow-progress so the confirm dialog shows live PoW state
   node.initEvents(refresh) // wires node:status/sync/momentum:tick + drives the sync pill + live refresh
+  // Backend-initiated locks (auto-lock) must navigate; the router guard alone
+  // only evaluates on navigation.
+  wallet.initLockEvent(() => router.push({ name: 'unlock' }))
+  for (const e of ACTIVITY_EVENTS) window.addEventListener(e, onUserActivity, { capture: true, passive: true })
   refresh() // initial aggregate load (balances etc.)
   ui.init() // restore persisted theme + showGovernance + governance kill-switch flag
   await autoReceive.init(wallet.activeIndex)
@@ -102,6 +121,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   price.stop()
   node.clearTick() // stop momentum-driven refreshes while locked
+  for (const e of ACTIVITY_EVENTS) window.removeEventListener(e, onUserActivity, { capture: true })
   walletConnect.walletLocked().catch(() => {})
 })
 </script>

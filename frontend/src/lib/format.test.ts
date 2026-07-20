@@ -42,3 +42,26 @@ describe('isValidPillarName', () => {
     }
   })
 })
+
+// GS-12: malformed decimal strings must be rejected, not silently normalized
+// ('1.2.3' used to become 1.2; '-0.5' used to become positive 0.5).
+describe('toBase strictness', () => {
+  it('rejects multiple dots', () => {
+    expect(() => toBase('1.2.3', 8)).toThrow()
+  })
+  it('rejects signs', () => {
+    expect(() => toBase('-0.5', 8)).toThrow()
+    expect(() => toBase('+1', 8)).toThrow()
+  })
+  it('rejects non-numeric garbage and empty strings', () => {
+    expect(() => toBase('abc', 8)).toThrow()
+    expect(() => toBase('', 8)).toThrow()
+    expect(() => toBase('.', 8)).toThrow()
+  })
+  it('still accepts well-formed values', () => {
+    expect(toBase('1.5', 8)).toBe('150000000')
+    expect(toBase('.5', 8)).toBe('50000000')
+    expect(toBase('7', 2)).toBe('700')
+    expect(toBase(' 1.5 ', 8)).toBe('150000000') // trimmed
+  })
+})

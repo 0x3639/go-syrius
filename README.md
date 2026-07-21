@@ -2,124 +2,99 @@
 
 A reimplementation of the Zenon **syrius** wallet as a **Go + [Wails v2](https://wails.io)** desktop app (Vue 3 + TypeScript frontend). It reuses the proven Go crypto/node stack — [`znn-sdk-go`](https://github.com/0x3639/znn-sdk-go) and `go-zenon` — so wallet files and transactions interoperate with the original syrius.
 
-Working today: read-only wallet, send/receive, wallet lifecycle (create/import/manage), all three node modes (remote/local/embedded), the full Network-of-Momentum feature set (plasma, staking, pillars, sentinels, tokens, accelerator), and an experimental **Governance** module (browse / vote / propose / execute) gated to testnet.
+**Working today:** send/receive, wallet lifecycle (create / import / manage / auto-lock), all three node modes (remote / local / embedded full node), the full Network-of-Momentum feature set (plasma, staking, pillars, sentinels, tokens, accelerator), and **WalletConnect v2** for bridge dApps. Mainnet-capable since `v0.3.0`.
+
+> The experimental **Governance** module is **temporarily disabled** pending an SDK update; it will return in a future release.
 
 ---
 
-## ⚠️ This release is for TESTNET testing only
+## Security model (read this)
 
-> **`v0.1.0-testnet` is an unsigned pre-release.** Use a **throwaway wallet** and **testnet funds only — never real/mainnet funds or seed phrases.** The builds are not code-signed or notarized, so your OS will warn you the first time you open them (steps below). The **Governance** feature is gated to testnet and is hidden + blocked on mainnet.
+- **Keys never leave the Go backend.** The UI sends *intent*; Go builds, PoWs, signs, and publishes. The mnemonic surfaces exactly once at creation and via an explicit password-gated reveal.
+- **Confirm what you sign.** Every confirmation dialog renders the effect decoded from the **actual built transaction bytes** — destination, token, amount, and for contract calls the decoded method and parameters — not from form input.
+- **Mainnet is opt-in.** Sending on mainnet (Chain ID 1) requires explicitly enabling **Settings → Enable mainnet transactions**, and the opt-in is re-checked against the built block immediately before broadcast.
+- **Auto-lock.** The wallet locks itself after 5 minutes of inactivity by default (configurable: 1 / 5 / 15 / 30 minutes / Never), enforced by the backend.
+- **WalletConnect is tightly scoped.** Sessions are restricted to Zenon mainnet bridge operations (`WrapToken` / `RedeemUnwrap` to the bridge contract only); dApps cannot request arbitrary transactions.
+- **Independently audited.** A comprehensive security audit ([2026-07-20](docs/security-audit-2026-07-20.md)) found **no Critical or High severity vulnerability** in the funds-critical code; its code-level remediations shipped in `v0.3.3`. This is not a claim the application is "secure" — read the report's scope and residual-risk statement before trusting it with significant funds.
 
----
+### ⚠️ Builds are currently unsigned
 
-## Testnet network (use these exact settings)
-
-| Setting | Value |
-|---|---|
-| **RPC endpoint** | `ws://172.245.236.40:35998` |
-| **Network / Chain ID** | `73404` |
-
-> Mainnet is Chain ID `1`; on mainnet the Governance tab is hidden and the governance write methods are blocked. You **must** be on the testnet RPC + Chain ID `73404` to test governance.
+Releases are **not yet code-signed or notarized** (planned — Phase 7c), so your OS will warn on first launch (bypass steps below). **Always verify your download against `SHA256SUMS`.** Until signed builds ship, treat this as beta software: prefer modest balances, and keep your seed phrase backed up offline.
 
 ---
 
 ## 1. Download
 
-From the release page: **https://github.com/0x3639/go-syrius/releases/tag/v0.1.0-testnet**
+Latest release: **https://github.com/0x3639/go-syrius/releases/latest**
 
-| OS | File |
+| OS | Asset |
 |---|---|
-| **macOS** (Apple Silicon) | `go-syrius-v0.1.0-testnet-macos.zip` |
-| **Windows** (x64) | `go-syrius-v0.1.0-testnet-windows-amd64.exe` |
-| **Linux** (x64) | `go-syrius-v0.1.0-testnet-linux-amd64.tar.gz` |
+| **macOS** (Apple Silicon) | `go-syrius-<version>-macos.zip` |
+| **Windows** (x64) | `go-syrius-<version>-windows-amd64.exe` |
+| **Linux** (x64) | `go-syrius-<version>-linux-amd64.tar.gz` |
 
-### Verify your download (recommended)
+### Verify your download (strongly recommended)
 
-Download `SHA256SUMS` from the same release and check it:
+Download `SHA256SUMS` from the same release and compare:
 
 ```bash
 # macOS
-shasum -a 256 go-syrius-v0.1.0-testnet-macos.zip
+shasum -a 256 go-syrius-<version>-macos.zip
 # Linux
-sha256sum go-syrius-v0.1.0-testnet-linux-amd64.tar.gz
+sha256sum go-syrius-<version>-linux-amd64.tar.gz
 # Windows (PowerShell)
-Get-FileHash go-syrius-v0.1.0-testnet-windows-amd64.exe -Algorithm SHA256
+Get-FileHash go-syrius-<version>-windows-amd64.exe -Algorithm SHA256
 ```
 
-The output hash must match the line for your file in `SHA256SUMS`.
+The hash must match the line for your file in `SHA256SUMS`.
 
 ## 2. Install & open (unsigned build)
-
-Because the build isn't signed, the OS blocks it on first launch. This is expected.
 
 - **macOS:** unzip → drag `syrius.app` to Applications (optional) → **right-click the app → Open → Open**. If it still refuses:
   ```bash
   xattr -dr com.apple.quarantine /path/to/syrius.app
   ```
-- **Windows:** run the `.exe`. On the SmartScreen prompt → **More info → Run anyway**.
-- **Linux:** `tar -xzf go-syrius-v0.1.0-testnet-linux-amd64.tar.gz` → `chmod +x syrius` → `./syrius`. Needs `libgtk-3` and `libwebkit2gtk-4.1` installed.
+- **Windows:** run the `.exe` → SmartScreen → **More info → Run anyway**.
+- **Linux:** `tar -xzf go-syrius-<version>-linux-amd64.tar.gz` → `chmod +x syrius` → `./syrius`. Needs `libgtk-3` and `libwebkit2gtk-4.1`.
 
 ## 3. Create or import a wallet
 
-On first run, **create a new wallet** (or import one) — use a **fresh testnet wallet**, not anything holding real funds. Save the mnemonic somewhere safe; it's shown once.
+On first run, create a new wallet or import an existing mnemonic / syrius keystore (`.dat` files are byte-compatible both ways). The mnemonic is shown **once** at creation — write it down offline.
 
-## 4. Connect to the testnet node
+## 4. Choose a node
 
-**Settings → Node:**
-1. Select **Remote**.
-2. Set the URL to **`ws://172.245.236.40:35998`**.
-3. Click **Apply node** and wait until the status reads **Connected**.
+**Settings → Node** offers three modes:
 
-**Settings → Network Configuration:**
-1. It shows **"Connected node chain: 73404"**.
-2. Set **Chain ID** to **`73404`** to match, then **Apply network**.
+| Mode | What it is |
+|---|---|
+| **Remote** (default) | A third-party public node over `wss://` — zero setup. |
+| **Local** | Your own `znnd` at `ws://127.0.0.1:35998`. |
+| **Embedded** | A full go-zenon node running *inside* the wallet — no separate install; expect an initial sync (progress is shown live). |
 
-> If "Configured Chain ID differs from the connected node's chain" appears, your Chain ID and the node don't match — fix it here, or sends/votes will be rejected.
+## 5. Enable mainnet sending (deliberate step)
 
-## 5. Get testnet funds & plasma
+Out of the box the wallet will not sign mainnet transactions. When you're ready: **Settings → Network Configuration → Enable mainnet transactions**, and confirm the warning. Verify the connected node's chain matches the configured Chain ID (`1` for mainnet) — mismatches are rejected at signing.
 
-You need a small amount of testnet **ZNN/QSR** to do anything that writes on-chain:
-- **Voting / executing** needs **plasma** (fuse some QSR via the **Plasma** tab, or generate PoW — the wallet does this automatically when plasma is low).
-- **Proposing** a governance action costs **1 ZNN** (non-refundable) plus plasma.
+## 6. WalletConnect (bridge dApps)
 
-Use your usual testnet faucet / source to fund the wallet address (shown on the Receive card).
+**WalletConnect** in the sidebar pairs the wallet with Zenon bridge dApps (paste a `wc:` URI or scan). Sessions can only request bridge wrap/redeem operations, every request shows a full decoded confirmation before signing, and duplicate/replayed requests are blocked by a persistent journal that survives crashes and restarts.
 
-## 6. Enable Governance
+## Testnet
 
-Governance is off by default. **Settings → Testnet features → check "Show Governance."** A **Governance** tab then appears in the top navigation.
-
-> The tab only appears while connected to testnet (Chain ID ≠ 1). If you don't see it, re-check steps 4–6.
-
-## 7. Use Governance
-
-The Governance tab has three sub-tabs:
-
-- **Vote** — appears only if the active wallet account **owns a pillar**. Lists open actions; pick Yes / No / Abstain. (Votes target the action's current round automatically.)
-- **Actions** — browse all governance actions (filter by status, paginate, expand for details). An **Execute** button appears on an approved-but-unexecuted action (uncommon — approval usually auto-executes).
-- **Propose** — submit a new action (costs **1 ZNN**). For an easy end-to-end test, pick **`Spork — Create`**: fill the action name / description / URL, plus a spork name (5–40 chars) and description, then **Propose**. Bridge and Liquidity action kinds are also available (these need bridge/liquidity admin state and will typically be rejected at execution on a normal testnet — the proposal still posts and is votable).
-
-**Suggested test flow:** Propose a Spork → switch to a pillar-owning account → **Vote** on it → watch the tally update in **Actions**.
-
-## What to report
-
-Please report:
-- Any console/runtime errors (open the dev console if available, or note the on-screen error).
-- Whether votes land and the tally increments.
-- Anything confusing in the propose → vote → execute flow.
-- Platform + OS version + the build you used.
-
-Open an issue: https://github.com/0x3639/go-syrius/issues
+To use a testnet instead: point **Settings → Node** at your testnet RPC (e.g. `ws://172.245.236.40:35998`) and set **Chain ID** to the testnet's id (`73404` for the public testnet). Testnet-gated experimental features surface only while connected to a non-mainnet chain.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| Governance tab missing | Connect to the testnet RPC, set Chain ID `73404` (not `1`), then enable it under Settings → Testnet features. |
-| "mainnet sending is disabled" / governance blocked | You're connected to mainnet (Chain ID 1). Governance is testnet-only; connect to the testnet node. |
-| Sends/votes rejected for chain mismatch | Make the configured Chain ID match the connected node (`73404`). |
-| Vote view shows a "pillar operators" note | The active account doesn't own a pillar; switch to a pillar-owning account. |
 | macOS "app is damaged / can't be opened" | `xattr -dr com.apple.quarantine /path/to/syrius.app`, then right-click → Open. |
-| Propose fails | You need ≥1 testnet ZNN + plasma; check the connected chain is testnet. |
+| "mainnet sending is disabled" | Enable it explicitly: Settings → Network Configuration → Enable mainnet transactions. |
+| Sends rejected for chain mismatch | Make the configured Chain ID match the connected node's chain (shown in Settings). |
+| Embedded node syncing slowly | Initial sync downloads the full ledger; the sidebar height tracks live progress. Remote mode needs no sync. |
+| WalletConnect screen says not configured | Only affects self-built binaries: set `VITE_WALLETCONNECT_PROJECT_ID` (see `frontend/.env.example`) and rebuild. Official releases ≥ `v0.3.2` are configured. |
+| Wallet locked itself | Inactivity auto-lock (default 5 min). Adjust in Settings → Auto-lock. |
+
+Report issues: https://github.com/0x3639/go-syrius/issues — include platform, OS version, and the release you used.
 
 ## Build from source (developers)
 
@@ -132,12 +107,12 @@ GOWORK=off wails dev
 GOWORK=off wails build           # Linux: add -tags webkit2_41 (+ libgtk-3-dev libwebkit2gtk-4.1-dev)
 ```
 
-Frontend (in `frontend/`): `pnpm install --frozen-lockfile`, `pnpm run typecheck`, `pnpm test`, `pnpm run build`.
+Frontend (in `frontend/`): `pnpm install --frozen-lockfile`, `pnpm run typecheck`, `pnpm test`, `pnpm run build`. For a working WalletConnect in local builds, copy `frontend/.env.example` to `frontend/.env.local` and set your own WalletConnect project id.
 
 ## Releases
 
-Releases are cut from a version tag via `.github/workflows/release.yml` (build matrix → packaged per-platform assets + `SHA256SUMS` → GitHub Release; pre-release when the tag carries a `-suffix`). Current builds are **unsigned**; code signing + notarization are planned.
+Releases are cut from a version tag via `.github/workflows/release.yml` (cross-platform build matrix → per-platform assets + `SHA256SUMS` → GitHub Release; a `-suffix` in the tag marks a pre-release). The workflow's actions are pinned to immutable commit SHAs with a CI guard against unpinned refs. Current builds are **unsigned**; code signing + notarization are planned (Phase 7c).
 
 ---
 
-*Testnet only. Not affiliated with or audited for mainnet use. Use at your own risk.*
+*Unsigned beta builds — use at your own risk. See the [security audit](docs/security-audit-2026-07-20.md) for the wallet's verified guarantees and their limits.*

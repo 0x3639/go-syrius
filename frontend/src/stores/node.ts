@@ -109,7 +109,10 @@ export const useNodeStore = defineStore('node', {
         this.sync = s
         this.syncing = s?.state !== 'synced'
       })
-      EventsOn('momentum:tick', () => this._onTick?.())
+      // During embedded bulk sync ticks arrive continuously; refreshing every
+      // store on each one keeps seven RPC groups running back-to-back against
+      // the very node that is trying to insert blocks. Skip until synced.
+      EventsOn('momentum:tick', () => { if (!this.syncing) this._onTick?.() })
     },
     // Detach the tick callback (AppShell unmount / lock): momentum:tick fires
     // whenever the node is connected, independent of wallet state, so without

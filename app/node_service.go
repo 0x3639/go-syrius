@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/0x3639/go-syrius/internal/appnap"
 	"github.com/0x3639/go-syrius/internal/embeddednode"
 	"github.com/0x3639/go-syrius/internal/governance"
 	"github.com/0x3639/znn-sdk-go/rpc_client"
@@ -64,6 +65,11 @@ type NodeService struct {
 	embedded      embeddedHandle
 	embeddedStart func(dataDir string) (embeddedHandle, error)
 	syncStop      chan struct{}
+
+	// appNapBegin/appNapEnd hold a macOS App Nap prevention assertion for
+	// exactly the embedded node's lifetime (no-ops off darwin; stubbed in tests).
+	appNapBegin func(reason string)
+	appNapEnd   func()
 }
 
 func newNodeService(c *ConfigService, w *WalletService) *NodeService {
@@ -71,6 +77,8 @@ func newNodeService(c *ConfigService, w *WalletService) *NodeService {
 	n.embeddedStart = func(dataDir string) (embeddedHandle, error) {
 		return embeddednode.Start(dataDir)
 	}
+	n.appNapBegin = appnap.Begin
+	n.appNapEnd = appnap.End
 	return n
 }
 
@@ -271,6 +279,12 @@ func (n *NodeService) disconnectLocked() {
 		close(n.stop)
 		n.stop = nil
 	}
+	// The sync poller's client dies with the connection; left running it would
+	// poll a stopped client silently forever (observed after sleep/wake).
+	if n.syncStop != nil {
+		close(n.syncStop)
+		n.syncStop = nil
+	}
 	if n.autoStop != nil {
 		close(n.autoStop)
 		n.autoStop = nil
@@ -373,28 +387,40 @@ func (n *NodeService) SetNodeMode(mode string) error {
 }
 
 // startEmbedded starts the embedded node, connects to it, and starts the sync
-// poller. The caller has already persisted/marked mode == "embedded". Mutex
-// discipline: mu is never held across embeddedStart/SetNode/startSyncPoller.
+// poller. When the node is already running (a wallet-side connection death —
+// e.g. after sleep/wake — leaves it up), it is reused: starting a second one
+// would hit the single-instance guard and make reconnecting impossible without
+// an app restart. The caller has already persisted/marked mode == "embedded".
+// Mutex discipline: mu is never held across embeddedStart/SetNode/startSyncPoller.
 func (n *NodeService) startEmbedded() error {
 	// Switching to embedded supersedes any current connection; drop it first so a
 	// failed embedded start cannot leave the old client emitting as "embedded".
+	// The running-handle read shares the critical section so a concurrent stop
+	// can't slip between teardown and reuse.
 	n.mu.Lock()
 	n.disconnectLocked()
+	h := n.embedded
 	n.mu.Unlock()
 	n.emitStatus(false)
 
-	dir, err := n.config.dataDir()
-	if err != nil {
-		return err
+	if h == nil {
+		dir, err := n.config.dataDir()
+		if err != nil {
+			return err
+		}
+		started, serr := n.embeddedStart(dir)
+		if serr != nil {
+			n.emitStatus(false)
+			return fmt.Errorf("start embedded node: %w", serr)
+		}
+		h = started
+		n.mu.Lock()
+		n.embedded = h
+		n.mu.Unlock()
+		// Held for the node's lifetime: without it macOS App Naps the whole
+		// process when the window is occluded and sync slows to a crawl.
+		n.appNapBegin("embedded Zenon node running")
 	}
-	h, serr := n.embeddedStart(dir)
-	if serr != nil {
-		n.emitStatus(false)
-		return fmt.Errorf("start embedded node: %w", serr)
-	}
-	n.mu.Lock()
-	n.embedded = h
-	n.mu.Unlock()
 	if cerr := n.setNode(h.WSURL()); cerr != nil {
 		n.stopEmbedded() // tear down the just-started node so Retry can start fresh
 		return cerr
@@ -468,6 +494,7 @@ func (n *NodeService) stopEmbedded() {
 	n.mu.Unlock()
 	if h != nil {
 		_ = h.Stop()
+		n.appNapEnd()
 	}
 }
 

@@ -594,6 +594,104 @@ func TestNoteSyncHeight_BumpsStatusMonotonically(t *testing.T) {
 	}
 }
 
+// A dead connection (e.g. after sleep/wake) tears down via disconnect, and the
+// sync poller must go down with it: its captured client is stopped, so a
+// surviving poller would error silently forever while looking alive.
+func TestDisconnectStopsSyncPoller(t *testing.T) {
+	n := newTestNode(t)
+	stop := make(chan struct{})
+	n.mu.Lock()
+	n.syncStop = stop
+	n.mu.Unlock()
+
+	if err := n.Disconnect(); err != nil {
+		t.Fatalf("Disconnect: %v", err)
+	}
+	select {
+	case <-stop: // closed — the poller goroutine has been released
+	default:
+		t.Fatal("disconnect must close the sync poller's stop channel")
+	}
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	if n.syncStop != nil {
+		t.Fatal("disconnect must clear syncStop so a later stop can't double-close")
+	}
+}
+
+// After a wallet-side connection death (degradeConnection) the embedded node
+// keeps running. A reconnect (Retry/Connect) must dial the RUNNING node again —
+// starting a second one would hit the single-instance guard and leave the user
+// unable to reconnect without an app restart.
+func TestConnectReusesRunningEmbeddedNode(t *testing.T) {
+	n := newTestNode(t)
+	if err := n.config.updateSettings(func(s *Settings) error {
+		s.NodeMode = "embedded"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	starts := 0
+	n.embeddedStart = func(dataDir string) (embeddedHandle, error) {
+		starts++
+		return stubHandle{url: "ws://127.0.0.1:1", dir: dataDir}, nil
+	}
+	// Simulate the post-degrade state: node running, wallet connection gone.
+	n.mu.Lock()
+	n.embedded = stubHandle{url: "ws://127.0.0.1:1", dir: "d"}
+	n.mode = "embedded"
+	n.mu.Unlock()
+
+	_ = n.Connect() // dial fails (unreachable stub URL); ignore the error
+	if starts != 0 {
+		t.Fatalf("Connect must reuse the running embedded node, started %d new node(s)", starts)
+	}
+}
+
+// The embedded node must hold an App Nap prevention assertion for exactly as
+// long as it runs: begun when the node starts, released when it stops —
+// including the teardown after a failed wallet connect.
+func TestEmbeddedTogglesAppNapPrevention(t *testing.T) {
+	n := newTestNode(t)
+	var begins, ends int
+	n.appNapBegin = func(string) { begins++ }
+	n.appNapEnd = func() { ends++ }
+	n.embeddedStart = func(dataDir string) (embeddedHandle, error) {
+		return stubHandle{url: "ws://127.0.0.1:1", dir: dataDir}, nil
+	}
+	_ = n.SetNodeMode("embedded") // node starts; connect fails; node torn down
+	if begins != 1 {
+		t.Fatalf("App Nap prevention must begin once with the node, got %d", begins)
+	}
+	if ends != 1 {
+		t.Fatalf("teardown must release the App Nap assertion, got %d end(s)", ends)
+	}
+}
+
+// Switching away from embedded mode stops the node and must release the App
+// Nap assertion with it.
+func TestModeSwitchReleasesAppNap(t *testing.T) {
+	n := newTestNode(t)
+	var ends int
+	n.appNapBegin = func(string) {}
+	n.appNapEnd = func() { ends++ }
+	if err := n.config.updateSettings(func(s *Settings) error {
+		s.RemoteNodeURL = "ws://127.0.0.1:1"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	n.mu.Lock()
+	n.embedded = stubHandle{url: "ws://127.0.0.1:1", dir: "d"}
+	n.mode = "embedded"
+	n.mu.Unlock()
+
+	_ = n.SetNodeMode("remote") // dial fails; the embedded teardown still runs
+	if ends != 1 {
+		t.Fatalf("leaving embedded mode must release the App Nap assertion, got %d end(s)", ends)
+	}
+}
+
 // GS-11: node URLs must not persist query/fragment; userinfo stays allowed
 // (legitimate basic-auth to the user's own node) but is scrubbed from errors.
 func TestSetNodeURL_RejectsQueryAndFragment(t *testing.T) {

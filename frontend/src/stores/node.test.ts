@@ -93,6 +93,23 @@ describe('node store', () => {
     expect(s.syncing).toBe(false)
   })
 
+  it('pauses the tick refresh during embedded bulk sync', async () => {
+    const s = useNodeStore()
+    const cb = vi.fn()
+    s.initEvents(cb)
+    await new Promise((r) => setTimeout(r))
+    handlers['node:status']?.({ connected: true, chainId: 1, mode: 'embedded' })
+    handlers['node:sync']?.({ state: 'syncing' })
+    // Ticks arrive continuously during bulk sync; refreshing seven RPC groups
+    // per tick would compete with block insertion for the node's CPU and DB.
+    handlers['momentum:tick']?.()
+    expect(cb).not.toHaveBeenCalled()
+    // Sync done → the tick refresh resumes.
+    handlers['node:sync']?.({ state: 'synced' })
+    handlers['momentum:tick']?.()
+    expect(cb).toHaveBeenCalledTimes(1)
+  })
+
   it('clearTick detaches the callback (no refreshes while locked)', () => {
     const s = useNodeStore()
     const cb = vi.fn()

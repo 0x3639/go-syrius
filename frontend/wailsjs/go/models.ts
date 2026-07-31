@@ -299,6 +299,22 @@ export namespace app {
 	        this.isRevocable = source["isRevocable"];
 	    }
 	}
+	export class MnemonicEntropyRequest {
+	    version: number;
+	    rendererRandomBase64: string;
+	    interactionDigestBase64: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MnemonicEntropyRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.rendererRandomBase64 = source["rendererRandomBase64"];
+	        this.interactionDigestBase64 = source["interactionDigestBase64"];
+	    }
+	}
 	export class NodeConfig {
 	    mode: string;
 	    remoteUrl: string;

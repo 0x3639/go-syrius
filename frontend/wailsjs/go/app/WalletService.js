@@ -18,6 +18,10 @@ export function GenerateMnemonic() {
   return window['go']['app']['WalletService']['GenerateMnemonic']();
 }
 
+export function GenerateMnemonicWithEntropy(arg1) {
+  return window['go']['app']['WalletService']['GenerateMnemonicWithEntropy'](arg1);
+}
+
 export function ImportKeystore(arg1, arg2) {
   return window['go']['app']['WalletService']['ImportKeystore'](arg1, arg2);
 }

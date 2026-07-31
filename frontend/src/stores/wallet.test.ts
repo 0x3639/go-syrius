@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 // vi.hoisted so Lock exists when the hoisted vi.mock factory runs.
 const Lock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const GenerateMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue('w1 w2 w3'))
+const GenerateMnemonicWithEntropy = vi.hoisted(() => vi.fn().mockResolvedValue('e1 e2 e3'))
 const ImportMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue({ name: 'New.dat' }))
 const ImportKeystore = vi.hoisted(() => vi.fn().mockResolvedValue({ name: 'Old.dat' }))
 const PickKeystoreFile = vi.hoisted(() => vi.fn().mockResolvedValue('/tmp/k.dat'))
@@ -14,6 +15,7 @@ vi.mock('../../wailsjs/go/app/WalletService', () => ({
   RenameWallet,
   Lock,
   GenerateMnemonic,
+  GenerateMnemonicWithEntropy,
   ImportMnemonic,
   ImportKeystore,
   PickKeystoreFile,
@@ -52,6 +54,16 @@ describe('wallet store', () => {
     await s.importKeystore('/tmp/k.dat')
     expect(ImportKeystore).toHaveBeenCalledWith('/tmp/k.dat', '')
     expect(await s.pickKeystoreFile()).toBe('/tmp/k.dat')
+  })
+  it('passes the entropy request through unchanged and returns the phrase', async () => {
+    const s = useWalletStore()
+    const req = {
+      version: 1,
+      rendererRandomBase64: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',
+      interactionDigestBase64: '47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=',
+    }
+    expect(await s.generateMnemonicWithEntropy(req)).toBe('e1 e2 e3')
+    expect(GenerateMnemonicWithEntropy).toHaveBeenCalledWith(req)
   })
   it('rename calls RenameWallet then reloads', async () => {
     const s = useWalletStore()

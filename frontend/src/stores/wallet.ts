@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import * as W from '../../wailsjs/go/app/WalletService'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { bumpRequestEpoch } from '../lib/requestEpoch'
+import type { EntropyRequest } from '../lib/wallet-entropy'
 
 export type AccountInfo = { index: number; address: string; label: string }
 // WalletMeta mirrors the Go app.WalletMeta returned by ListWallets. `id` is the
@@ -128,6 +129,12 @@ export const useWalletStore = defineStore('wallet', {
     },
     async generateMnemonic(): Promise<string> {
       return await W.GenerateMnemonic()
+    },
+    // Enhanced Phase 7f generation: pass the renderer contributions through to
+    // Go and return the phrase. Never retain the request, contributions, or
+    // mnemonic in store state (spec §10).
+    async generateMnemonicWithEntropy(request: EntropyRequest): Promise<string> {
+      return await W.GenerateMnemonicWithEntropy(request)
     },
     // Persist a new keystore from a mnemonic and return the new wallet's meta
     // (the backend assigns the uuid keystore filename as `id`). Does NOT unlock —

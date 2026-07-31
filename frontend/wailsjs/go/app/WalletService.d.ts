@@ -10,6 +10,8 @@ export function CurrentAccounts():Promise<Array<app.AccountInfo>>;
 
 export function GenerateMnemonic():Promise<string>;
 
+export function GenerateMnemonicWithEntropy(arg1:app.MnemonicEntropyRequest):Promise<string>;
+
 export function ImportKeystore(arg1:string,arg2:string):Promise<app.WalletMeta>;
 
 export function ImportMnemonic(arg1:string,arg2:string,arg3:string):Promise<app.WalletMeta>;

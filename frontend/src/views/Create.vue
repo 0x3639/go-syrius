@@ -13,6 +13,7 @@ import {
   webCryptoAvailable,
   COLLECTION_MIN_DURATION_MS,
   COLLECTION_TARGET_SAMPLES,
+  type EntropyRequest,
 } from '../lib/wallet-entropy'
 
 const wallet = useWalletStore()
@@ -54,11 +55,16 @@ function startCollection() {
   collector.reset()
   sampleCount.value = 0
   elapsedMs.value = 0
+  startElapsedTimer()
+  stage.value = 'collect'
+}
+
+function startElapsedTimer() {
+  stopCollectionTimer()
   collectStart = performance.now()
   elapsedTimer = setInterval(() => {
     elapsedMs.value = performance.now() - collectStart
   }, 250)
-  stage.value = 'collect'
 }
 
 function stopCollectionTimer() {
@@ -66,6 +72,18 @@ function stopCollectionTimer() {
     clearInterval(elapsedTimer)
     elapsedTimer = null
   }
+}
+
+// A failed generation has already frozen and wiped the collector, so the
+// retained sampleCount/elapsedMs are stale: leaving them would keep the
+// "Enough interaction collected" banner up and let the next click submit the
+// empty-transcript digest while the user believes their interaction
+// contributed. Force a visible re-collect instead.
+function restartCollectionAfterFailure() {
+  if (stage.value !== 'collect') return
+  sampleCount.value = 0
+  elapsedMs.value = 0
+  startElapsedTimer()
 }
 
 function onPointer(e: PointerEvent) {
@@ -107,13 +125,23 @@ async function generate(useTranscript: boolean) {
   stopCollectionTimer()
   const transcript = useTranscript ? collector.freeze() : new Uint8Array(0)
   try {
-    const request = await createEntropyRequest(transcript)
+    let request: EntropyRequest
+    try {
+      request = await createEntropyRequest(transcript)
+    } catch (e) {
+      // Web Crypto is unavailable *or failing* (spec §8.4) — either way retries
+      // will keep failing, so expose the explicit backend-only action. Scoped
+      // to this step: a backend RPC failure below must not set the flag.
+      cryptoUnavailable.value = true
+      throw e
+    }
     showPhrase(await wallet.generateMnemonicWithEntropy(request))
   } catch (e: any) {
     // Never silently downgrade (spec §8.4): show the failure; when Web Crypto
     // is the cause, additionally expose the explicit backend-only action.
     if (!webCryptoAvailable()) cryptoUnavailable.value = true
     error.value = e?.message ?? String(e)
+    restartCollectionAfterFailure()
   } finally {
     collector.reset()
     generating.value = false
@@ -130,6 +158,7 @@ async function generateBackendOnly() {
     showPhrase(await wallet.generateMnemonic())
   } catch (e: any) {
     error.value = e?.message ?? String(e)
+    restartCollectionAfterFailure()
   } finally {
     collector.reset()
     generating.value = false

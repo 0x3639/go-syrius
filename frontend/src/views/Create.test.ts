@@ -41,14 +41,17 @@ import Create from './Create.vue'
 const EMPTY_SHA256_B64 = '47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='
 
 let randCtr = 0
+// Deterministic but *varying* fill — pickDistinctIndexes rejection-samples until
+// it has n distinct values, so a constant-valued stub would spin forever.
+function counterRandom(arr: ArrayBufferView) {
+  const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength)
+  for (let i = 0; i < bytes.length; i++) bytes[i] = randCtr++ & 0xff
+  return arr
+}
 function stubWebCrypto() {
   randCtr = 0
   vi.stubGlobal('crypto', {
-    getRandomValues: (arr: ArrayBufferView) => {
-      const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength)
-      for (let i = 0; i < bytes.length; i++) bytes[i] = randCtr++ & 0xff
-      return arr
-    },
+    getRandomValues: counterRandom,
     subtle: {
       digest: async (_alg: string, data: Uint8Array) => {
         const h = createHash('sha256')
@@ -121,6 +124,40 @@ describe('Create.vue — entropy choice', () => {
     expect(GenerateMnemonic).not.toHaveBeenCalled()
     // still on the choice screen; user can retry
     expect(btn(w, 'Generate without interaction')).toBeTruthy()
+  })
+
+  it('a pure backend failure does NOT expose the backend-only action', async () => {
+    GenerateMnemonicWithEntropy.mockRejectedValueOnce(new Error('backend exploded'))
+    const w = mount(Create)
+    await btn(w, 'Generate without interaction')!.trigger('click')
+    await flush()
+    await flush()
+    expect(w.text()).toContain('backend exploded')
+    expect(GenerateMnemonic).not.toHaveBeenCalled()
+    // Web Crypto worked fine — the fallback is scoped to entropy-request failure
+    expect(btn(w, 'Generate using backend randomness')).toBeFalsy()
+  })
+
+  it('Web Crypto present but failing also exposes the explicit backend-only action', async () => {
+    vi.stubGlobal('crypto', {
+      getRandomValues: counterRandom,
+      subtle: {
+        digest: async () => {
+          throw new Error('digest blew up')
+        },
+      },
+    })
+    const w = mount(Create)
+    await btn(w, 'Generate without interaction')!.trigger('click')
+    await flush()
+    await flush()
+    expect(w.text()).toContain('digest blew up')
+    expect(GenerateMnemonic).not.toHaveBeenCalled() // no silent fallback
+    const fallback = btn(w, 'Generate using backend randomness')
+    expect(fallback).toBeTruthy()
+    await fallback!.trigger('click')
+    await flush()
+    expect(GenerateMnemonic).toHaveBeenCalledTimes(1)
   })
 
   it('Web Crypto unavailability exposes the explicit backend-only action', async () => {
@@ -228,6 +265,47 @@ describe('Create.vue — interaction collection', () => {
     document.body.dispatchEvent(new Event('pointermove'))
     document.body.dispatchEvent(new Event('keydown'))
     expect(w.text()).toContain('0 samples')
+  })
+
+  it('a failed generation from the collect stage clears the stale ready state', async () => {
+    GenerateMnemonicWithEntropy.mockRejectedValueOnce(new Error('backend exploded'))
+    const { w, setNow } = mountCollecting()
+    const target = await startCollection(w)
+    for (let i = 1; i <= 40; i++) {
+      setNow(i * 20)
+      await target.trigger('pointermove', { clientX: i * 3, clientY: i * 5, pointerType: 'mouse' })
+    }
+    setNow(6000)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(w.text()).toContain('Enough interaction collected')
+
+    await btn(w, 'Generate recovery phrase')!.trigger('click')
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(w.text()).toContain('backend exploded')
+    expect(GenerateMnemonic).not.toHaveBeenCalled()
+    // The collector was frozen+wiped by the failed attempt: the UI must not
+    // still claim readiness, or a second click would submit an empty transcript.
+    expect(w.text()).not.toContain('Enough interaction collected')
+    expect(w.text()).toContain('0 samples')
+    expect(btn(w, 'Generate recovery phrase')!.attributes('disabled')).toBeDefined()
+
+    // Re-collecting works, and the retry carries a real transcript digest.
+    for (let i = 1; i <= 40; i++) {
+      setNow(6000 + i * 20)
+      await target.trigger('pointermove', { clientX: i * 7, clientY: i * 11, pointerType: 'mouse' })
+    }
+    setNow(13000)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(w.text()).toContain('Enough interaction collected')
+    await btn(w, 'Generate recovery phrase')!.trigger('click')
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(GenerateMnemonicWithEntropy).toHaveBeenCalledTimes(2)
+    expect(GenerateMnemonicWithEntropy.mock.calls[1][0].interactionDigestBase64).not.toBe(EMPTY_SHA256_B64)
+    expect(w.text()).toContain('alpha')
   })
 
   it('unmounting mid-collection clears the elapsed timer and state', async () => {

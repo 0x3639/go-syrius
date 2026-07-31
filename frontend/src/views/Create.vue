@@ -1,19 +1,141 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Card, CardContent, Input, Button } from 'nom-ui'
 import { useWalletStore } from '../stores/wallet'
 import * as Cfg from '../../wailsjs/go/app/ConfigService'
 import { ClipboardSetText, ClipboardGetText } from '../../wailsjs/runtime/runtime'
 import { XIcon, TriangleAlertIcon, CopyIcon, CheckIcon } from '@lucide/vue'
+import {
+  InteractionCollector,
+  createEntropyRequest,
+  pickDistinctIndexes,
+  webCryptoAvailable,
+  COLLECTION_MIN_DURATION_MS,
+  COLLECTION_TARGET_SAMPLES,
+} from '../lib/wallet-entropy'
 
 const wallet = useWalletStore()
 const router = useRouter()
 
+// Phase 7f (spec 2026-07-31 §9): no mnemonic may exist before an explicit
+// generation action — there is deliberately no onMounted generation here.
+type Stage = 'choice' | 'collect' | 'phrase' | 'verify' | 'password'
+const stage = ref<Stage>('choice')
+const generating = ref(false)
+const cryptoUnavailable = ref(false)
+const error = ref('')
+
 const SEED_CLIPBOARD_TTL_MS = 45_000
-const step = ref(1)
 const copied = ref(false)
 const everCopied = ref(false)
+const mnemonic = ref('')
+const words = ref<string[]>([])
+const positions = ref<number[]>([])
+const answers = ref<Record<number, string>>({})
+const name = ref('')
+const password = ref('')
+const confirm = ref('')
+
+// --- interaction collection (spec §8, §9.3) ---
+const collector = new InteractionCollector()
+const sampleCount = ref(0)
+const elapsedMs = ref(0)
+let collectStart = 0
+let elapsedTimer: ReturnType<typeof setInterval> | null = null
+
+function startCollection() {
+  error.value = ''
+  if (!webCryptoAvailable()) {
+    cryptoUnavailable.value = true
+    error.value = 'Enhanced generation is unavailable: this environment has no Web Crypto support'
+    return
+  }
+  collector.reset()
+  sampleCount.value = 0
+  elapsedMs.value = 0
+  collectStart = performance.now()
+  elapsedTimer = setInterval(() => {
+    elapsedMs.value = performance.now() - collectStart
+  }, 250)
+  stage.value = 'collect'
+}
+
+function stopCollectionTimer() {
+  if (elapsedTimer !== null) {
+    clearInterval(elapsedTimer)
+    elapsedTimer = null
+  }
+}
+
+function onPointer(e: PointerEvent) {
+  if (collector.addPointerSample(e.clientX, e.clientY, performance.now(), e.pointerType))
+    sampleCount.value = collector.sampleCount
+}
+
+// Only the timing delta contributes; e.key/e.code/modifiers are never read
+// (spec §8.1).
+function onKey(e: KeyboardEvent) {
+  if (collector.addKeySample(performance.now(), e.repeat)) sampleCount.value = collector.sampleCount
+}
+
+// Participation gate only — not a security estimate (spec invariant 11).
+const collectionReady = computed(
+  () => elapsedMs.value >= COLLECTION_MIN_DURATION_MS && sampleCount.value >= COLLECTION_TARGET_SAMPLES,
+)
+const collectionPercent = computed(() => {
+  const t = Math.min(1, elapsedMs.value / COLLECTION_MIN_DURATION_MS)
+  const s = Math.min(1, sampleCount.value / COLLECTION_TARGET_SAMPLES)
+  return Math.round(Math.min(t, s) * 100)
+})
+
+function showPhrase(phrase: string) {
+  mnemonic.value = phrase
+  words.value = phrase.split(/\s+/)
+  positions.value = pickDistinctIndexes(3, words.value.length)
+  answers.value = {}
+  stage.value = 'phrase'
+}
+
+// Enhanced generation. `useTranscript: false` is the skip path — it still
+// includes backend crypto/rand AND renderer getRandomValues; only the
+// transcript contribution becomes the empty digest (spec §6.1).
+async function generate(useTranscript: boolean) {
+  if (generating.value) return
+  generating.value = true
+  error.value = ''
+  stopCollectionTimer()
+  const transcript = useTranscript ? collector.freeze() : new Uint8Array(0)
+  try {
+    const request = await createEntropyRequest(transcript)
+    showPhrase(await wallet.generateMnemonicWithEntropy(request))
+  } catch (e: any) {
+    // Never silently downgrade (spec §8.4): show the failure; when Web Crypto
+    // is the cause, additionally expose the explicit backend-only action.
+    if (!webCryptoAvailable()) cryptoUnavailable.value = true
+    error.value = e?.message ?? String(e)
+  } finally {
+    collector.reset()
+    generating.value = false
+  }
+}
+
+// Deliberate, user-chosen fallback only — nothing calls this automatically.
+async function generateBackendOnly() {
+  if (generating.value) return
+  generating.value = true
+  error.value = ''
+  stopCollectionTimer()
+  try {
+    showPhrase(await wallet.generateMnemonic())
+  } catch (e: any) {
+    error.value = e?.message ?? String(e)
+  } finally {
+    collector.reset()
+    generating.value = false
+  }
+}
+
 async function copySeed() {
   try {
     await ClipboardSetText(mnemonic.value)
@@ -35,26 +157,6 @@ async function copySeed() {
     /* clipboard unavailable */
   }
 }
-const mnemonic = ref('')
-const words = ref<string[]>([])
-const positions = ref<number[]>([])
-const answers = ref<Record<number, string>>({})
-const name = ref('')
-const password = ref('')
-const confirm = ref('')
-const error = ref('')
-
-onMounted(async () => {
-  try {
-    mnemonic.value = await wallet.generateMnemonic()
-    words.value = mnemonic.value.split(/\s+/)
-    const idx = new Set<number>()
-    while (idx.size < 3) idx.add(Math.floor(Math.random() * words.value.length))
-    positions.value = [...idx].sort((a, b) => a - b)
-  } catch (e: any) {
-    error.value = e?.message ?? String(e)
-  }
-})
 
 const verifyOk = computed(
   () => positions.value.length === 3 && positions.value.every((p) => (answers.value[p] ?? '').trim() === words.value[p]),
@@ -86,6 +188,17 @@ async function finish() {
     confirm.value = ''
   }
 }
+
+// Best-effort teardown on any route exit (spec §9.4): stop timers, wipe the
+// sample buffer, and drop mnemonic material from component state.
+onUnmounted(() => {
+  stopCollectionTimer()
+  collector.reset()
+  mnemonic.value = ''
+  words.value = []
+  positions.value = []
+  answers.value = {}
+})
 </script>
 
 <template>
@@ -100,7 +213,64 @@ async function finish() {
       <CardContent class="space-y-4 p-6">
         <h1 class="text-xl text-foreground">Create wallet</h1>
 
-        <template v-if="step === 1">
+        <template v-if="stage === 'choice'">
+          <h2 class="text-lg text-foreground">Generate your recovery phrase</h2>
+          <p class="text-sm text-muted-foreground">
+            Syrius always uses operating-system cryptographic randomness. You can also
+            contribute unpredictable pointer movement or key timing before the recovery
+            phrase is created.
+          </p>
+          <Button class="w-full" :disabled="generating" @click="startCollection">Add interaction randomness</Button>
+          <Button variant="outline" class="w-full" :disabled="generating" @click="generate(false)">Generate without interaction</Button>
+          <Button v-if="cryptoUnavailable" variant="outline" class="w-full" :disabled="generating" @click="generateBackendOnly">
+            Generate using backend randomness
+          </Button>
+        </template>
+
+        <template v-else-if="stage === 'collect'">
+          <h2 class="text-lg text-foreground">Add interaction randomness</h2>
+          <p class="text-sm text-muted-foreground">
+            Move your pointer, swipe, or focus this area and press arbitrary keys. Syrius
+            records only movement, timing, and position—not the keys you press.
+          </p>
+          <p class="text-sm text-muted-foreground">
+            Do not type a password or recovery phrase. Your final recovery phrase is the
+            only backup you need; these interactions are not saved.
+          </p>
+          <div
+            tabindex="0"
+            aria-label="interaction collection area"
+            class="grid h-40 place-items-center rounded-lg border border-dashed border-border bg-background text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            @pointermove="onPointer"
+            @keydown="onKey">
+            <span aria-hidden="true">Move your pointer here, or focus and press keys</span>
+          </div>
+          <div
+            role="progressbar"
+            aria-label="Interaction collected"
+            :aria-valuemin="0"
+            :aria-valuemax="100"
+            :aria-valuenow="collectionPercent"
+            class="h-2 overflow-hidden rounded bg-border">
+            <div
+              class="h-full bg-primary transition-[width] motion-reduce:transition-none"
+              :style="{ width: collectionPercent + '%' }"></div>
+          </div>
+          <p class="text-sm text-muted-foreground" aria-live="polite">
+            <template v-if="collectionReady">Enough interaction collected</template>
+            <template v-else>
+              Interaction collected: {{ collectionPercent }}% — {{ sampleCount }} samples,
+              {{ Math.floor(elapsedMs / 1000) }}s
+            </template>
+          </p>
+          <Button class="w-full" :disabled="!collectionReady || generating" @click="generate(true)">Generate recovery phrase</Button>
+          <Button variant="outline" class="w-full" :disabled="generating" @click="generate(false)">Skip interaction</Button>
+          <Button v-if="cryptoUnavailable" variant="outline" class="w-full" :disabled="generating" @click="generateBackendOnly">
+            Generate using backend randomness
+          </Button>
+        </template>
+
+        <template v-else-if="stage === 'phrase'">
           <div class="flex gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
             <TriangleAlertIcon class="mt-0.5 shrink-0" :size="20" />
             <div>
@@ -123,16 +293,16 @@ async function finish() {
           <p v-if="everCopied" class="text-xs text-muted-foreground">
             In your clipboard — it auto-clears in ~45s. Clear it sooner if you paste it elsewhere.
           </p>
-          <Button class="w-full" @click="step = 2">I've backed it up</Button>
+          <Button class="w-full" @click="stage = 'verify'">I've backed it up</Button>
         </template>
 
-        <template v-else-if="step === 2">
+        <template v-else-if="stage === 'verify'">
           <p class="text-sm text-muted-foreground">Confirm your backup — enter these words:</p>
           <label v-for="p in positions" :key="p" class="block text-sm text-muted-foreground">
             Word #{{ p + 1 }}
             <Input v-model="answers[p]" :aria-label="`word ${p + 1}`" class="mt-1 font-mono" />
           </label>
-          <Button class="w-full" :disabled="!verifyOk" @click="step = 3">Continue</Button>
+          <Button class="w-full" :disabled="!verifyOk" @click="stage = 'password'">Continue</Button>
         </template>
 
         <template v-else>

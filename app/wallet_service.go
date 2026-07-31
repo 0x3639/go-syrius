@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"crypto/hkdf"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -255,6 +257,39 @@ func (w *WalletService) GenerateMnemonic() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return bip39.NewMnemonic(entropy)
+}
+
+// Locked domain-separation values for the Phase 7f additive-entropy
+// construction (spec 2026-07-31 §6.2). Changing any of these changes every
+// generated wallet — they are version-pinned on purpose.
+const (
+	entropyRequestVersion = 1
+	entropyByteLen        = 32
+	entropySalt           = "go-syrius/bip39-entropy/v1/extract"
+	entropyInfo           = "go-syrius/bip39-entropy/v1/output"
+)
+
+// deriveMnemonicEntropy combines the backend crypto/rand value with the two
+// untrusted renderer contributions using HKDF-SHA-256 (RFC 5869). All three
+// inputs must be exactly 32 bytes; fixed lengths remove concatenation
+// ambiguity. A weak or attacker-chosen renderer input cannot cancel the
+// backend input under this extractor.
+func deriveMnemonicEntropy(backend, renderer, interaction []byte) ([]byte, error) {
+	if len(backend) != entropyByteLen || len(renderer) != entropyByteLen || len(interaction) != entropyByteLen {
+		return nil, errors.New("entropy inputs must be exactly 32 bytes")
+	}
+	ikm := make([]byte, 0, 3*entropyByteLen)
+	ikm = append(ikm, backend...)
+	ikm = append(ikm, renderer...)
+	ikm = append(ikm, interaction...)
+	defer clear(ikm)
+	return hkdf.Key(sha256.New, ikm, []byte(entropySalt), entropyInfo, entropyByteLen)
+}
+
+// mnemonicFromEntropy is the single BIP-39 conversion seam shared by both
+// generation paths.
+func mnemonicFromEntropy(entropy []byte) (string, error) {
 	return bip39.NewMnemonic(entropy)
 }
 

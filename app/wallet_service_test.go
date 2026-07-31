@@ -1,6 +1,8 @@
 package app
 
 import (
+	"bytes"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -711,5 +713,91 @@ func TestSelectAccountFailsWhenPersistenceFails(t *testing.T) {
 	}
 	if w.sessionGen() != genBefore {
 		t.Fatal("a failed selection must not invalidate the session")
+	}
+}
+
+// --- Phase 7f: additive user entropy (spec 2026-07-31) ---
+
+// Frozen vector computed once with an independent RFC 5869 implementation.
+// If this test fails, the locked HKDF construction changed — that is a
+// security-review event, not a test to update casually.
+func TestDeriveMnemonicEntropyFrozenVector(t *testing.T) {
+	backend := make([]byte, 32)
+	renderer := make([]byte, 32)
+	for i := range backend {
+		backend[i] = byte(i)
+		renderer[i] = byte(0x20 + i)
+	}
+	interaction, _ := hex.DecodeString("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") // SHA-256("")
+
+	got, err := deriveMnemonicEntropy(backend, renderer, interaction)
+	if err != nil {
+		t.Fatalf("deriveMnemonicEntropy: %v", err)
+	}
+	if len(got) != 32 {
+		t.Fatalf("entropy length = %d, want 32", len(got))
+	}
+	const wantHex = "1f6f9ac930b0ca9a51fffd97c9d87709ffbd4957a7acc79fb343426e04fac74f"
+	if hex.EncodeToString(got) != wantHex {
+		t.Fatalf("entropy = %x, want %s", got, wantHex)
+	}
+
+	m, err := mnemonicFromEntropy(got)
+	if err != nil {
+		t.Fatalf("mnemonicFromEntropy: %v", err)
+	}
+	const wantMnemonic = "buyer lamp rather gesture arrow essay elevator zero oak excite build become wink pigeon future void shy work speak luggage theory latin brush venue"
+	if m != wantMnemonic {
+		t.Fatalf("mnemonic = %q, want %q", m, wantMnemonic)
+	}
+}
+
+func TestDeriveMnemonicEntropyEachInputMatters(t *testing.T) {
+	base := func() (b, r, u []byte) {
+		b, r, u = make([]byte, 32), make([]byte, 32), make([]byte, 32)
+		for i := 0; i < 32; i++ {
+			b[i], r[i], u[i] = byte(i), byte(0x20+i), byte(0x40+i)
+		}
+		return
+	}
+	b, r, u := base()
+	ref, err := deriveMnemonicEntropy(b, r, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flip := []struct {
+		name string
+		mut  func(b, r, u []byte)
+	}{
+		{"backend", func(b, _, _ []byte) { b[7] ^= 0x01 }},
+		{"renderer", func(_, r, _ []byte) { r[7] ^= 0x01 }},
+		{"interaction", func(_, _, u []byte) { u[7] ^= 0x01 }},
+	}
+	for _, tc := range flip {
+		b, r, u := base()
+		tc.mut(b, r, u)
+		got, err := deriveMnemonicEntropy(b, r, u)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if bytes.Equal(got, ref) {
+			t.Fatalf("flipping one %s byte did not change the output", tc.name)
+		}
+	}
+}
+
+func TestDeriveMnemonicEntropyRejectsBadLengths(t *testing.T) {
+	good := make([]byte, 32)
+	for _, n := range []int{0, 31, 33} {
+		bad := make([]byte, n)
+		if _, err := deriveMnemonicEntropy(bad, good, good); err == nil {
+			t.Fatalf("backend len %d accepted", n)
+		}
+		if _, err := deriveMnemonicEntropy(good, bad, good); err == nil {
+			t.Fatalf("renderer len %d accepted", n)
+		}
+		if _, err := deriveMnemonicEntropy(good, good, bad); err == nil {
+			t.Fatalf("interaction len %d accepted", n)
+		}
 	}
 }

@@ -3,7 +3,9 @@ package app
 import (
 	"context"
 	"crypto/hkdf"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -249,15 +251,62 @@ func (w *WalletService) RenameWallet(id, newName string) error {
 	return fmt.Errorf("wallet %q not found", id)
 }
 
-// GenerateMnemonic returns a fresh 24-word (256-bit) BIP-39 mnemonic. It
-// persists nothing — the create wizard shows it for backup before calling
-// ImportMnemonic.
+// GenerateMnemonic returns a fresh 24-word (256-bit) BIP-39 mnemonic from OS
+// randomness alone. It persists nothing — the create wizard shows it for
+// backup before calling ImportMnemonic. Kept as the deliberate, user-chosen
+// fallback when Web Crypto is unavailable in the renderer (spec §8.4); reads
+// crypto/rand directly so the audited call path has no replaceable io.Reader
+// seam (spec §7.2).
 func (w *WalletService) GenerateMnemonic() (string, error) {
-	entropy, err := bip39.NewEntropy(256)
-	if err != nil {
+	var entropy [entropyByteLen]byte
+	if _, err := rand.Read(entropy[:]); err != nil {
 		return "", err
 	}
-	return bip39.NewMnemonic(entropy)
+	defer clear(entropy[:])
+	return mnemonicFromEntropy(entropy[:])
+}
+
+// GenerateMnemonicWithEntropy combines fresh backend crypto/rand with two
+// untrusted renderer contributions (Web Crypto random + interaction-transcript
+// digest) via the locked HKDF-SHA-256 construction and returns a standard
+// 24-word BIP-39 mnemonic (spec 2026-07-31 §6–7). Backend randomness is drawn
+// after the request arrives and never returned to the renderer. Stateless;
+// persists nothing; never logs or echoes inputs.
+func (w *WalletService) GenerateMnemonicWithEntropy(req MnemonicEntropyRequest) (string, error) {
+	if req.Version != entropyRequestVersion {
+		return "", errors.New("unsupported entropy request version")
+	}
+	renderer, err := base64.StdEncoding.DecodeString(req.RendererRandomBase64)
+	if err != nil {
+		return "", errors.New("invalid renderer entropy encoding")
+	}
+	defer clear(renderer)
+	if len(renderer) != entropyByteLen {
+		return "", errors.New("renderer entropy must be 32 bytes")
+	}
+	interaction, err := base64.StdEncoding.DecodeString(req.InteractionDigestBase64)
+	if err != nil {
+		return "", errors.New("invalid interaction entropy encoding")
+	}
+	defer clear(interaction)
+	if len(interaction) != entropyByteLen {
+		return "", errors.New("interaction entropy must be 32 bytes")
+	}
+	var backend [entropyByteLen]byte
+	if _, err := rand.Read(backend[:]); err != nil {
+		return "", fmt.Errorf("backend randomness: %w", err)
+	}
+	defer clear(backend[:])
+	entropy, err := deriveMnemonicEntropy(backend[:], renderer, interaction)
+	if err != nil {
+		return "", fmt.Errorf("derive mnemonic entropy: %w", err)
+	}
+	defer clear(entropy)
+	m, err := mnemonicFromEntropy(entropy)
+	if err != nil {
+		return "", fmt.Errorf("create mnemonic: %w", err)
+	}
+	return m, nil
 }
 
 // Locked domain-separation values for the Phase 7f additive-entropy

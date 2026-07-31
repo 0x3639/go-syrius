@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/hex"
 	"os"
 	"path/filepath"
@@ -799,5 +800,104 @@ func TestDeriveMnemonicEntropyRejectsBadLengths(t *testing.T) {
 		if _, err := deriveMnemonicEntropy(good, good, bad); err == nil {
 			t.Fatalf("interaction len %d accepted", n)
 		}
+	}
+}
+
+func validEntropyRequest() MnemonicEntropyRequest {
+	renderer := make([]byte, 32)
+	interaction := make([]byte, 32)
+	for i := 0; i < 32; i++ {
+		renderer[i], interaction[i] = byte(i), byte(0x80+i)
+	}
+	return MnemonicEntropyRequest{
+		Version:                 1,
+		RendererRandomBase64:    base64.StdEncoding.EncodeToString(renderer),
+		InteractionDigestBase64: base64.StdEncoding.EncodeToString(interaction),
+	}
+}
+
+func TestGenerateMnemonicWithEntropyValid(t *testing.T) {
+	w := newTestWalletService(t)
+	m, err := w.GenerateMnemonicWithEntropy(validEntropyRequest())
+	if err != nil {
+		t.Fatalf("GenerateMnemonicWithEntropy: %v", err)
+	}
+	if n := len(strings.Fields(m)); n != 24 {
+		t.Fatalf("expected 24 words, got %d", n)
+	}
+	if !bip39.IsMnemonicValid(m) {
+		t.Fatalf("invalid BIP-39 mnemonic: %q", m)
+	}
+}
+
+// Identical frontend fields must still yield distinct phrases: the backend
+// draws fresh crypto/rand per call (spec invariant 1).
+func TestGenerateMnemonicWithEntropyFreshBackendRandomness(t *testing.T) {
+	w := newTestWalletService(t)
+	req := validEntropyRequest()
+	m1, err1 := w.GenerateMnemonicWithEntropy(req)
+	m2, err2 := w.GenerateMnemonicWithEntropy(req)
+	if err1 != nil || err2 != nil {
+		t.Fatalf("errs: %v, %v", err1, err2)
+	}
+	if m1 == m2 {
+		t.Fatal("identical mnemonics for identical frontend input — backend randomness not fresh")
+	}
+}
+
+func TestGenerateMnemonicWithEntropyRejectsBadVersion(t *testing.T) {
+	w := newTestWalletService(t)
+	for _, v := range []int{0, 2, -1} {
+		req := validEntropyRequest()
+		req.Version = v
+		if _, err := w.GenerateMnemonicWithEntropy(req); err == nil {
+			t.Fatalf("version %d accepted", v)
+		}
+	}
+}
+
+func TestGenerateMnemonicWithEntropyRejectsBadEncoding(t *testing.T) {
+	w := newTestWalletService(t)
+	req := validEntropyRequest()
+	req.RendererRandomBase64 = "%%%not-base64%%%"
+	if _, err := w.GenerateMnemonicWithEntropy(req); err == nil {
+		t.Fatal("malformed renderer base64 accepted")
+	}
+	req = validEntropyRequest()
+	req.InteractionDigestBase64 = "%%%not-base64%%%"
+	if _, err := w.GenerateMnemonicWithEntropy(req); err == nil {
+		t.Fatal("malformed interaction base64 accepted")
+	}
+}
+
+func TestGenerateMnemonicWithEntropyRejectsBadLengths(t *testing.T) {
+	w := newTestWalletService(t)
+	for _, n := range []int{0, 31, 33} {
+		enc := base64.StdEncoding.EncodeToString(make([]byte, n))
+		req := validEntropyRequest()
+		req.RendererRandomBase64 = enc
+		if _, err := w.GenerateMnemonicWithEntropy(req); err == nil {
+			t.Fatalf("renderer length %d accepted", n)
+		}
+		req = validEntropyRequest()
+		req.InteractionDigestBase64 = enc
+		if _, err := w.GenerateMnemonicWithEntropy(req); err == nil {
+			t.Fatalf("interaction length %d accepted", n)
+		}
+	}
+}
+
+// Errors must never echo submitted contribution material (spec §7.3).
+func TestGenerateMnemonicWithEntropyErrorsOmitInputs(t *testing.T) {
+	w := newTestWalletService(t)
+	payload := base64.StdEncoding.EncodeToString(make([]byte, 31))
+	req := validEntropyRequest()
+	req.RendererRandomBase64 = payload
+	_, err := w.GenerateMnemonicWithEntropy(req)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if strings.Contains(err.Error(), payload) || strings.Contains(err.Error(), req.InteractionDigestBase64) {
+		t.Fatalf("error echoes submitted input: %v", err)
 	}
 }

@@ -475,3 +475,13 @@ type VotableItem struct {
 	MyVotes        []PillarVoteState `json:"myVotes"`
 	NeedsMyVote    bool              `json:"needsMyVote"`
 }
+
+// MnemonicEntropyRequest carries the renderer's two additive entropy
+// contributions for enhanced wallet creation (Phase 7f, spec 2026-07-31 §7.1).
+// Both fields are UNTRUSTED input: padded standard Base64 that must decode to
+// exactly 32 bytes. JSON names are part of the locked frontend contract.
+type MnemonicEntropyRequest struct {
+	Version                 int    `json:"version"`
+	RendererRandomBase64    string `json:"rendererRandomBase64"`
+	InteractionDigestBase64 string `json:"interactionDigestBase64"`
+}

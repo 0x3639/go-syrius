@@ -1,5 +1,12 @@
 # Phase 3 — Wallet Lifecycle Design
 
+> **Addendum (2026-07-31):** The new-wallet entropy-generation step described in
+> this spec is superseded by the Phase 7f additive user-entropy design
+> (`2026-07-31-additive-user-entropy-design.md`): generation is no longer
+> `bip39.NewEntropy` at wizard mount, but an explicit user action combining
+> backend `crypto/rand`, renderer CSPRNG, and an optional interaction digest via
+> HKDF-SHA-256. Everything else here (keystore, import, reveal) is unchanged.
+
 **Date:** 2026-06-21
 **Status:** Approved
 **Scope:** Phase 3 of the syrius-wails roadmap. Full key management: create a new wallet (with forced backup), import from mnemonic, change password, reveal mnemonic, and per-account labels. Builds on Phases 1–2 (merged). Acceptance: a wallet created here opens in real syrius and vice-versa.

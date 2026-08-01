@@ -44,6 +44,10 @@ const sampleCount = ref(0)
 const elapsedMs = ref(0)
 let collectStart = 0
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
+// A generation call can settle after the route is torn down. Late
+// continuations must not repopulate the mnemonic refs onUnmounted cleared or
+// restart the elapsed interval on a dead component.
+let disposed = false
 
 function startCollection() {
   error.value = ''
@@ -80,7 +84,7 @@ function stopCollectionTimer() {
 // empty-transcript digest while the user believes their interaction
 // contributed. Force a visible re-collect instead.
 function restartCollectionAfterFailure() {
-  if (stage.value !== 'collect') return
+  if (disposed || stage.value !== 'collect') return
   sampleCount.value = 0
   elapsedMs.value = 0
   startElapsedTimer()
@@ -108,6 +112,7 @@ const collectionPercent = computed(() => {
 })
 
 function showPhrase(phrase: string) {
+  if (disposed) return
   mnemonic.value = phrase
   words.value = phrase.split(/\s+/)
   positions.value = pickDistinctIndexes(3, words.value.length)
@@ -221,6 +226,7 @@ async function finish() {
 // Best-effort teardown on any route exit (spec §9.4): stop timers, wipe the
 // sample buffer, and drop mnemonic material from component state.
 onUnmounted(() => {
+  disposed = true
   stopCollectionTimer()
   collector.reset()
   mnemonic.value = ''

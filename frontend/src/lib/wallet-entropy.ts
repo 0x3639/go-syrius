@@ -147,26 +147,38 @@ export async function createEntropyRequest(transcript: Uint8Array): Promise<Entr
   }
 }
 
+// Evenly spread distinct positions — the non-random fallback when Web Crypto
+// is absent or failing. Distinct because n <= max guarantees spacing >= 1.
+function spreadIndexes(n: number, max: number): number[] {
+  return Array.from({ length: n }, (_, i) => Math.floor((i * (max - 1)) / Math.max(1, n - 1)))
+}
+
 /**
  * n distinct uniform indexes in [0, max), sorted ascending, via rejection
  * sampling over crypto.getRandomValues (replaces Math.random in the wallet-
  * creation audit surface — spec §9.4). Backup positions are a UX check, not
  * entropy: in the degenerate no-Web-Crypto environment (only reachable on the
- * explicit backend-only path) fixed spread positions are used instead.
+ * explicit backend-only path) fixed spread positions are used instead — also
+ * when getRandomValues is present but throws, so a failing RNG cannot strand
+ * the backend-only flow after the mnemonic has already been generated.
  */
 export function pickDistinctIndexes(n: number, max: number): number[] {
   if (n > max) throw new Error('not enough positions to pick from')
   const c = globalThis.crypto as Crypto | undefined
   if (!c || typeof c.getRandomValues !== 'function') {
-    return Array.from({ length: n }, (_, i) => Math.floor((i * (max - 1)) / Math.max(1, n - 1)))
+    return spreadIndexes(n, max)
   }
-  const picked = new Set<number>()
-  const buf = new Uint32Array(1)
-  const limit = Math.floor(0x1_0000_0000 / max) * max
-  while (picked.size < n) {
-    c.getRandomValues(buf)
-    if (buf[0] >= limit) continue
-    picked.add(buf[0] % max)
+  try {
+    const picked = new Set<number>()
+    const buf = new Uint32Array(1)
+    const limit = Math.floor(0x1_0000_0000 / max) * max
+    while (picked.size < n) {
+      c.getRandomValues(buf)
+      if (buf[0] >= limit) continue
+      picked.add(buf[0] % max)
+    }
+    return [...picked].sort((a, b) => a - b)
+  } catch {
+    return spreadIndexes(n, max)
   }
-  return [...picked].sort((a, b) => a - b)
 }

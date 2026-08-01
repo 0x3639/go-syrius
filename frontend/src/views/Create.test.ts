@@ -316,6 +316,50 @@ describe('Create.vue — interaction collection', () => {
   })
 })
 
+describe('Create.vue — teardown during in-flight generation', () => {
+  it('a rejection arriving after unmount does not restart the collection timer', async () => {
+    vi.useFakeTimers()
+    let now = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    let rejectGen!: (e: Error) => void
+    GenerateMnemonicWithEntropy.mockImplementationOnce(
+      () => new Promise((_, reject) => { rejectGen = reject }),
+    )
+    const w = mount(Create)
+    await btn(w, 'Add interaction randomness')!.trigger('click')
+    now = 20
+    await btn(w, 'Skip interaction')!.trigger('click')
+    await vi.advanceTimersByTimeAsync(0) // createEntropyRequest resolves into the binding call
+    expect(GenerateMnemonicWithEntropy).toHaveBeenCalledTimes(1)
+    w.unmount()
+    expect(vi.getTimerCount()).toBe(0)
+    rejectGen(new Error('late failure'))
+    await vi.advanceTimersByTimeAsync(0)
+    // restartCollectionAfterFailure must not resurrect the elapsed interval on
+    // a disposed component.
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('a phrase resolving after unmount is ignored (no backup positions drawn)', async () => {
+    let resolveGen!: (m: string) => void
+    GenerateMnemonicWithEntropy.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveGen = resolve }),
+    )
+    const w = mount(Create)
+    await btn(w, 'Generate without interaction')!.trigger('click')
+    await flush()
+    expect(GenerateMnemonicWithEntropy).toHaveBeenCalledTimes(1)
+    w.unmount()
+    const drawsAtUnmount = randCtr
+    resolveGen('alpha bravo charlie')
+    await flush()
+    // showPhrase would call pickDistinctIndexes -> getRandomValues, advancing
+    // the stub counter; a disposed component must not process the late phrase
+    // (it would repopulate the mnemonic refs onUnmounted just cleared).
+    expect(randCtr).toBe(drawsAtUnmount)
+  })
+})
+
 describe('Create.vue — existing flow after generation', () => {
   it('walks phrase -> verify -> password -> import/unlock/dashboard', async () => {
     const w = mount(Create)

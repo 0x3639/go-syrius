@@ -206,4 +206,15 @@ describe('pickDistinctIndexes', () => {
     vi.stubGlobal('crypto', undefined)
     expect(pickDistinctIndexes(3, 24)).toEqual([0, 11, 23])
   })
+
+  it('falls back to the deterministic spread when getRandomValues throws', () => {
+    // Present-but-failing Web Crypto: the backend-only path must still be able
+    // to show the phrase and pick backup positions.
+    vi.stubGlobal('crypto', {
+      getRandomValues: () => {
+        throw new Error('rng failure')
+      },
+    })
+    expect(pickDistinctIndexes(3, 24)).toEqual([0, 11, 23])
+  })
 })

@@ -50,12 +50,12 @@ The hash must match the line for your file in `SHA256SUMS`.
 
 ## 2. Install & open (unsigned build)
 
-- **macOS:** unzip → drag `syrius.app` to Applications (optional) → **right-click the app → Open → Open**. If it still refuses:
+- **macOS:** open the `.dmg` → drag `go-syrius` to Applications → **right-click the app → Open → Open**. The universal build runs on Intel and Apple Silicon. If it still refuses:
   ```bash
-  xattr -dr com.apple.quarantine /path/to/syrius.app
+  xattr -dr com.apple.quarantine /Applications/go-syrius.app
   ```
 - **Windows:** run the `.exe` → SmartScreen → **More info → Run anyway**.
-- **Linux:** `tar -xzf go-syrius-<version>-linux-amd64.tar.gz` → `chmod +x syrius` → `./syrius`. Needs `libgtk-3` and `libwebkit2gtk-4.1`.
+- **Linux:** `tar -xzf go-syrius-<version>-linux-amd64.tar.gz` → `chmod +x go-syrius` → `./go-syrius`. Needs `libgtk-3` and `libwebkit2gtk-4.1`.
 
 ## 3. Create or import a wallet
 
@@ -87,7 +87,7 @@ To use a testnet instead: point **Settings → Node** at your testnet RPC (e.g. 
 
 | Symptom | Fix |
 |---|---|
-| macOS "app is damaged / can't be opened" | `xattr -dr com.apple.quarantine /path/to/syrius.app`, then right-click → Open. |
+| macOS "app is damaged / can't be opened" | `xattr -dr com.apple.quarantine /Applications/go-syrius.app`, then right-click → Open. |
 | "mainnet sending is disabled" | Enable it explicitly: Settings → Network Configuration → Enable mainnet transactions. |
 | Sends rejected for chain mismatch | Make the configured Chain ID match the connected node's chain (shown in Settings). |
 | Embedded node syncing slowly | Initial sync downloads the full ledger; the sidebar height tracks live progress. Remote mode needs no sync. |

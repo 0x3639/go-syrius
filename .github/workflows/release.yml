@@ -62,30 +62,39 @@ jobs:
 
       # wails build runs frontend:install + frontend:build then compiles the Go
       # app into build/bin/. ubuntu-24.04 ships webkit2gtk-4.1 → needs webkit2_41.
+      # macOS builds a universal (x86_64 + arm64) binary so one DMG covers every Mac.
       - name: Wails build (Linux)
         if: runner.os == 'Linux'
         run: wails build -tags webkit2_41
-      - name: Wails build
-        if: runner.os != 'Linux'
+      - name: Wails build (macOS)
+        if: runner.os == 'macOS'
+        run: wails build -platform darwin/universal
+      - name: Wails build (Windows)
+        if: runner.os == 'Windows'
         run: wails build
 
       # --- package each platform's output into one asset, named with the tag ---
-      # Asset names use the repo/product prefix "go-syrius"; the built binary
-      # itself is still "syrius" (wails.json outputfilename) → inputs stay syrius*.
+      # Binary/bundle name is "go-syrius" (wails.json name + outputfilename).
       - name: Package (Linux)
         if: runner.os == 'Linux'
         shell: bash
-        run: tar -C build/bin -czf "go-syrius-${VERSION}-linux-amd64.tar.gz" syrius
+        run: tar -C build/bin -czf "go-syrius-${VERSION}-linux-amd64.tar.gz" go-syrius
       - name: Package (macOS)
         if: runner.os == 'macOS'
         shell: bash
-        # ditto preserves the .app bundle (perms, symlinks, signature); a plain
-        # zip would corrupt it. (No arch suffix: macos-latest is Apple Silicon.)
-        run: ditto -c -k --keepParent build/bin/syrius.app "go-syrius-${VERSION}-macos.zip"
+        # DMG instead of zip: no extraction step for users — mount and drag to
+        # /Applications (the staged symlink makes that a one-gesture install).
+        # ditto (not cp) preserves the .app bundle's perms/symlinks/xattrs.
+        run: |
+          mkdir dmg-staging
+          ditto build/bin/go-syrius.app dmg-staging/go-syrius.app
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "go-syrius" -srcfolder dmg-staging -ov -format UDZO \
+            "go-syrius-${VERSION}-macos-universal.dmg"
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: cp build/bin/syrius.exe "go-syrius-${VERSION}-windows-amd64.exe"
+        run: cp build/bin/go-syrius.exe "go-syrius-${VERSION}-windows-amd64.exe"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -125,8 +134,10 @@ jobs:
 
             These binaries are **not code-signed or notarized** (signing lands in
             Phase 7c), so your OS will warn:
-            - **macOS:** right-click the app → Open → Open (bypasses Gatekeeper), or
-              `xattr -dr com.apple.quarantine syrius.app` before first launch.
+            - **macOS:** open the DMG, drag **go-syrius** to Applications, then
+              right-click the app → Open → Open (bypasses Gatekeeper), or run
+              `xattr -dr com.apple.quarantine /Applications/go-syrius.app` before
+              first launch. The universal build runs on Intel and Apple Silicon.
             - **Windows:** SmartScreen → *More info* → *Run anyway*.
 
             Verify your download against `SHA256SUMS` before running.

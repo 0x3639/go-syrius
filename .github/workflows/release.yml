@@ -82,15 +82,38 @@ jobs:
       - name: Package (macOS)
         if: runner.os == 'macOS'
         shell: bash
-        # DMG instead of zip: no extraction step for users — mount and drag to
-        # /Applications (the staged symlink makes that a one-gesture install).
+        # Branded installer DMG (spec docs/superpowers/specs/2026-08-02-dmg-
+        # installer-screen-design.md): create-dmg bakes the window layout —
+        # background, icon positions, Applications drop-link — into the DMG's
+        # .DS_Store. Finder/AppleScript automation is occasionally flaky on
+        # headless runners, so retry up to 3×; if every attempt fails the job
+        # fails — a release must never silently ship the plain-folder DMG.
         # ditto (not cp) preserves the .app bundle's perms/symlinks/xattrs.
         run: |
+          brew install create-dmg
           mkdir dmg-staging
           ditto build/bin/go-syrius.app dmg-staging/go-syrius.app
-          ln -s /Applications dmg-staging/Applications
-          hdiutil create -volname "go-syrius" -srcfolder dmg-staging -ov -format UDZO \
-            "go-syrius-${VERSION}-macos-universal.dmg"
+          for attempt in 1 2 3; do
+            if create-dmg \
+                --volname "go-syrius" \
+                --volicon "build/bin/go-syrius.app/Contents/Resources/iconfile.icns" \
+                --background "build/darwin/dmg/background.tiff" \
+                --window-pos 200 120 \
+                --window-size 660 420 \
+                --icon-size 100 \
+                --icon "go-syrius.app" 165 210 \
+                --hide-extension "go-syrius.app" \
+                --app-drop-link 495 210 \
+                --no-internet-enable \
+                "go-syrius-${VERSION}-macos-universal.dmg" \
+                dmg-staging/; then
+              break
+            fi
+            echo "create-dmg attempt ${attempt} failed" >&2
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            rm -f "go-syrius-${VERSION}-macos-universal.dmg"
+            sleep 5
+          done
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: bash

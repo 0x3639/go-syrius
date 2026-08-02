@@ -6,6 +6,13 @@
 **Audience:** Implementer and security reviewer  
 **Related:** `docs/superpowers/specs/2026-06-21-phase-3-wallet-lifecycle-design.md`, `plan.md` Phase 7
 
+> **Addendum (2026-08-02):** `2026-08-02-entropy-target-indicator-design.md`
+> narrowly revises invariant §5.11 and the §9.3 no-bit-estimate rule of this
+> spec: the collection UI may show a fixed, conservatively credited bit figure
+> (always labeled "estimated") and hard-gates interactive generation on a
+> user-selected 128/256/512-bit target. All other invariants here stand
+> unchanged.
+
 ## 1. Summary
 
 Add an optional interaction-entropy step before a new wallet's BIP-39 recovery

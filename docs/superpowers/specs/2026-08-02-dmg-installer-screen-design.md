@@ -80,8 +80,9 @@ build/darwin/dmg/background.tiff      # the rendered artifact CI consumes
 
 Replace the current `mkdir dmg-staging … hdiutil create` block with:
 
-1. `brew install create-dmg` (the andreyvit formula — drives Finder via
-   AppleScript to write the `.DS_Store`).
+1. Run the vendored `build/darwin/dmg/create-dmg` script (pinned copy of the
+   upstream create-dmg release — drives Finder via AppleScript to write the
+   `.DS_Store`); no Homebrew install in the job.
 2. Stage only the app: `mkdir dmg-staging && ditto build/bin/go-syrius.app
    dmg-staging/go-syrius.app` (the `/Applications` symlink is no longer staged
    manually — `--app-drop-link` creates it).
@@ -145,6 +146,17 @@ build/darwin/dmg/background.tiff
 .github/workflows/release.yml       (Package (macOS) step only)
 ```
 
+Plus the vendored create-dmg (see the §8 amendment) — verbatim upstream files,
+never hand-edited; the sentinel and `support/` are required by the script's own
+support-directory resolution, so the set cannot be reduced to the script alone:
+
+```text
+build/darwin/dmg/create-dmg
+build/darwin/dmg/.this-is-the-create-dmg-repo
+build/darwin/dmg/support/template.applescript
+build/darwin/dmg/support/eula-resources-template.xml
+```
+
 Nothing else. If a diff touches `app/`, `frontend/`, or `wails.json`, the
 implementation has drifted.
 
@@ -177,3 +189,7 @@ implementation has drifted.
   deterministic; the HTML source keeps the design editable and reviewable.
 - **No watermark** (owner choice from mockups); halo blends green→blue to
   match the actual Sirius-star app icon rather than pure brand green.
+- **Amendment (2026-08-02, post-review):** create-dmg is vendored into
+  `build/darwin/dmg/` at a pinned upstream release instead of brew-installed —
+  review flagged the unpinned formula as the only unpinned dependency in the
+  release pipeline; owner chose vendoring.

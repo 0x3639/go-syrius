@@ -90,11 +90,10 @@ jobs:
         # fails — a release must never silently ship the plain-folder DMG.
         # ditto (not cp) preserves the .app bundle's perms/symlinks/xattrs.
         run: |
-          brew install create-dmg
           mkdir dmg-staging
           ditto build/bin/go-syrius.app dmg-staging/go-syrius.app
           for attempt in 1 2 3; do
-            if create-dmg \
+            if bash build/darwin/dmg/create-dmg \
                 --volname "go-syrius" \
                 --volicon "build/bin/go-syrius.app/Contents/Resources/iconfile.icns" \
                 --background "build/darwin/dmg/background.tiff" \

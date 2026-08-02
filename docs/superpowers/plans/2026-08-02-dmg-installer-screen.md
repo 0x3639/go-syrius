@@ -4,14 +4,14 @@
 
 **Goal:** Ship release DMGs whose Finder window shows the branded plasma-halo "Drag to install" layout instead of a plain folder.
 
-**Architecture:** A checked-in Retina `background.tiff` (rendered locally from a checked-in `background.html` via headless Chrome + `tiffutil`) is baked into the DMG at release time by `create-dmg` (Homebrew), which writes the `.DS_Store` window layout. Only the `Package (macOS)` step of `release.yml` changes; Windows/Linux packaging, checksums, and publish steps are untouched.
+**Architecture:** A checked-in Retina `background.tiff` (rendered locally from a checked-in `background.html` via headless Chrome + `tiffutil`) is baked into the DMG at release time by the vendored `create-dmg` (pinned v1.3.0), which writes the `.DS_Store` window layout. Only the `Package (macOS)` step of `release.yml` changes; Windows/Linux packaging, checksums, and publish steps are untouched.
 
-**Tech Stack:** HTML/CSS (design source), headless Google Chrome (local render), macOS `tiffutil`, `create-dmg` (Homebrew, andreyvit), GitHub Actions.
+**Tech Stack:** HTML/CSS (design source), headless Google Chrome (local render), macOS `tiffutil`, vendored `create-dmg` (pinned v1.3.0), GitHub Actions.
 
 ## Global Constraints
 
 - Branch: all work on the existing `dmg-installer-screen` branch (spec committed at `c2fa67f`). Spec: `docs/superpowers/specs/2026-08-02-dmg-installer-screen-design.md`.
-- Only these files may change: `build/darwin/dmg/background.html`, `build/darwin/dmg/render-background.sh`, `build/darwin/dmg/background.tiff`, `.github/workflows/release.yml` (Package (macOS) step only). Any diff touching `app/`, `frontend/`, or `wails.json` is drift.
+- Only these files may change: `build/darwin/dmg/background.html`, `build/darwin/dmg/render-background.sh`, `build/darwin/dmg/background.tiff`, `.github/workflows/release.yml` (Package (macOS) step only), plus — post-review amendment — the vendored create-dmg files under `build/darwin/dmg/` (`create-dmg`, `LICENSE`, `.this-is-the-create-dmg-repo`, `support/`), which are verbatim upstream v1.3.0 and must never be hand-edited. Any diff touching `app/`, `frontend/`, or `wails.json` is drift.
 - `frontend/wailsjs/` has pre-existing uncommitted local modifications — leave them uncommitted and untouched.
 - Locked visuals (spec §2): canvas 660×420, background `hsl(0 0% 8%)`; eyebrow `GO-SYRIUS · NETWORK OF MOMENTUM` (JetBrains Mono 11px, +0.08em, `rgba(0,213,87,.85)`); headline `Drag to install` (Space Grotesk 600, 21px, `#f2f2f2`); halo radial `rgba(0,213,87,.20) → rgba(0,120,213,.08) 45% → transparent 72%`, ~560×340 centered x=50%/y=260px; plasma arrow `#6FF34D → #00A63E`; footer hint `Drop go-syrius on Applications, then launch it from Launchpad` (12.5px, `rgba(255,255,255,.42)`); **no watermark, no icon artwork in the background**.
 - Locked layout flags (spec §4): `--window-pos 200 120 --window-size 660 420 --icon-size 100 --icon "go-syrius.app" 165 210 --app-drop-link 495 210 --hide-extension "go-syrius.app" --no-internet-enable`, volname `go-syrius`, `--volicon` = `build/bin/go-syrius.app/Contents/Resources/iconfile.icns`. Output filename unchanged: `go-syrius-${VERSION}-macos-universal.dmg`.
@@ -194,18 +194,18 @@ with:
         if: runner.os == 'macOS'
         shell: bash
         # Branded installer DMG (spec docs/superpowers/specs/2026-08-02-dmg-
-        # installer-screen-design.md): create-dmg bakes the window layout —
+        # installer-screen-design.md): the vendored create-dmg script
+        # (build/darwin/dmg/, pinned upstream v1.3.0) bakes the window layout —
         # background, icon positions, Applications drop-link — into the DMG's
         # .DS_Store. Finder/AppleScript automation is occasionally flaky on
         # headless runners, so retry up to 3×; if every attempt fails the job
         # fails — a release must never silently ship the plain-folder DMG.
         # ditto (not cp) preserves the .app bundle's perms/symlinks/xattrs.
         run: |
-          brew install create-dmg
           mkdir dmg-staging
           ditto build/bin/go-syrius.app dmg-staging/go-syrius.app
           for attempt in 1 2 3; do
-            if create-dmg \
+            if bash build/darwin/dmg/create-dmg \
                 --volname "go-syrius" \
                 --volicon "build/bin/go-syrius.app/Contents/Resources/iconfile.icns" \
                 --background "build/darwin/dmg/background.tiff" \
@@ -257,11 +257,10 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - [ ] **Step 1: Build the DMG locally with the exact workflow flags**
 
 ```bash
-brew list create-dmg >/dev/null 2>&1 || brew install create-dmg
 SCRATCH=/private/tmp/claude-501/-Users-dfriestedt-Github-go-syrius/54d4e0d9-4767-488e-9671-8b35ea2f9bd3/scratchpad/dmg-test
 rm -rf "$SCRATCH" && mkdir -p "$SCRATCH/dmg-staging"
 ditto build/bin/go-syrius.app "$SCRATCH/dmg-staging/go-syrius.app"
-create-dmg \
+bash build/darwin/dmg/create-dmg \
   --volname "go-syrius" \
   --volicon "build/bin/go-syrius.app/Contents/Resources/iconfile.icns" \
   --background "build/darwin/dmg/background.tiff" \
@@ -364,3 +363,4 @@ Verify: `gh release list --limit 3` no longer shows v0.0.0-dmgtest.
 - Spec coverage: §2 visuals → Task 1 HTML (values copied verbatim); §3 pipeline → Task 1 script/TIFF; §4 workflow + retry + no-silent-fallback → Task 2; §7.1–7.2 → Tasks 1/3; §7.3 → Task 4; §7.4 retry-fails-loudly → reviewed in Task 2's block (`exit 1` on attempt 3); §7.5 → no other workflow step touched.
 - Tasks 3 and 4 are interactive/externally-visible: Task 3 stops for the user's visual verdict; Task 4 pushes a scratch tag and deletes it afterward, both spec-mandated (§7.3).
 - Coordinate consistency: `--icon-center-y: 210px` ↔ the two `… 165 210 / 495 210` flags, called out in both files' comments and in Task 3 Step 3.
+- Amended post-review: create-dmg vendored (owner decision) — Task 2/3 blocks updated to the vendored invocation.

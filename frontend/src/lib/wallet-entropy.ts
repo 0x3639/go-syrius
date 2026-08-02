@@ -5,7 +5,6 @@
 
 export const POINTER_SAMPLE_INTERVAL_MS = 16
 export const COLLECTION_MIN_DURATION_MS = 5_000
-export const COLLECTION_TARGET_SAMPLES = 32
 export const COLLECTION_MAX_SAMPLES = 2_048
 
 // Entropy-target UI (spec 2026-08-02): fixed, deliberately conservative

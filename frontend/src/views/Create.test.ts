@@ -201,15 +201,16 @@ describe('Create.vue — interaction collection', () => {
     expect(btn(w, 'Skip interaction')!.attributes('disabled')).toBeUndefined()
   })
 
-  it('pointer collection reaches ready only after samples AND duration; then generates', async () => {
+  it('pointer collection reaches ready only after bits AND duration; then generates', async () => {
     const { w, setNow } = mountCollecting()
     const target = await startCollection(w)
-    // 40 pointer moves spaced 20ms apart -> >32 accepted samples by t=800ms
-    for (let i = 1; i <= 40; i++) {
-      setNow(i * 20)
+    // 260 pointer moves at exactly the 16 ms throttle boundary -> 260 accepted
+    // samples = 260 estimated bits >= 256 by t=4160ms (duration floor not met)
+    for (let i = 1; i <= 260; i++) {
+      setNow(i * 16)
       await target.trigger('pointermove', { clientX: i * 3, clientY: i * 5, pointerType: 'mouse' })
     }
-    // samples met, duration not met -> still disabled
+    // bits met, duration not met -> still disabled
     expect(btn(w, 'Generate recovery phrase')!.attributes('disabled')).toBeDefined()
     setNow(6000)
     await vi.advanceTimersByTimeAsync(300) // elapsed timer tick
@@ -226,7 +227,7 @@ describe('Create.vue — interaction collection', () => {
   it('keyboard-only collection reaches ready state', async () => {
     const { w, setNow } = mountCollecting()
     const target = await startCollection(w)
-    for (let i = 1; i <= 32; i++) {
+    for (let i = 1; i <= 128; i++) {
       setNow(i * 30)
       await target.trigger('keydown', { repeat: false })
     }
@@ -271,7 +272,8 @@ describe('Create.vue — interaction collection', () => {
     GenerateMnemonicWithEntropy.mockRejectedValueOnce(new Error('backend exploded'))
     const { w, setNow } = mountCollecting()
     const target = await startCollection(w)
-    for (let i = 1; i <= 40; i++) {
+    await w.findAll('input[type="radio"]')[0].setValue() // 128-bit target
+    for (let i = 1; i <= 130; i++) {
       setNow(i * 20)
       await target.trigger('pointermove', { clientX: i * 3, clientY: i * 5, pointerType: 'mouse' })
     }
@@ -290,10 +292,11 @@ describe('Create.vue — interaction collection', () => {
     // still claim readiness, or a second click would submit an empty transcript.
     expect(w.text()).not.toContain('Enough interaction collected')
     expect(w.text()).toContain('0 samples')
+    expect(w.text()).toContain('0 / 128 estimated bits')
     expect(btn(w, 'Generate recovery phrase')!.attributes('disabled')).toBeDefined()
 
     // Re-collecting works, and the retry carries a real transcript digest.
-    for (let i = 1; i <= 40; i++) {
+    for (let i = 1; i <= 130; i++) {
       setNow(6000 + i * 20)
       await target.trigger('pointermove', { clientX: i * 7, clientY: i * 11, pointerType: 'mouse' })
     }
@@ -306,6 +309,76 @@ describe('Create.vue — interaction collection', () => {
     expect(GenerateMnemonicWithEntropy).toHaveBeenCalledTimes(2)
     expect(GenerateMnemonicWithEntropy.mock.calls[1][0].interactionDigestBase64).not.toBe(EMPTY_SHA256_B64)
     expect(w.text()).toContain('alpha')
+  })
+
+  it('defaults to a 256-bit target with 128/256/512 presets', async () => {
+    const { w } = mountCollecting()
+    await startCollection(w)
+    const radios = w.findAll('input[type="radio"]')
+    expect(radios).toHaveLength(3)
+    expect(radios.map((r) => (r.element as HTMLInputElement).value)).toEqual(['128', '256', '512'])
+    expect((radios[1].element as HTMLInputElement).checked).toBe(true)
+    expect(w.text()).toContain('conservative estimate')
+    expect(w.text()).toContain('operating-system cryptographic randomness')
+  })
+
+  it('the old 32-sample participation level no longer satisfies the gate', async () => {
+    const { w, setNow } = mountCollecting()
+    const target = await startCollection(w)
+    for (let i = 1; i <= 40; i++) {
+      setNow(i * 20)
+      await target.trigger('pointermove', { clientX: i * 3, clientY: i * 5, pointerType: 'mouse' })
+    }
+    setNow(6000)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(w.text()).toContain('40 / 256 estimated bits')
+    expect(btn(w, 'Generate recovery phrase')!.attributes('disabled')).toBeDefined()
+  })
+
+  it('changing the target mid-collection re-gates without resetting samples', async () => {
+    const { w, setNow } = mountCollecting()
+    const target = await startCollection(w)
+    for (let i = 1; i <= 140; i++) {
+      setNow(i * 16)
+      await target.trigger('pointermove', { clientX: i * 3, clientY: i * 5, pointerType: 'mouse' })
+    }
+    setNow(6000)
+    await vi.advanceTimersByTimeAsync(300)
+    const radios = w.findAll('input[type="radio"]')
+    // 140 bits < 256 -> not ready on the default target
+    expect(btn(w, 'Generate recovery phrase')!.attributes('disabled')).toBeDefined()
+    await radios[0].setValue() // 128
+    expect(w.text()).toContain('Enough interaction collected')
+    expect(btn(w, 'Generate recovery phrase')!.attributes('disabled')).toBeUndefined()
+    await radios[2].setValue() // 512 — re-gates, samples preserved
+    expect(btn(w, 'Generate recovery phrase')!.attributes('disabled')).toBeDefined()
+    expect(w.text()).toContain('140 / 512 estimated bits')
+    expect(w.text()).toContain('140 samples')
+    await radios[0].setValue() // back to 128 — ready again without new samples
+    expect(btn(w, 'Generate recovery phrase')!.attributes('disabled')).toBeUndefined()
+  })
+
+  it('segmented bar fills blocks and exposes aria values against the selected target', async () => {
+    const { w, setNow } = mountCollecting()
+    const target = await startCollection(w)
+    for (let i = 1; i <= 136; i++) {
+      setNow(i * 16)
+      await target.trigger('pointermove', { clientX: i * 3, clientY: i * 5, pointerType: 'mouse' })
+    }
+    const bar = w.find('[role="progressbar"]')
+    expect(bar.attributes('aria-valuemin')).toBe('0')
+    expect(bar.attributes('aria-valuemax')).toBe('256')
+    expect(bar.attributes('aria-valuenow')).toBe('136')
+    // floor(136 * 32 / 256) = 17 filled blocks
+    expect(bar.attributes('aria-valuetext')).toBe('17 of 32 blocks · 136 / 256 estimated bits')
+    expect(w.findAll('[data-filled="true"]')).toHaveLength(17)
+    expect(w.findAll('[data-filled="false"]')).toHaveLength(15)
+    expect(w.text()).toContain('17 of 32 blocks · 136 / 256 estimated bits')
+    // Over-target display clamps to the target
+    await w.findAll('input[type="radio"]')[0].setValue() // 128-bit target, 136 bits collected
+    expect(bar.attributes('aria-valuemax')).toBe('128')
+    expect(bar.attributes('aria-valuenow')).toBe('128')
+    expect(w.findAll('[data-filled="true"]')).toHaveLength(32)
   })
 
   it('unmounting mid-collection clears the elapsed timer and state', async () => {

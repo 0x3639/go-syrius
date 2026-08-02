@@ -12,7 +12,8 @@ import {
   pickDistinctIndexes,
   webCryptoAvailable,
   COLLECTION_MIN_DURATION_MS,
-  COLLECTION_TARGET_SAMPLES,
+  ENTROPY_TARGET_PRESETS,
+  ENTROPY_TARGET_DEFAULT,
   type EntropyRequest,
 } from '../lib/wallet-entropy'
 
@@ -42,6 +43,9 @@ const confirm = ref('')
 const collector = new InteractionCollector()
 const sampleCount = ref(0)
 const elapsedMs = ref(0)
+const INDICATOR_BLOCKS = 32
+const estimatedBits = ref(0)
+const entropyTarget = ref<number>(ENTROPY_TARGET_DEFAULT)
 let collectStart = 0
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 // A generation call can settle after the route is torn down. Late
@@ -58,6 +62,7 @@ function startCollection() {
   }
   collector.reset()
   sampleCount.value = 0
+  estimatedBits.value = 0
   elapsedMs.value = 0
   startElapsedTimer()
   stage.value = 'collect'
@@ -86,30 +91,40 @@ function stopCollectionTimer() {
 function restartCollectionAfterFailure() {
   if (disposed || stage.value !== 'collect') return
   sampleCount.value = 0
+  estimatedBits.value = 0
   elapsedMs.value = 0
   startElapsedTimer()
 }
 
 function onPointer(e: PointerEvent) {
-  if (collector.addPointerSample(e.clientX, e.clientY, performance.now(), e.pointerType))
+  if (collector.addPointerSample(e.clientX, e.clientY, performance.now(), e.pointerType)) {
     sampleCount.value = collector.sampleCount
+    estimatedBits.value = collector.estimatedBits
+  }
 }
 
 // Only the timing delta contributes; e.key/e.code/modifiers are never read
 // (spec §8.1).
 function onKey(e: KeyboardEvent) {
-  if (collector.addKeySample(performance.now(), e.repeat)) sampleCount.value = collector.sampleCount
+  if (collector.addKeySample(performance.now(), e.repeat)) {
+    sampleCount.value = collector.sampleCount
+    estimatedBits.value = collector.estimatedBits
+  }
 }
 
-// Participation gate only — not a security estimate (spec invariant 11).
+// Hard participation gate (spec 2026-08-02 §7): the conservatively credited
+// bit estimate must reach the user-selected target, and the minimum-duration
+// floor still applies. Still not a security estimate of the final seed.
 const collectionReady = computed(
-  () => elapsedMs.value >= COLLECTION_MIN_DURATION_MS && sampleCount.value >= COLLECTION_TARGET_SAMPLES,
+  () => elapsedMs.value >= COLLECTION_MIN_DURATION_MS && estimatedBits.value >= entropyTarget.value,
 )
-const collectionPercent = computed(() => {
-  const t = Math.min(1, elapsedMs.value / COLLECTION_MIN_DURATION_MS)
-  const s = Math.min(1, sampleCount.value / COLLECTION_TARGET_SAMPLES)
-  return Math.round(Math.min(t, s) * 100)
-})
+const shownBits = computed(() => Math.min(estimatedBits.value, entropyTarget.value))
+const filledBlocks = computed(() =>
+  Math.min(INDICATOR_BLOCKS, Math.floor((estimatedBits.value * INDICATOR_BLOCKS) / entropyTarget.value)),
+)
+const blocksLabel = computed(
+  () => `${filledBlocks.value} of ${INDICATOR_BLOCKS} blocks · ${shownBits.value} / ${entropyTarget.value} estimated bits`,
+)
 
 function showPhrase(phrase: string) {
   if (disposed) return
@@ -272,6 +287,22 @@ onUnmounted(() => {
             Do not type a password or recovery phrase. Your final recovery phrase is the
             only backup you need; these interactions are not saved.
           </p>
+          <fieldset :disabled="generating">
+            <legend class="text-sm text-muted-foreground">Entropy target</legend>
+            <div class="mt-1 flex gap-4">
+              <label
+                v-for="p in ENTROPY_TARGET_PRESETS"
+                :key="p"
+                class="flex items-center gap-1.5 text-sm text-foreground">
+                <input v-model="entropyTarget" type="radio" name="entropy-target" :value="p" />
+                {{ p }} bits
+              </label>
+            </div>
+          </fieldset>
+          <p class="text-sm text-muted-foreground">
+            Bits shown are a conservative estimate of your added interaction. Your wallet
+            always uses operating-system cryptographic randomness as its primary source.
+          </p>
           <div
             tabindex="0"
             aria-label="interaction collection area"
@@ -282,20 +313,23 @@ onUnmounted(() => {
           </div>
           <div
             role="progressbar"
-            aria-label="Interaction collected"
+            aria-label="Estimated entropy collected"
             :aria-valuemin="0"
-            :aria-valuemax="100"
-            :aria-valuenow="collectionPercent"
-            class="h-2 overflow-hidden rounded bg-border">
+            :aria-valuemax="entropyTarget"
+            :aria-valuenow="shownBits"
+            :aria-valuetext="blocksLabel"
+            class="grid grid-cols-[repeat(32,minmax(0,1fr))] gap-0.5">
             <div
-              class="h-full bg-primary transition-[width] motion-reduce:transition-none"
-              :style="{ width: collectionPercent + '%' }"></div>
+              v-for="i in INDICATOR_BLOCKS"
+              :key="i"
+              :data-filled="i <= filledBlocks"
+              class="h-2 rounded-sm"
+              :class="i <= filledBlocks ? 'bg-primary' : 'border border-border'"></div>
           </div>
           <p class="text-sm text-muted-foreground" aria-live="polite">
             <template v-if="collectionReady">Enough interaction collected</template>
             <template v-else>
-              Interaction collected: {{ collectionPercent }}% — {{ sampleCount }} samples,
-              {{ Math.floor(elapsedMs / 1000) }}s
+              {{ blocksLabel }} — {{ sampleCount }} samples, {{ Math.floor(elapsedMs / 1000) }}s
             </template>
           </p>
           <Button class="w-full" :disabled="!collectionReady || generating" @click="generate(true)">Generate recovery phrase</Button>

@@ -8,6 +8,14 @@ export const COLLECTION_MIN_DURATION_MS = 5_000
 export const COLLECTION_TARGET_SAMPLES = 32
 export const COLLECTION_MAX_SAMPLES = 2_048
 
+// Entropy-target UI (spec 2026-08-02): fixed, deliberately conservative
+// per-accepted-sample credit. A participation estimate for gating/display
+// only — never a cryptographic input, never sent to the backend.
+export const BITS_PER_POINTER_SAMPLE = 1
+export const BITS_PER_KEY_SAMPLE = 2
+export const ENTROPY_TARGET_PRESETS = [128, 256, 512]
+export const ENTROPY_TARGET_DEFAULT = 256
+
 export const KIND_POINTER = 1
 export const KIND_TOUCH = 2
 export const KIND_KEY = 3
@@ -44,12 +52,18 @@ export class InteractionCollector {
   private buf = new Uint8Array(COLLECTION_MAX_SAMPLES * RECORD_SIZE)
   private dv = new DataView(this.buf.buffer)
   private count = 0
+  private pointerLikeCount = 0
+  private keyCount = 0
   private lastSampleMs: number | null = null
   private lastPointerMs: number | null = null
   private frozen = false
 
   get sampleCount(): number {
     return this.count
+  }
+
+  get estimatedBits(): number {
+    return this.pointerLikeCount * BITS_PER_POINTER_SAMPLE + this.keyCount * BITS_PER_KEY_SAMPLE
   }
 
   get isFull(): boolean {
@@ -63,6 +77,7 @@ export class InteractionCollector {
     this.append(kind, deltaMicros(nowMs, this.lastSampleMs), clampInt32(x * 1024), clampInt32(y * 1024))
     this.lastPointerMs = nowMs
     this.lastSampleMs = nowMs
+    this.pointerLikeCount++
     return true
   }
 
@@ -70,6 +85,7 @@ export class InteractionCollector {
     if (this.frozen || this.isFull || repeat) return false
     this.append(KIND_KEY, deltaMicros(nowMs, this.lastSampleMs), 0, 0)
     this.lastSampleMs = nowMs
+    this.keyCount++
     return true
   }
 
@@ -92,6 +108,8 @@ export class InteractionCollector {
   reset(): void {
     this.buf.fill(0)
     this.count = 0
+    this.pointerLikeCount = 0
+    this.keyCount = 0
     this.lastSampleMs = null
     this.lastPointerMs = null
     this.frozen = false

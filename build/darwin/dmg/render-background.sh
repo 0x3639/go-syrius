@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Regenerate background.tiff from background.html. LOCAL-ONLY tooling — the
 # release workflow consumes the committed TIFF and never renders. Requires
-# Google Chrome (headless render) and macOS tiffutil (Retina 1x+2x combine).
+# Google Chrome (or any Chromium binary via CHROME=...) for the headless
+# render, and macOS tiffutil (Retina 1x+2x combine).
 set -euo pipefail
 cd "$(dirname "$0")"
 
-CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-[ -x "$CHROME" ] || { echo "Google Chrome not found at: $CHROME" >&2; exit 1; }
+CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
+[ -x "$CHROME" ] || { echo "Browser not found at: $CHROME — set CHROME=/path/to/chrome-or-chromium binary" >&2; exit 1; }
 
 render() { # $1 = device scale factor, $2 = output png
   # --virtual-time-budget lets the Google-Fonts webfonts finish loading

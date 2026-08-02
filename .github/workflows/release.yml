@@ -83,12 +83,17 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         # Branded installer DMG (spec docs/superpowers/specs/2026-08-02-dmg-
-        # installer-screen-design.md): create-dmg bakes the window layout —
+        # installer-screen-design.md): the vendored create-dmg
+        # (build/darwin/dmg/, pinned upstream v1.3.0) bakes the window layout —
         # background, icon positions, Applications drop-link — into the DMG's
         # .DS_Store. Finder/AppleScript automation is occasionally flaky on
         # headless runners, so retry up to 3×; if every attempt fails the job
         # fails — a release must never silently ship the plain-folder DMG.
         # ditto (not cp) preserves the .app bundle's perms/symlinks/xattrs.
+        # On --window-pos below: the window y is stored bottom-anchored by
+        # Finder — viewer-screen-relative; see spec §8. (This note lives here,
+        # not inline, because a "#" line inside the backslash-continued
+        # create-dmg invocation would terminate the command.)
         run: |
           mkdir dmg-staging
           ditto build/bin/go-syrius.app dmg-staging/go-syrius.app

@@ -11,7 +11,9 @@
   :root {
     /* Vertical anchors. --icon-center-y mirrors the y in release.yml's
        "--icon … 165 210" / "--app-drop-link 495 210" flags — keep in sync
-       when the Task-3 adjust pass moves either. */
+       when the Task-3 adjust pass moves either. The pill left values
+       (165px/495px) mirror the same flags' x coordinates — move all three
+       together. */
     --icon-center-y: 210px;
     --halo-center-y: 260px;
     --label-pill-y: 278px; /* Finder label center. Started at 274 (icon bottom 260 + ~4px gap + half of 16pt label line); +4 from visual tuning against the real mounted window, where Finder drew the label low in the pill. Tune with the pill height if labels shift. */

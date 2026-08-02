@@ -32,7 +32,8 @@ near-black. Composition, top to bottom:
    ≈ 50% x, 62% y; ~560 × 340 pt ellipse):
    `rgba(0,213,87,.20) → rgba(0,120,213,.08) at 45% → transparent at ~72%`.
    The green→blue blend deliberately echoes the Sirius-star app icon's
-   gradient. **No watermark** — nothing else on the canvas.
+   gradient. **No watermark** — nothing else on the canvas but the label pills
+   (item 6).
 4. **Arrow:** horizontal plasma-gradient arrow (`#6FF34D → #00A63E`, ~3.5 pt
    stroke, solid triangular head) centered between the two icon positions,
    at the icons' vertical center.
@@ -47,7 +48,8 @@ near-black. Composition, top to bottom:
    "Applications" legible on the near-black canvas.
 
 Finder draws the icons on top of the background; the background contains **no
-icon artwork**, only glow, text, and arrow. Icon layout (create-dmg flags):
+icon artwork** — only glow, text, arrow, and the two label pills. Icon layout
+(create-dmg flags):
 
 - icon size **100 pt**; app icon `go-syrius.app` at **(165, 210)**;
   Applications drop-link at **(495, 210)** (coordinates are icon centers in
@@ -159,6 +161,7 @@ support-directory resolution, so the set cannot be reduced to the script alone:
 ```text
 build/darwin/dmg/create-dmg
 build/darwin/dmg/.this-is-the-create-dmg-repo
+build/darwin/dmg/LICENSE
 build/darwin/dmg/support/template.applescript
 build/darwin/dmg/support/eula-resources-template.xml
 ```
@@ -177,6 +180,8 @@ implementation has drifted.
    - shows the real go-syrius icon at the left position, Applications folder
      at the right, arrow between them, nothing misaligned (adjust the two
      `--icon` y-coordinates once if the title-bar offset shifts them);
+   - shows both icon name labels in black text sitting legibly and evenly
+     inside their light pills;
    - installs the app by drag, and the app launches.
 3. One CI proof under a scratch pre-release tag (e.g. `v0.0.0-dmgtest`):
    workflow green, DMG asset downloads and mounts with the branded window;
@@ -203,3 +208,10 @@ implementation has drifted.
   the first mounted-DMG review — Finder's black-over-background-picture label
   rendering made icon names invisible on the dark canvas; owner chose pills
   over a light redesign.
+- **Lesson (2026-08-02, CI proof):** Finder stores the window position
+  bottom-anchored in the `.DS_Store` (`--window-pos 200 120` is measured on the
+  *build* machine's screen), so the window's on-screen y varies with the
+  viewer's display height — verified CI-built DMG opened at y=469 on an 1117-pt
+  display, y=120 on the runner's 768-pt one. Benign: size, background, and icon
+  layout are unaffected and the window cannot land off-screen. Do not chase this
+  as a bug when adjusting `--window-pos`.

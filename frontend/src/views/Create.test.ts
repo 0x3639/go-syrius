@@ -237,7 +237,7 @@ describe('Create.vue — interaction collection', () => {
     expect(btn(w, 'Generate recovery phrase')!.attributes('disabled')).toBeUndefined()
   })
 
-  it('duration alone is not enough — sample target also gates readiness', async () => {
+  it('duration alone is not enough — bits target also gates readiness', async () => {
     const { w, setNow } = mountCollecting()
     await startCollection(w)
     setNow(6000)

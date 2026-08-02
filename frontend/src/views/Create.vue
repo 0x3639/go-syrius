@@ -295,7 +295,7 @@ onUnmounted(() => {
                 :key="p"
                 class="flex items-center gap-1.5 text-sm text-foreground">
                 <input v-model="entropyTarget" type="radio" name="entropy-target" :value="p" />
-                {{ p }} bits
+                {{ p }} estimated bits
               </label>
             </div>
           </fieldset>
@@ -311,6 +311,7 @@ onUnmounted(() => {
             @keydown="onKey">
             <span aria-hidden="true">Move your pointer here, or focus and press keys</span>
           </div>
+          <!-- 32 = INDICATOR_BLOCKS; Tailwind arbitrary values cannot interpolate the constant -->
           <div
             role="progressbar"
             aria-label="Estimated entropy collected"

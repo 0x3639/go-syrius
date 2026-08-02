@@ -14,6 +14,7 @@
        when the Task-3 adjust pass moves either. */
     --icon-center-y: 210px;
     --halo-center-y: 260px;
+    --label-pill-y: 278px; /* Finder label center. Started at 274 (icon bottom 260 + ~4px gap + half of 16pt label line); +4 from visual tuning against the real mounted window, where Finder drew the label low in the pill. Tune with the pill height if labels shift. */
   }
   * { margin: 0; padding: 0; }
   html, body { width: 660px; height: 420px; overflow: hidden; }
@@ -41,10 +42,18 @@
     position: absolute; bottom: 22px; left: 0; right: 0; text-align: center;
     font-size: 12.5px; color: rgba(255,255,255,.42);
   }
+  .label-pill {
+    position: absolute; width: 132px; height: 26px; border-radius: 999px;
+    top: var(--label-pill-y); transform: translate(-50%, -50%);
+    background: rgba(232,232,232,.94);
+    box-shadow: 0 1px 4px rgba(0,0,0,.35);
+  }
 </style>
 </head>
 <body>
   <div class="halo"></div>
+  <div class="label-pill" style="left: 165px"></div>
+  <div class="label-pill" style="left: 495px"></div>
   <div class="eyebrow">go-syrius · network of momentum</div>
   <div class="headline">Drag to install</div>
   <!-- Icon centers are x=165 and x=495 (100pt icons → inner edges 215/445);

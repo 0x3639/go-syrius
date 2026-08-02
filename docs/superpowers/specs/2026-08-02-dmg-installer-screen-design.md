@@ -39,6 +39,12 @@ near-black. Composition, top to bottom:
 5. **Footer hint:** `Drop go-syrius on Applications, then launch it from
    Launchpad` — Space Grotesk 12.5 pt, `rgba(255,255,255,.42)`, centered,
    ~22 pt from bottom.
+6. **Label pills:** two light rounded-full pills (132×26 pt,
+   `rgba(232,232,232,.94)`, soft shadow) baked into the artwork centered at
+   x=165/x=495, y≈278 — directly under each icon where Finder renders its name
+   label. Finder paints icon labels **black over any custom background picture
+   regardless of system appearance**, so the pills are what keep "go-syrius" /
+   "Applications" legible on the near-black canvas.
 
 Finder draws the icons on top of the background; the background contains **no
 icon artwork**, only glow, text, and arrow. Icon layout (create-dmg flags):
@@ -193,3 +199,7 @@ implementation has drifted.
   `build/darwin/dmg/` at a pinned upstream release instead of brew-installed —
   review flagged the unpinned formula as the only unpinned dependency in the
   release pipeline; owner chose vendoring.
+- **Amendment (2026-08-02, local acceptance):** light label pills added after
+  the first mounted-DMG review — Finder's black-over-background-picture label
+  rendering made icon names invisible on the dark canvas; owner chose pills
+  over a light redesign.

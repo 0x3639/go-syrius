@@ -9,6 +9,10 @@ import {
   webCryptoAvailable,
   POINTER_SAMPLE_INTERVAL_MS,
   COLLECTION_MAX_SAMPLES,
+  BITS_PER_POINTER_SAMPLE,
+  BITS_PER_KEY_SAMPLE,
+  ENTROPY_TARGET_PRESETS,
+  ENTROPY_TARGET_DEFAULT,
   KIND_POINTER,
   KIND_TOUCH,
   KIND_KEY,
@@ -216,5 +220,47 @@ describe('pickDistinctIndexes', () => {
       },
     })
     expect(pickDistinctIndexes(3, 24)).toEqual([0, 11, 23])
+  })
+})
+
+describe('estimatedBits credit rule', () => {
+  it('locks the credit constants and presets', () => {
+    expect(BITS_PER_POINTER_SAMPLE).toBe(1)
+    expect(BITS_PER_KEY_SAMPLE).toBe(2)
+    expect(ENTROPY_TARGET_PRESETS).toEqual([128, 256, 512])
+    expect(ENTROPY_TARGET_DEFAULT).toBe(256)
+  })
+
+  it('credits 1 bit per accepted pointer/touch sample and 2 per accepted key sample', () => {
+    const c = new InteractionCollector()
+    c.addPointerSample(1, 2, 0) // +1 (pointer)
+    c.addPointerSample(3, 4, 20, 'touch') // +1 (touch)
+    c.addKeySample(40) // +2 (key)
+    expect(c.estimatedBits).toBe(4)
+  })
+
+  it('credits nothing for throttled, repeated, or post-cap samples', () => {
+    const c = new InteractionCollector()
+    c.addPointerSample(1, 1, 0) // accepted, +1
+    c.addPointerSample(2, 2, 5) // throttled (<16 ms)
+    c.addKeySample(6, true) // repeat ignored
+    expect(c.estimatedBits).toBe(1)
+
+    const full = new InteractionCollector()
+    for (let i = 0; i < COLLECTION_MAX_SAMPLES; i++) full.addKeySample(i * 2)
+    expect(full.estimatedBits).toBe(COLLECTION_MAX_SAMPLES * BITS_PER_KEY_SAMPLE)
+    full.addKeySample(99_999) // over capacity, rejected
+    expect(full.estimatedBits).toBe(COLLECTION_MAX_SAMPLES * BITS_PER_KEY_SAMPLE)
+  })
+
+  it('freeze leaves the estimate readable and stops crediting; reset zeroes it', () => {
+    const c = new InteractionCollector()
+    c.addKeySample(0)
+    c.freeze()
+    expect(c.estimatedBits).toBe(2)
+    c.addKeySample(30) // frozen, rejected
+    expect(c.estimatedBits).toBe(2)
+    c.reset()
+    expect(c.estimatedBits).toBe(0)
   })
 })

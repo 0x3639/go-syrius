@@ -218,6 +218,7 @@ Each phase is independently shippable/testable and ordered by risk. Don't start 
 - [ ] Accessibility, keyboard nav, error telemetry (opt-in/none, given it's a wallet).
 - [ ] Security pass (§7), threat-model review, dependency audit (`govulncheck`, `gosec`).
 - [ ] Additive user-entropy wallet creation (7f hardening): optional interaction transcript + renderer CSPRNG mixed with backend `crypto/rand` via versioned HKDF-SHA-256; standard 24-word BIP-39 output, keystore/derivation unchanged. Spec: `docs/superpowers/specs/2026-07-31-additive-user-entropy-design.md`.
+- [ ] Entropy-target indicator (7f follow-up, frontend-only): user-selectable 128/256/512-bit estimated-entropy target with fixed conservative per-sample credit (1 bit pointer/touch, 2 bits key), 32-block segmented progress bar, hard gate + 5 s floor; skip paths unchanged, no backend/HKDF change. Spec: `docs/superpowers/specs/2026-08-02-entropy-target-indicator-design.md`.
 - [ ] Docs: build instructions, CONTRIBUTING, threat model, compatibility notes.
 
 **Exit criteria:** signed installers for all three OSes; reproducible CI builds; security review closed.

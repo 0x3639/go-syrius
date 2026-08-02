@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  /* DMG installer background — spec docs/superpowers/specs/2026-08-02-dmg-
+     installer-screen-design.md §2. Rendered to background.tiff by
+     render-background.sh; CI never renders this file. */
+  :root {
+    /* Vertical anchors. --icon-center-y mirrors the y in release.yml's
+       "--icon … 165 210" / "--app-drop-link 495 210" flags — keep in sync
+       when the Task-3 adjust pass moves either. */
+    --icon-center-y: 210px;
+    --halo-center-y: 260px;
+  }
+  * { margin: 0; padding: 0; }
+  html, body { width: 660px; height: 420px; overflow: hidden; }
+  body { position: relative; background: hsl(0 0% 8%); font-family: 'Space Grotesk', sans-serif; }
+  .halo {
+    position: absolute; left: 50%; top: var(--halo-center-y);
+    width: 560px; height: 340px; transform: translate(-50%, -50%);
+    background: radial-gradient(ellipse at center,
+      rgba(0,213,87,.20) 0%, rgba(0,120,213,.08) 45%, transparent 72%);
+  }
+  .eyebrow {
+    position: absolute; top: 26px; left: 0; right: 0; text-align: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500;
+    letter-spacing: .08em; text-transform: uppercase; color: rgba(0,213,87,.85);
+  }
+  .headline {
+    position: absolute; top: 46px; left: 0; right: 0; text-align: center;
+    font-size: 21px; font-weight: 600; color: #f2f2f2;
+  }
+  .arrow {
+    position: absolute; left: 50%; top: var(--icon-center-y);
+    transform: translate(-50%, -50%);
+  }
+  .hint {
+    position: absolute; bottom: 22px; left: 0; right: 0; text-align: center;
+    font-size: 12.5px; color: rgba(255,255,255,.42);
+  }
+</style>
+</head>
+<body>
+  <div class="halo"></div>
+  <div class="eyebrow">go-syrius · network of momentum</div>
+  <div class="headline">Drag to install</div>
+  <!-- Icon centers are x=165 and x=495 (100pt icons → inner edges 215/445);
+       the 200-wide arrow centered at x=330 spans 230–430, clear of both. -->
+  <svg class="arrow" width="200" height="28" viewBox="0 0 200 28">
+    <defs>
+      <linearGradient id="plasma" x1="0" y1="0" x2="200" y2="0" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#6FF34D"/>
+        <stop offset="1" stop-color="#00A63E"/>
+      </linearGradient>
+    </defs>
+    <line x1="6" y1="14" x2="172" y2="14" stroke="url(#plasma)" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M168 4 L192 14 L168 24 Z" fill="#00A63E"/>
+  </svg>
+  <div class="hint">Drop go-syrius on Applications, then launch it from Launchpad</div>
+</body>
+</html>

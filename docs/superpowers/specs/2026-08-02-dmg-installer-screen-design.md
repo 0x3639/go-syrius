@@ -13,8 +13,8 @@ user opens `go-syrius-vX.Y.Z-macos-universal.dmg`, Finder shows a fixed-size,
 near-black window with a plasma halo, the instruction "Drag to install", a
 gradient arrow, the real go-syrius app icon on the left, and the Applications
 folder on the right. The window layout is baked into the DMG's `.DS_Store` by
-`create-dmg` (Homebrew) at release time; the background image is a checked-in
-Retina TIFF rendered locally from a checked-in HTML source.
+`create-dmg` (vendored, pinned) at release time; the background image is a
+checked-in Retina TIFF rendered locally from a checked-in HTML source.
 
 Windows and Linux packaging, checksums, and release publishing are untouched.
 
@@ -125,8 +125,8 @@ Constraints:
   matching today's format.
 - Existing security posture unchanged: the tag is still passed via `$VERSION`
   env (no `${{ }}` interpolation into `run:`), and no new secrets are needed.
-  `brew install create-dmg` installs the current formula version; the tool
-  runs only at package time on the runner and touches only the staged DMG.
+  The vendored create-dmg runs only at package time on the runner and touches
+  only the staged DMG.
 
 ## 5. Non-goals
 

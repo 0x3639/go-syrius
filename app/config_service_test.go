@@ -155,6 +155,46 @@ func TestSettingsJSONDropsLegacyLocalKey(t *testing.T) {
 	}
 }
 
+// Spec §3: saving drops the legacy key. The in-memory marshal test above cannot
+// prove this — the real path is read a legacy settings.json → persist → the key
+// is gone from the FILE and the removed "local" mode has become "remote".
+func TestSavingDropsLegacyLocalKeyOnDisk(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GO_SYRIUS_DATA_DIR", dir)
+	path := filepath.Join(dir, "settings.json")
+	raw := []byte(`{"nodeMode":"local","remoteNodeUrl":"wss://r","localNodeUrl":"ws://x","theme":"dark"}`)
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatalf("seed settings.json: %v", err)
+	}
+
+	c := newConfigService()
+	s, err := c.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	if s.NodeMode != "remote" {
+		t.Fatalf("NodeMode = %q, want remote", s.NodeMode)
+	}
+	// A no-op mutator still rewrites the file through the migrated struct.
+	if err := c.updateSettings(func(*Settings) error { return nil }); err != nil {
+		t.Fatalf("updateSettings: %v", err)
+	}
+
+	out, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read back settings.json: %v", err)
+	}
+	if strings.Contains(string(out), "localNodeUrl") {
+		t.Fatalf("legacy localNodeUrl key survived a save: %s", out)
+	}
+	if !strings.Contains(string(out), `"nodeMode": "remote"`) {
+		t.Fatalf("persisted mode should be remote: %s", out)
+	}
+	if s.RemoteNodeURL != "wss://r" {
+		t.Fatalf("RemoteNodeURL changed: %q", s.RemoteNodeURL)
+	}
+}
+
 func TestMigrationIdempotent(t *testing.T) {
 	c := newTestConfig(t)
 	s1, _ := c.GetSettings()

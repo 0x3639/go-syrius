@@ -440,7 +440,9 @@ func redactURLUserinfo(msg, rawURL string) string {
 	return strings.ReplaceAll(msg, u.User.String()+"@", "***@")
 }
 
-// SetNodeURL persists a mode's URL (validated) and reconnects if it is active.
+// SetNodeURL persists the remote node URL (validated) and reconnects if remote
+// is the active mode. Remote is the only configurable URL: the embedded node's
+// is fixed.
 func (n *NodeService) SetNodeURL(mode, url string) error {
 	if mode == "embedded" {
 		return fmt.Errorf("embedded node url is fixed and cannot be changed")
@@ -618,7 +620,7 @@ func (n *NodeService) Connect() error {
 	return n.setNode(s.ActiveNodeURL())
 }
 
-// GetNodeConfig returns the node mode and per-mode URLs for the settings UI.
+// GetNodeConfig returns the node mode and remote URL for the settings UI.
 func (n *NodeService) GetNodeConfig() (NodeConfig, error) {
 	s, err := n.config.GetSettings()
 	if err != nil {

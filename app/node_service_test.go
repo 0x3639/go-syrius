@@ -139,17 +139,12 @@ func TestSetNodeModeRejectsLocal(t *testing.T) {
 	if err := n.SetNodeMode("local"); err == nil {
 		t.Fatal("SetNodeMode(local) succeeded, want error")
 	}
-	// Rejection must happen before any persistence: an unknown mode is never
-	// user intent, so the previously chosen mode must survive intact. (Without
-	// this the test would pass vacuously — a connect to a non-running local
-	// node errors too.)
-	cfg, err := n.GetNodeConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Mode != "remote" {
-		t.Fatalf("rejected mode must not persist, got %q", cfg.Mode)
-	}
+	// Rejection must happen BEFORE any persistence: a removed mode is never user
+	// intent, so nothing may reach disk. Asserting the persisted mode via
+	// GetNodeConfig would be vacuous — it runs migrateSettings on read, which
+	// normalizes a persisted "local" back to "remote". The honest gate is that
+	// settings.json was never written at all (newTestConfig starts empty).
+	assertSettingsNotWritten(t, n)
 }
 
 func TestSetNodeURLRejectsLocal(t *testing.T) {
@@ -157,11 +152,28 @@ func TestSetNodeURLRejectsLocal(t *testing.T) {
 	if err := n.SetNodeURL("local", "ws://127.0.0.1:35998"); err == nil {
 		t.Fatal("SetNodeURL(local) succeeded, want error")
 	}
+	assertSettingsNotWritten(t, n)
+}
+
+// assertSettingsNotWritten fails if settings.json exists — the reject-before-
+// persist gate. It relies on newTestConfig's fresh empty data dir, so absence
+// of the file is proof no write happened.
+func assertSettingsNotWritten(t *testing.T, n *NodeService) {
+	t.Helper()
+	d, err := n.config.dataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(d, "settings.json")); !os.IsNotExist(err) {
+		t.Fatal("rejected mode must not persist: settings.json was written")
+	}
 }
 
 // seedNodeMode persists a node mode WITHOUT connecting. It lets a test make
 // "remote" the non-active mode so SetNodeURL exercises its persist-only path
-// (no dial, hence no network dependence).
+// (no dial, hence no network dependence). The in-memory n.mode is set to match
+// so NodeStatus() reports the seeded mode — NodeStatus reports "remote" for an
+// empty mode, which would make a later "is it remote?" assertion vacuous.
 func seedNodeMode(t *testing.T, n *NodeService, mode string) {
 	t.Helper()
 	if err := n.config.updateSettings(func(s *Settings) error {
@@ -170,6 +182,9 @@ func seedNodeMode(t *testing.T, n *NodeService, mode string) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	n.mu.Lock()
+	n.mode = mode
+	n.mu.Unlock()
 }
 
 func TestSetNodeModePersistsEvenIfUnreachable(t *testing.T) {

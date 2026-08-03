@@ -372,6 +372,21 @@ func (n *NodeService) SetNodeMode(mode string) error {
 	n.opMu.Lock()
 	defer n.opMu.Unlock()
 
+	// Refuse embedded while a previous embedded node is wedged: the abandoned
+	// node still owns the WS port, so an in-process restart cannot succeed.
+	// BEFORE the persist — a refused transition must write nothing, so on-disk
+	// mode, in-memory mode, and NodeStatus never disagree. Read inside opMu:
+	// checking outside it could observe wedged==false, then block on opMu behind
+	// the very transition that latches the wedge, and start a doomed node anyway.
+	if mode == "embedded" {
+		n.mu.Lock()
+		wedged := n.embeddedWedged
+		n.mu.Unlock()
+		if wedged {
+			return errors.New("embedded node did not shut down cleanly — restart go-syrius before using Embedded again")
+		}
+	}
+
 	// One settings mutation captures both the persisted mode and the URL the
 	// transition will dial — no separate re-read another writer could slip into.
 	var target string
@@ -381,17 +396,6 @@ func (n *NodeService) SetNodeMode(mode string) error {
 		return nil
 	}); err != nil {
 		return err
-	}
-
-	// Refuse embedded while a previous embedded node is wedged: the abandoned
-	// node still owns the WS port, so an in-process restart cannot succeed.
-	if mode == "embedded" {
-		n.mu.Lock()
-		wedged := n.embeddedWedged
-		n.mu.Unlock()
-		if wedged {
-			return errors.New("embedded node did not shut down cleanly — restart go-syrius before using Embedded again")
-		}
 	}
 
 	// Honest transition status (spec §5): flip the mode and tell the UI the
@@ -625,9 +629,17 @@ func (n *NodeService) DeleteEmbeddedData() error {
 	defer n.opMu.Unlock()
 	n.mu.RLock()
 	running := n.embedded != nil
+	wedged := n.embeddedWedged
 	n.mu.RUnlock()
 	if running {
 		return errors.New("stop the embedded node first")
+	}
+	// A wedged node was abandoned, not stopped: n.embedded is nil, so the
+	// running check above passes, but the process may still be writing to the
+	// data dir. RemoveAll under a live node risks corrupting whatever it fails
+	// to delete — refuse until a restart clears the abandoned process.
+	if wedged {
+		return errors.New("embedded node did not shut down cleanly — restart go-syrius before deleting embedded data")
 	}
 	dir, err := n.config.dataDir()
 	if err != nil {

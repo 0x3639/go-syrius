@@ -279,6 +279,35 @@ func TestSetNodeModeBoundedTeardownOnWedgedStop(t *testing.T) {
 		!strings.Contains(err.Error(), "restart go-syrius") {
 		t.Fatalf("SetNodeMode(embedded) after wedge: err = %v, want restart-required error", err)
 	}
+	// Reject-before-persist: the refusal must not have written the mode it
+	// refused. settings.json EXISTS here (the remote transition above wrote it),
+	// so the honest gate is the persisted VALUE, which must still agree with
+	// in-memory mode and NodeStatus.
+	cfg, err := n.GetNodeConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Mode != "remote" {
+		t.Fatalf("refused mode must not persist: persisted mode = %q, want remote", cfg.Mode)
+	}
+	if got := n.NodeStatus().Mode; got != "remote" {
+		t.Fatalf("in-memory mode after refusal = %q, want remote", got)
+	}
+}
+
+// A wedged embedded node may still be writing to its data dir, so deleting it
+// out from under the abandoned process risks corrupting whatever RemoveAll does
+// not manage to remove. Refuse until the app restarts.
+func TestDeleteEmbeddedDataRefusedWhileWedged(t *testing.T) {
+	n := newTestNode(t)
+	n.mu.Lock()
+	n.embeddedWedged = true
+	n.mu.Unlock()
+
+	err := n.DeleteEmbeddedData()
+	if err == nil || !strings.Contains(err.Error(), "restart go-syrius") {
+		t.Fatalf("DeleteEmbeddedData while wedged: err = %v, want restart-required error", err)
+	}
 }
 
 func TestSetNodeURLValidatesAndPersists(t *testing.T) {

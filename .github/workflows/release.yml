@@ -82,15 +82,73 @@ jobs:
       - name: Package (macOS)
         if: runner.os == 'macOS'
         shell: bash
-        # DMG instead of zip: no extraction step for users — mount and drag to
-        # /Applications (the staged symlink makes that a one-gesture install).
+        timeout-minutes: 30
+        # Branded installer DMG (spec docs/superpowers/specs/2026-08-02-dmg-
+        # installer-screen-design.md): the vendored create-dmg
+        # (build/darwin/dmg/, pinned upstream v1.3.0) bakes the window layout —
+        # background, icon positions, Applications drop-link — into the DMG's
+        # .DS_Store. Finder/AppleScript automation is occasionally flaky on
+        # headless runners, so retry up to 3×, each attempt bounded to 600 s by
+        # the watchdog below; if every attempt fails the job fails — a release
+        # must never silently ship the plain-folder DMG.
         # ditto (not cp) preserves the .app bundle's perms/symlinks/xattrs.
+        # On --window-pos below: the window y is stored bottom-anchored by
+        # Finder — viewer-screen-relative; see spec §8. (This note lives here,
+        # not inline, because a "#" line inside the backslash-continued
+        # create-dmg invocation would terminate the command.)
         run: |
           mkdir dmg-staging
           ditto build/bin/go-syrius.app dmg-staging/go-syrius.app
-          ln -s /Applications dmg-staging/Applications
-          hdiutil create -volname "go-syrius" -srcfolder dmg-staging -ov -format UDZO \
-            "go-syrius-${VERSION}-macos-universal.dmg"
+          DMG_OUT="go-syrius-${VERSION}-macos-universal.dmg"
+          # Bounded watchdog: the vendored AppleScript polls for .DS_Store
+          # without a cap (support/template.applescript), so a stalled Finder
+          # would otherwise hang the attempt until the job timeout and starve
+          # attempts 2-3. WATCHDOG_LIMIT is the per-attempt seconds budget —
+          # overridable only so the logic can be exercised in tests.
+          WATCHDOG_LIMIT="${WATCHDOG_LIMIT:-600}"
+          run_attempt() {
+            bash build/darwin/dmg/create-dmg \
+                --volname "go-syrius" \
+                --volicon "build/bin/go-syrius.app/Contents/Resources/iconfile.icns" \
+                --background "build/darwin/dmg/background.tiff" \
+                --window-pos 200 120 \
+                --window-size 660 420 \
+                --icon-size 100 \
+                --icon "go-syrius.app" 165 210 \
+                --hide-extension "go-syrius.app" \
+                --app-drop-link 495 210 \
+                --no-internet-enable \
+                "$DMG_OUT" \
+                dmg-staging/ &
+            local pid=$! waited=0
+            while kill -0 "$pid" 2>/dev/null; do
+              if [ "$waited" -ge "$WATCHDOG_LIMIT" ]; then
+                echo "create-dmg exceeded ${WATCHDOG_LIMIT}s; killing attempt" >&2
+                pkill -P "$pid" 2>/dev/null || true
+                kill "$pid" 2>/dev/null || true
+                wait "$pid" 2>/dev/null || true
+                return 124
+              fi
+              sleep 5
+              waited=$((waited + 5))
+            done
+            wait "$pid"
+          }
+          cleanup_attempt() {
+            for v in /Volumes/go-syrius*; do
+              [ -d "$v" ] && hdiutil detach "$v" -force || true
+            done
+            rm -f rw.*.dmg "$DMG_OUT"
+          }
+          for attempt in 1 2 3; do
+            if run_attempt; then
+              break
+            fi
+            echo "create-dmg attempt ${attempt} failed" >&2
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            cleanup_attempt
+            sleep 5
+          done
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: bash

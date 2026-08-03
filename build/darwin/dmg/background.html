@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  /* DMG installer background — spec docs/superpowers/specs/2026-08-02-dmg-
+     installer-screen-design.md §2. Rendered to background.tiff by
+     render-background.sh; CI never renders this file. */
+
+  /* Webfonts are vendored (latin subset, OFL) in ./fonts/ rather than fetched
+     from the Google Fonts CDN: a slow or failed CDN fetch would silently bake
+     fallback system fonts into the committed TIFF. Relative URLs resolve
+     against this file's own directory (opened via file://). font-display:
+     block means a missing file renders invisible text — a loud failure — not
+     a silent fallback swap. */
+  @font-face {
+    font-family: 'Space Grotesk'; font-style: normal; font-weight: 400;
+    font-display: block; src: url(fonts/space-grotesk-400.woff2) format('woff2');
+  }
+  @font-face {
+    font-family: 'Space Grotesk'; font-style: normal; font-weight: 600;
+    font-display: block; src: url(fonts/space-grotesk-600.woff2) format('woff2');
+  }
+  @font-face {
+    font-family: 'JetBrains Mono'; font-style: normal; font-weight: 500;
+    font-display: block; src: url(fonts/jetbrains-mono-500.woff2) format('woff2');
+  }
+  :root {
+    /* Vertical anchors. --icon-center-y mirrors the y in release.yml's
+       "--icon … 165 210" / "--app-drop-link 495 210" flags — keep in sync
+       when the Task-3 adjust pass moves either. The pill left values
+       (165px/495px) mirror the same flags' x coordinates — move all three
+       together. */
+    --icon-center-y: 210px;
+    --halo-center-y: 260px;
+    --label-pill-y: 278px; /* Finder label center. Started at 274 (icon bottom 260 + ~4px gap + half of 16pt label line); +4 from visual tuning against the real mounted window, where Finder drew the label low in the pill. Tune with the pill height if labels shift. */
+  }
+  * { margin: 0; padding: 0; }
+  html, body { width: 660px; height: 420px; overflow: hidden; }
+  body { position: relative; background: hsl(0 0% 8%); font-family: 'Space Grotesk', sans-serif; }
+  .halo {
+    position: absolute; left: 50%; top: var(--halo-center-y);
+    width: 560px; height: 340px; transform: translate(-50%, -50%);
+    background: radial-gradient(ellipse at center,
+      rgba(0,213,87,.20) 0%, rgba(0,120,213,.08) 45%, transparent 72%);
+  }
+  .eyebrow {
+    position: absolute; top: 26px; left: 0; right: 0; text-align: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500;
+    letter-spacing: .08em; text-transform: uppercase; color: rgba(0,213,87,.85);
+  }
+  .headline {
+    position: absolute; top: 46px; left: 0; right: 0; text-align: center;
+    font-size: 21px; font-weight: 600; color: #f2f2f2;
+  }
+  .arrow {
+    position: absolute; left: 50%; top: var(--icon-center-y);
+    transform: translate(-50%, -50%);
+  }
+  .hint {
+    position: absolute; bottom: 22px; left: 0; right: 0; text-align: center;
+    font-size: 12.5px; color: rgba(255,255,255,.42);
+  }
+  .label-pill {
+    position: absolute; width: 132px; height: 26px; border-radius: 999px;
+    top: var(--label-pill-y); transform: translate(-50%, -50%);
+    background: rgba(232,232,232,.94);
+    box-shadow: 0 1px 4px rgba(0,0,0,.35);
+  }
+</style>
+</head>
+<body>
+  <div class="halo"></div>
+  <div class="label-pill" style="left: 165px"></div>
+  <div class="label-pill" style="left: 495px"></div>
+  <div class="eyebrow">go-syrius · network of momentum</div>
+  <div class="headline">Drag to install</div>
+  <!-- Icon centers are x=165 and x=495 (100pt icons → inner edges 215/445);
+       the 200-wide arrow centered at x=330 spans 230–430, clear of both. -->
+  <svg class="arrow" width="200" height="28" viewBox="0 0 200 28">
+    <defs>
+      <linearGradient id="plasma" x1="0" y1="0" x2="200" y2="0" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#6FF34D"/>
+        <stop offset="1" stop-color="#00A63E"/>
+      </linearGradient>
+    </defs>
+    <line x1="6" y1="14" x2="172" y2="14" stroke="url(#plasma)" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M168 4 L192 14 L168 24 Z" fill="#00A63E"/>
+  </svg>
+  <div class="hint">Drop go-syrius on Applications, then launch it from Launchpad</div>
+</body>
+</html>

@@ -70,9 +70,14 @@ build/darwin/dmg/render-background.sh # local-only regen: HTML → 1x/2x PNG →
 build/darwin/dmg/background.tiff      # the rendered artifact CI consumes
 ```
 
-- `background.html` renders the §2 composition at exactly 660×420 CSS px,
-  loading Space Grotesk / JetBrains Mono from Google Fonts (acceptable: the
-  script runs locally on a developer machine, never in CI).
+- `background.html` renders the §2 composition at exactly 660×420 CSS px.
+  Space Grotesk (400/600) and JetBrains Mono (500) are **vendored** as
+  latin-subset WOFF2 under `build/darwin/dmg/fonts/` (OFL, license texts
+  alongside) and referenced by relative-URL `@font-face` with
+  `font-display: block` — not fetched from the Google Fonts CDN. This makes
+  regeneration deterministic and offline-capable, and removes the risk that a
+  slow or failed CDN fetch silently bakes fallback system fonts into the
+  committed TIFF (see the §8 amendment).
 - `render-background.sh` uses headless Chrome
   (`--headless --screenshot --window-size=660,420` and a 2× pass at
   `--force-device-scale-factor=2`) to produce `background@1x.png` (660×420)
@@ -166,6 +171,17 @@ build/darwin/dmg/support/template.applescript
 build/darwin/dmg/support/eula-resources-template.xml
 ```
 
+Plus the vendored webfonts (§3, §8 amendment) — latin-subset WOFF2 as served by
+the Google Fonts CDN, with their upstream OFL texts:
+
+```text
+build/darwin/dmg/fonts/space-grotesk-400.woff2
+build/darwin/dmg/fonts/space-grotesk-600.woff2
+build/darwin/dmg/fonts/jetbrains-mono-500.woff2
+build/darwin/dmg/fonts/OFL-space-grotesk.txt
+build/darwin/dmg/fonts/OFL-jetbrains-mono.txt
+```
+
 Nothing else. If a diff touches `app/`, `frontend/`, or `wails.json`, the
 implementation has drifted.
 
@@ -215,3 +231,8 @@ implementation has drifted.
   display, y=120 on the runner's 768-pt one. Benign: size, background, and icon
   layout are unaffected and the window cannot land off-screen. Do not chase this
   as a bug when adjusting `--window-pos`.
+- **Amendment (2026-08-03, external audit):** per-attempt 600 s watchdog +
+  inter-attempt volume/temp cleanup added around create-dmg (the vendored
+  AppleScript's .DS_Store poll is unbounded), and webfonts vendored locally
+  (CDN fetch could silently render fallback fonts into the TIFF). Findings from
+  the owner's Codex audit.

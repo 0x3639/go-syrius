@@ -2,12 +2,29 @@
 <html>
 <head>
 <meta charset="utf-8">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
   /* DMG installer background — spec docs/superpowers/specs/2026-08-02-dmg-
      installer-screen-design.md §2. Rendered to background.tiff by
      render-background.sh; CI never renders this file. */
+
+  /* Webfonts are vendored (latin subset, OFL) in ./fonts/ rather than fetched
+     from the Google Fonts CDN: a slow or failed CDN fetch would silently bake
+     fallback system fonts into the committed TIFF. Relative URLs resolve
+     against this file's own directory (opened via file://). font-display:
+     block means a missing file renders invisible text — a loud failure — not
+     a silent fallback swap. */
+  @font-face {
+    font-family: 'Space Grotesk'; font-style: normal; font-weight: 400;
+    font-display: block; src: url(fonts/space-grotesk-400.woff2) format('woff2');
+  }
+  @font-face {
+    font-family: 'Space Grotesk'; font-style: normal; font-weight: 600;
+    font-display: block; src: url(fonts/space-grotesk-600.woff2) format('woff2');
+  }
+  @font-face {
+    font-family: 'JetBrains Mono'; font-style: normal; font-weight: 500;
+    font-display: block; src: url(fonts/jetbrains-mono-500.woff2) format('woff2');
+  }
   :root {
     /* Vertical anchors. --icon-center-y mirrors the y in release.yml's
        "--icon … 165 210" / "--app-drop-link 495 210" flags — keep in sync

@@ -34,6 +34,10 @@ Observed live (2026-08-03, app PID 24157):
   assigned *after* `stopEmbedded` returns.
 - Because `SetNodeMode` holds `opMu` for the whole transition, every later
   Apply/Retry queued behind the hung one. Only an app restart recovers.
+- **Quitting the app also hung** (force-quit required): `App.OnShutdown`
+  (app/app.go:42) calls the same `stopEmbedded()`, so the wedged `Stop()`
+  blocked shutdown too. The bounded teardown (§4) therefore fixes quit
+  automatically — same function, same bound.
 - The frontend's existing stale-sync defenses (clear-on-mode-change, straggler
   drop) were **not** at fault; the store faithfully displayed a backend that
   never transitioned.
@@ -163,6 +167,9 @@ In `startSyncPoller`'s loop:
 - With a hung embedded stop (simulated), Apply→Remote completes: UI shows
   Disconnected(remote) → Connected(remote) within seconds; a follow-up switch
   to Embedded yields the restart-required error; nothing deadlocks.
+- Quitting the app with a wedged embedded node completes within the teardown
+  bound (~10s) instead of requiring a force quit (`OnShutdown` uses the same
+  bounded `stopEmbedded`).
 - During any mode switch the footer/panel never claim the previous mode's
   connected state.
 - A height-frozen unsynced embedded node shows `stalled` within ~3 minutes.

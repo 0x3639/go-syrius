@@ -22,6 +22,21 @@ func (s stubHandle) WSURL() string   { return s.url }
 func (s stubHandle) DataDir() string { return s.dir }
 func (s stubHandle) Stop() error     { return nil }
 
+// wedgedHandle simulates the 2026-08-03 incident: an embedded node whose
+// Stop() never returns (spec §2/§4).
+type wedgedHandle struct {
+	stopCalled chan struct{}
+	release    chan struct{}
+}
+
+func (w *wedgedHandle) WSURL() string   { return "ws://127.0.0.1:35998" }
+func (w *wedgedHandle) DataDir() string { return "" }
+func (w *wedgedHandle) Stop() error {
+	close(w.stopCalled)
+	<-w.release
+	return nil
+}
+
 func TestToTokenBalance(t *testing.T) {
 	bi := &api.BalanceInfo{
 		TokenInfo: &api.Token{ZenonTokenStandard: types.ZnnTokenStandard, TokenSymbol: "ZNN", Decimals: 8},
@@ -210,6 +225,59 @@ func TestSetNodeModePersistsEvenIfUnreachable(t *testing.T) {
 	}
 	if n.NodeStatus().Mode != "remote" {
 		t.Fatalf("NodeStatus().Mode should be remote, got %q", n.NodeStatus().Mode)
+	}
+}
+
+// A wedged embedded Stop() must not hold a mode transition hostage: the switch
+// completes on a bound, the status flips honestly, and embedded is then refused
+// in-process until the app restarts (the abandoned node still owns the WS port).
+func TestSetNodeModeBoundedTeardownOnWedgedStop(t *testing.T) {
+	old := embeddedStopTimeout
+	embeddedStopTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { embeddedStopTimeout = old })
+
+	n := newTestNode(t)
+	// Unreachable remote so the post-teardown dial fails fast instead of
+	// touching the network (same trick as TestSetNodeModePersistsEvenIfUnreachable).
+	if err := n.config.updateSettings(func(s *Settings) error {
+		s.RemoteNodeURL = "ws://127.0.0.1:1"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	seedNodeMode(t, n, "embedded")
+	w := &wedgedHandle{stopCalled: make(chan struct{}), release: make(chan struct{})}
+	t.Cleanup(func() { close(w.release) }) // let the background waiter exit
+	n.mu.Lock()
+	n.embedded = w
+	n.mu.Unlock()
+
+	done := make(chan error, 1)
+	go func() { done <- n.SetNodeMode("remote") }()
+
+	// Stop must have been attempted…
+	select {
+	case <-w.stopCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop was never called")
+	}
+	// …and the transition must complete despite Stop never returning.
+	// (The remote dial fails fast against the unreachable test URL — an error
+	// return is fine; a hang is the bug.)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("SetNodeMode hung on wedged embedded Stop")
+	}
+
+	// Honest status: the mode flipped even though Stop is still blocked.
+	if got := n.NodeStatus().Mode; got != "remote" {
+		t.Fatalf("mode = %q, want remote", got)
+	}
+	// The wedged service refuses to restart embedded in-process.
+	if err := n.SetNodeMode("embedded"); err == nil ||
+		!strings.Contains(err.Error(), "restart go-syrius") {
+		t.Fatalf("SetNodeMode(embedded) after wedge: err = %v, want restart-required error", err)
 	}
 }
 

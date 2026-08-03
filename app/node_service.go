@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	neturl "net/url"
 	"os"
 	"path/filepath"
@@ -21,6 +22,11 @@ import (
 	api "github.com/zenon-network/go-zenon/rpc/api"
 	"github.com/zenon-network/go-zenon/rpc/server"
 )
+
+// embeddedStopTimeout bounds how long a mode transition waits for the embedded
+// node to stop. A wedged Stop() (2026-08-03 incident) otherwise blocks opMu —
+// and with it every future transition — forever. Var, not const: tests shorten it.
+var embeddedStopTimeout = 10 * time.Second
 
 // embeddedHandle abstracts a running embedded node (real or test stub).
 type embeddedHandle interface {
@@ -65,6 +71,11 @@ type NodeService struct {
 	embedded      embeddedHandle
 	embeddedStart func(dataDir string) (embeddedHandle, error)
 	syncStop      chan struct{}
+
+	// embeddedWedged latches when an embedded stop timed out: the abandoned
+	// node still owns the WS port, so starting another in-process is doomed —
+	// require an app restart instead (spec §4).
+	embeddedWedged bool
 
 	// appNapBegin/appNapEnd hold a macOS App Nap prevention assertion for
 	// exactly the embedded node's lifetime (no-ops off darwin; stubbed in tests).
@@ -372,13 +383,30 @@ func (n *NodeService) SetNodeMode(mode string) error {
 		return err
 	}
 
-	// Tear down any running embedded node when leaving embedded mode.
+	// Refuse embedded while a previous embedded node is wedged: the abandoned
+	// node still owns the WS port, so an in-process restart cannot succeed.
+	if mode == "embedded" {
+		n.mu.Lock()
+		wedged := n.embeddedWedged
+		n.mu.Unlock()
+		if wedged {
+			return errors.New("embedded node did not shut down cleanly — restart go-syrius before using Embedded again")
+		}
+	}
+
+	// Honest transition status (spec §5): flip the mode and tell the UI the
+	// switch has STARTED before any teardown or dialing. The frontend clears
+	// stale embedded sync state on this mode change; the footer shows
+	// "Disconnected (<new mode>)" until the connect lands.
+	n.mu.Lock()
+	n.mode = mode
+	n.emitStatusLocked(false)
+	n.mu.Unlock()
+
+	// Tear down any running embedded node when leaving embedded mode (bounded).
 	if mode != "embedded" {
 		n.stopEmbedded()
 	}
-	n.mu.Lock()
-	n.mode = mode
-	n.mu.Unlock()
 
 	if mode == "embedded" {
 		return n.startEmbedded()
@@ -480,7 +508,11 @@ func (n *NodeService) SetNodeURL(mode, url string) error {
 	return nil
 }
 
-// stopEmbedded halts the embedded node + sync poller if running.
+// stopEmbedded halts the embedded node + sync poller if running, waiting at
+// most embeddedStopTimeout for the node to stop. On timeout the handle is
+// abandoned (the background goroutine keeps waiting; if the stop ever finishes
+// the embeddednode package's single-instance guard clears itself) and the
+// service latches embeddedWedged — see SetNodeMode's embedded guard.
 func (n *NodeService) stopEmbedded() {
 	n.mu.Lock()
 	if n.syncStop != nil {
@@ -490,10 +522,23 @@ func (n *NodeService) stopEmbedded() {
 	h := n.embedded
 	n.embedded = nil
 	n.mu.Unlock()
-	if h != nil {
-		_ = h.Stop()
-		n.appNapEnd()
+	if h == nil {
+		return
 	}
+	done := make(chan struct{})
+	go func() {
+		_ = h.Stop()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(embeddedStopTimeout):
+		log.Printf("WARN: embedded node did not stop within %s; abandoning handle (restart recommended before using Embedded again)", embeddedStopTimeout)
+		n.mu.Lock()
+		n.embeddedWedged = true
+		n.mu.Unlock()
+	}
+	n.appNapEnd()
 }
 
 // noteSyncHeight folds a sync-poller ledger-height sample into the status

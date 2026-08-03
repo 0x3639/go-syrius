@@ -246,6 +246,11 @@ func TestSetNodeModeBoundedTeardownOnWedgedStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	seedNodeMode(t, n, "embedded")
+	// No real node may ever boot from this test: if a wedged guard regresses,
+	// fail loudly instead of starting a mainnet node in CI.
+	n.embeddedStart = func(string) (embeddedHandle, error) {
+		return nil, errors.New("test: embedded start must not be reached")
+	}
 	w := &wedgedHandle{stopCalled: make(chan struct{}), release: make(chan struct{})}
 	t.Cleanup(func() { close(w.release) }) // let the background waiter exit
 	n.mu.Lock()
@@ -260,6 +265,15 @@ func TestSetNodeModeBoundedTeardownOnWedgedStop(t *testing.T) {
 	case <-w.stopCalled:
 	case <-time.After(2 * time.Second):
 		t.Fatal("Stop was never called")
+	}
+	// Honest transition status (spec §5): the mode must ALREADY read "remote"
+	// here — mid-teardown, with Stop still blocked and nothing dialed yet.
+	// This is deterministic, not a race: SetNodeMode writes n.mode before
+	// calling stopEmbedded, which happens-before close(w.stopCalled) inside
+	// Stop(). Pins the reorder; without it the flip could move back after
+	// teardown and no test would notice.
+	if got := n.NodeStatus().Mode; got != "remote" {
+		t.Fatalf("mode at transition start = %q, want remote (flip must precede teardown)", got)
 	}
 	// …and the transition must complete despite Stop never returning.
 	// (The remote dial fails fast against the unreachable test URL — an error
@@ -292,6 +306,33 @@ func TestSetNodeModeBoundedTeardownOnWedgedStop(t *testing.T) {
 	}
 	if got := n.NodeStatus().Mode; got != "remote" {
 		t.Fatalf("in-memory mode after refusal = %q, want remote", got)
+	}
+}
+
+// Connect() reaches startEmbedded with the mode already persisted, so the
+// SetNodeMode-level guard cannot cover it. It MUST still refuse: embeddednode's
+// package mutex is held across the wedged node.Stop(), so embeddednode.Start()
+// would block on mu.Lock() forever while Connect holds opMu — the original
+// incident, recreated. Hence the backstop guard inside startEmbedded.
+func TestConnectRefusesEmbeddedWhileWedged(t *testing.T) {
+	n := newTestNode(t)
+	seedNodeMode(t, n, "embedded")
+	n.embeddedStart = func(string) (embeddedHandle, error) {
+		return nil, errors.New("test: embedded start must not be reached")
+	}
+	n.mu.Lock()
+	n.embeddedWedged = true
+	n.mu.Unlock()
+
+	done := make(chan error, 1)
+	go func() { done <- n.Connect() }()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "restart go-syrius") {
+			t.Fatalf("Connect while wedged: err = %v, want restart-required error", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Connect hung on a wedged embedded node")
 	}
 }
 

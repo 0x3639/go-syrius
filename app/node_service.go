@@ -425,6 +425,19 @@ func (n *NodeService) SetNodeMode(mode string) error {
 // an app restart. The caller has already persisted/marked mode == "embedded".
 // Mutex discipline: mu is never held across embeddedStart/SetNode/startSyncPoller.
 func (n *NodeService) startEmbedded() error {
+	// Backstop wedged guard, covering EVERY path into an embedded start —
+	// notably Connect(), which arrives with the mode already persisted and so
+	// never passes SetNodeMode's guard. This is not merely a doomed start: the
+	// embeddednode package mutex is held across the wedged node's Stop(), so
+	// embeddednode.Start() would block on it forever while the caller holds
+	// opMu — deadlocking every future transition, i.e. the original incident.
+	n.mu.Lock()
+	wedged := n.embeddedWedged
+	n.mu.Unlock()
+	if wedged {
+		return errors.New("embedded node did not shut down cleanly — restart go-syrius before using Embedded again")
+	}
+
 	// Switching to embedded supersedes any current connection; drop it first so a
 	// failed embedded start cannot leave the old client emitting as "embedded".
 	// The running-handle read shares the critical section so a concurrent stop

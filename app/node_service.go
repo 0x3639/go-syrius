@@ -352,7 +352,7 @@ func (n *NodeService) emitStatus(connected bool) {
 // is persisted before connecting, so an unreachable node leaves the chosen mode
 // in effect (the UI shows disconnected + Retry).
 func (n *NodeService) SetNodeMode(mode string) error {
-	if mode != "remote" && mode != "local" && mode != "embedded" {
+	if mode != "remote" && mode != "embedded" {
 		return fmt.Errorf("unknown node mode %q", mode)
 	}
 	// One transition at a time: persist-mode, embedded stop/start, n.mode, and
@@ -445,7 +445,7 @@ func (n *NodeService) SetNodeURL(mode, url string) error {
 	if mode == "embedded" {
 		return fmt.Errorf("embedded node url is fixed and cannot be changed")
 	}
-	if mode != "remote" && mode != "local" {
+	if mode != "remote" {
 		return fmt.Errorf("unknown node mode %q", mode)
 	}
 	u, perr := neturl.Parse(url)
@@ -466,11 +466,7 @@ func (n *NodeService) SetNodeURL(mode, url string) error {
 
 	activeMode := ""
 	if err := n.config.updateSettings(func(s *Settings) error {
-		if mode == "local" {
-			s.LocalNodeURL = url
-		} else {
-			s.RemoteNodeURL = url
-		}
+		s.RemoteNodeURL = url
 		activeMode = s.NodeMode
 		return nil
 	}); err != nil {
@@ -628,7 +624,7 @@ func (n *NodeService) GetNodeConfig() (NodeConfig, error) {
 	if err != nil {
 		return NodeConfig{}, err
 	}
-	return NodeConfig{Mode: s.NodeMode, RemoteURL: s.RemoteNodeURL, LocalURL: s.LocalNodeURL}, nil
+	return NodeConfig{Mode: s.NodeMode, RemoteURL: s.RemoteNodeURL}, nil
 }
 
 // GetBalances returns the active address's balances.

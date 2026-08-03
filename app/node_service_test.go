@@ -134,20 +134,67 @@ func TestSetNodeModeRejectsUnknown(t *testing.T) {
 	}
 }
 
-func TestSetNodeModePersistsEvenIfUnreachable(t *testing.T) {
+func TestSetNodeModeRejectsLocal(t *testing.T) {
 	n := newTestNode(t)
-	// No local node is running; the connect attempt fails, but the chosen mode
-	// must still be persisted (user intent), and reflected by GetNodeConfig.
-	_ = n.SetNodeMode("local") // connect error expected and ignored here
+	if err := n.SetNodeMode("local"); err == nil {
+		t.Fatal("SetNodeMode(local) succeeded, want error")
+	}
+	// Rejection must happen before any persistence: an unknown mode is never
+	// user intent, so the previously chosen mode must survive intact. (Without
+	// this the test would pass vacuously — a connect to a non-running local
+	// node errors too.)
 	cfg, err := n.GetNodeConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Mode != "local" {
-		t.Fatalf("mode should persist as local, got %q", cfg.Mode)
+	if cfg.Mode != "remote" {
+		t.Fatalf("rejected mode must not persist, got %q", cfg.Mode)
 	}
-	if n.NodeStatus().Mode != "local" {
-		t.Fatalf("NodeStatus().Mode should be local, got %q", n.NodeStatus().Mode)
+}
+
+func TestSetNodeURLRejectsLocal(t *testing.T) {
+	n := newTestNode(t)
+	if err := n.SetNodeURL("local", "ws://127.0.0.1:35998"); err == nil {
+		t.Fatal("SetNodeURL(local) succeeded, want error")
+	}
+}
+
+// seedNodeMode persists a node mode WITHOUT connecting. It lets a test make
+// "remote" the non-active mode so SetNodeURL exercises its persist-only path
+// (no dial, hence no network dependence).
+func seedNodeMode(t *testing.T, n *NodeService, mode string) {
+	t.Helper()
+	if err := n.config.updateSettings(func(s *Settings) error {
+		s.NodeMode = mode
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetNodeModePersistsEvenIfUnreachable(t *testing.T) {
+	n := newTestNode(t)
+	// Start from embedded so the transition below is a real mode change, and
+	// point remote at an unreachable node. The connect attempt fails, but the
+	// chosen mode must still be persisted (user intent) and reflected by
+	// GetNodeConfig.
+	seedNodeMode(t, n, "embedded")
+	if err := n.config.updateSettings(func(s *Settings) error {
+		s.RemoteNodeURL = "ws://127.0.0.1:1"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_ = n.SetNodeMode("remote") // connect error expected and ignored here
+	cfg, err := n.GetNodeConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Mode != "remote" {
+		t.Fatalf("mode should persist as remote, got %q", cfg.Mode)
+	}
+	if n.NodeStatus().Mode != "remote" {
+		t.Fatalf("NodeStatus().Mode should be remote, got %q", n.NodeStatus().Mode)
 	}
 }
 
@@ -156,16 +203,17 @@ func TestSetNodeURLValidatesAndPersists(t *testing.T) {
 	if err := n.SetNodeURL("bogus", "ws://x"); err == nil {
 		t.Fatal("expected unknown mode to error")
 	}
-	if err := n.SetNodeURL("local", "http://x"); err == nil {
+	if err := n.SetNodeURL("remote", "http://x"); err == nil {
 		t.Fatal("expected non-ws scheme to error")
 	}
 	// Setting the non-active mode's URL persists without a reconnect (no error).
-	if err := n.SetNodeURL("local", "ws://127.0.0.1:9"); err != nil {
-		t.Fatalf("SetNodeURL(local): %v", err)
+	seedNodeMode(t, n, "embedded")
+	if err := n.SetNodeURL("remote", "ws://127.0.0.1:9"); err != nil {
+		t.Fatalf("SetNodeURL(remote): %v", err)
 	}
 	cfg, _ := n.GetNodeConfig()
-	if cfg.LocalURL != "ws://127.0.0.1:9" {
-		t.Fatalf("LocalURL not persisted: %q", cfg.LocalURL)
+	if cfg.RemoteURL != "ws://127.0.0.1:9" {
+		t.Fatalf("RemoteURL not persisted: %q", cfg.RemoteURL)
 	}
 }
 
@@ -197,16 +245,18 @@ func TestSetNodeURLStrictValidation(t *testing.T) {
 	if err := n.SetNodeURL("remote", "not-a-url"); err == nil {
 		t.Fatal("expected non-url to error")
 	}
-	// Success on the non-active mode (local) so it persists without connecting.
-	if err := n.SetNodeURL("local", "wss://host.example:35998"); err != nil {
-		t.Fatalf("SetNodeURL(local, valid): %v", err)
+	// Success while remote is the non-active mode, so it persists without
+	// connecting.
+	seedNodeMode(t, n, "embedded")
+	if err := n.SetNodeURL("remote", "wss://host.example:35998"); err != nil {
+		t.Fatalf("SetNodeURL(remote, valid): %v", err)
 	}
 	cfg, err := n.GetNodeConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.LocalURL != "wss://host.example:35998" {
-		t.Fatalf("LocalURL not persisted: %q", cfg.LocalURL)
+	if cfg.RemoteURL != "wss://host.example:35998" {
+		t.Fatalf("RemoteURL not persisted: %q", cfg.RemoteURL)
 	}
 }
 
@@ -323,7 +373,7 @@ func TestGetNodeConfigDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Mode != "remote" || cfg.RemoteURL != defaultNodeURL || cfg.LocalURL != defaultLocalNodeURL {
+	if cfg.Mode != "remote" || cfg.RemoteURL != defaultNodeURL {
 		t.Fatalf("unexpected node config: %+v", cfg)
 	}
 }
@@ -701,10 +751,11 @@ func TestSetNodeURL_RejectsQueryAndFragment(t *testing.T) {
 			t.Fatalf("url %q must be rejected", bad)
 		}
 	}
-	// Userinfo must pass validation. Use the non-active mode (local) so it
-	// persists without dialing — the active mode is remote and would otherwise
-	// make this a network-dependent (flaky) test of the validation path.
-	if err := n.SetNodeURL("local", "wss://user:pass@h:35998"); err != nil {
+	// Userinfo must pass validation. Make embedded the active mode so remote
+	// persists without dialing — dialing would otherwise make this a
+	// network-dependent (flaky) test of the validation path.
+	seedNodeMode(t, n, "embedded")
+	if err := n.SetNodeURL("remote", "wss://user:pass@h:35998"); err != nil {
 		t.Fatalf("basic-auth userinfo must remain allowed: %v", err)
 	}
 }

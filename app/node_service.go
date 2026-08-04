@@ -609,21 +609,30 @@ func (n *NodeService) startSyncPoller() {
 					// A dead node stops answering; after the stall window,
 					// say so instead of freezing the last good frame.
 					if tracker.observeError(now) {
-						runtime.EventsEmit(ctx, EventNodeSync, SyncStatus{
-							State:         "stalled",
-							CurrentHeight: tracker.lastHeight,
-							TargetHeight:  lastTarget,
-							Peers:         lastPeers,
-						})
+						// A superseded poller must not paint a stalled frame
+						// over a fresher connection's status.
+						select {
+						case <-stop:
+							return
+						default:
+						}
+						// Through computeSync, not a bare literal: the last
+						// known-good heights still carry a real percent, and
+						// collapsing the bar to 0.0% would misreport a node
+						// that stalled at 80% as one that never started.
+						st := computeSync(nil, tracker.lastHeight, lastTarget, lastPeers, "stalled")
+						runtime.EventsEmit(ctx, EventNodeSync, st)
 					}
 					continue
 				}
 				peers := 0
 				if ni, nerr := client.StatsApi.NetworkInfo(); nerr == nil {
 					peers = ni.NumPeers
+					// Only cache a real reading: a failed NetworkInfo must not
+					// overwrite the last known peer count with a phantom 0.
+					lastPeers = peers
 				}
 				lastTarget = info.TargetHeight
-				lastPeers = peers
 				samples = append(samples, heightSample{T: now, Height: info.CurrentHeight})
 				if len(samples) > 10 {
 					samples = samples[len(samples)-10:]

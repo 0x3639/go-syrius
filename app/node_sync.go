@@ -59,17 +59,25 @@ func computeSync(samples []heightSample, current, target uint64, peers int, stat
 const syncStallAfter = 3 * time.Minute
 
 // stallTracker decides when sync progress should be reported as stalled.
-// Pure state machine; the poller feeds it wall-clock samples.
+// Pure state machine; the poller feeds it wall-clock samples. It runs two
+// independent clocks: lastAdvance (height standing still) and firstErr (an
+// unbroken run of failing samples).
 type stallTracker struct {
 	baseline    bool
 	lastHeight  uint64
 	lastAdvance time.Time
+	firstErr    time.Time
 }
 
 // observe folds a successful sample. Returns true when the node is unsynced
-// and its height has not advanced for syncStallAfter.
+// and its height has not moved for syncStallAfter. Any height CHANGE — not
+// merely an advance — re-baselines: an embedded DB rollback or a reorg walks
+// the height backwards, and treating that as "no progress" would pin a false
+// stall on a node that is in fact working.
 func (st *stallTracker) observe(now time.Time, height uint64, state string) bool {
-	if !st.baseline || height > st.lastHeight {
+	// A sample got through, so whatever error run was in flight is over.
+	st.firstErr = time.Time{}
+	if !st.baseline || height != st.lastHeight {
 		st.baseline = true
 		st.lastHeight = height
 		st.lastAdvance = now
@@ -79,8 +87,19 @@ func (st *stallTracker) observe(now time.Time, height uint64, state string) bool
 }
 
 // observeError reports whether persistent RPC errors should surface as
-// stalled: only once a baseline exists (before that, the connection path —
-// not the poller — owns the "not working" story) and the window has elapsed.
+// stalled. The window is measured over the error RUN, not since the last
+// height advance: a synced node on a quiet chain can legitimately sit for
+// hours without advancing, and billing that quiet time against its first
+// failed sample would flag it stalled instantly. Requires a baseline —
+// before that the connection path, not the poller, owns the "not working"
+// story.
 func (st *stallTracker) observeError(now time.Time) bool {
-	return st.baseline && now.Sub(st.lastAdvance) >= syncStallAfter
+	if !st.baseline {
+		return false
+	}
+	if st.firstErr.IsZero() {
+		st.firstErr = now
+		return false
+	}
+	return now.Sub(st.firstErr) >= syncStallAfter
 }

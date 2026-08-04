@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-03
 **Status:** Proposed
-**Scope:** `app/node_service.go`, `app/config*.go` (settings migration), `internal/embeddednode`, `frontend/src/views/Settings.vue`, `frontend/src/stores/node.ts` (+tests, regenerated bindings), `plan.md` + CLAUDE.md one-line updates (three node modes → two)
+**Scope:** `app/node_service.go`, `app/config*.go` (settings migration), `frontend/src/views/Settings.vue`, `frontend/src/stores/node.ts` (+tests, regenerated bindings), `plan.md` + CLAUDE.md one-line updates (three node modes → two)
 **Audience:** Implementer and reviewer
 **Related:** plan.md §4 (three node modes — this spec supersedes it to two), `docs/superpowers/specs/…phase-4…` if present
 
@@ -108,7 +108,8 @@ startup, which is accurate.
 In `startSyncPoller`'s loop:
 
 - Track `lastAdvance time.Time` (initialized at poller start) and the last
-  seen height; any height increase resets `lastAdvance`.
+  seen height; any height change (including a regression/reorg) re-baselines
+  `lastAdvance`.
 - `syncStallAfter = 3 * time.Minute`. When `state != "synced"` and
   `time.Since(lastAdvance) >= syncStallAfter`, the emitted `SyncStatus.State`
   becomes `"stalled"` (overriding the mapped state). Consecutive `SyncInfo`

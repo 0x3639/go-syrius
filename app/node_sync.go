@@ -52,3 +52,35 @@ func computeSync(samples []heightSample, current, target uint64, peers int, stat
 	s.EtaSeconds = int64(float64(target-current) / rate)
 	return s
 }
+
+// syncStallAfter is how long an unsynced node's height may stand still before
+// the poller reports "stalled" (spec §6 — the 2026-08-03 wedged-p2p incident
+// showed "starting · 100.0%" forever while nothing moved).
+const syncStallAfter = 3 * time.Minute
+
+// stallTracker decides when sync progress should be reported as stalled.
+// Pure state machine; the poller feeds it wall-clock samples.
+type stallTracker struct {
+	baseline    bool
+	lastHeight  uint64
+	lastAdvance time.Time
+}
+
+// observe folds a successful sample. Returns true when the node is unsynced
+// and its height has not advanced for syncStallAfter.
+func (st *stallTracker) observe(now time.Time, height uint64, state string) bool {
+	if !st.baseline || height > st.lastHeight {
+		st.baseline = true
+		st.lastHeight = height
+		st.lastAdvance = now
+		return false
+	}
+	return state != "synced" && now.Sub(st.lastAdvance) >= syncStallAfter
+}
+
+// observeError reports whether persistent RPC errors should surface as
+// stalled: only once a baseline exists (before that, the connection path —
+// not the poller — owns the "not working" story) and the window has elapsed.
+func (st *stallTracker) observeError(now time.Time) bool {
+	return st.baseline && now.Sub(st.lastAdvance) >= syncStallAfter
+}

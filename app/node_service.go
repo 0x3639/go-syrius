@@ -594,6 +594,9 @@ func (n *NodeService) startSyncPoller() {
 	}
 	go func() {
 		var samples []heightSample
+		var tracker stallTracker
+		var lastTarget uint64
+		var lastPeers int
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -603,17 +606,33 @@ func (n *NodeService) startSyncPoller() {
 			case now := <-ticker.C:
 				info, err := client.StatsApi.SyncInfo()
 				if err != nil {
+					// A dead node stops answering; after the stall window,
+					// say so instead of freezing the last good frame.
+					if tracker.observeError(now) {
+						runtime.EventsEmit(ctx, EventNodeSync, SyncStatus{
+							State:         "stalled",
+							CurrentHeight: tracker.lastHeight,
+							TargetHeight:  lastTarget,
+							Peers:         lastPeers,
+						})
+					}
 					continue
 				}
 				peers := 0
 				if ni, nerr := client.StatsApi.NetworkInfo(); nerr == nil {
 					peers = ni.NumPeers
 				}
+				lastTarget = info.TargetHeight
+				lastPeers = peers
 				samples = append(samples, heightSample{T: now, Height: info.CurrentHeight})
 				if len(samples) > 10 {
 					samples = samples[len(samples)-10:]
 				}
-				st := computeSync(samples, info.CurrentHeight, info.TargetHeight, peers, mapSyncState(info.State))
+				state := mapSyncState(info.State)
+				if tracker.observe(now, info.CurrentHeight, state) {
+					state = "stalled"
+				}
+				st := computeSync(samples, info.CurrentHeight, info.TargetHeight, peers, state)
 				runtime.EventsEmit(ctx, EventNodeSync, st)
 				n.noteSyncHeight(info.CurrentHeight)
 			}

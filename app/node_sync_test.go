@@ -63,3 +63,48 @@ func TestMapSyncState(t *testing.T) {
 		t.Fatal("Unknown")
 	}
 }
+
+func TestStallTrackerFlagsFrozenHeight(t *testing.T) {
+	var st stallTracker
+	t0 := time.Now()
+	if st.observe(t0, 100, "syncing") {
+		t.Fatal("first sample must establish baseline, not stall")
+	}
+	if st.observe(t0.Add(time.Minute), 100, "syncing") {
+		t.Fatal("stalled before syncStallAfter elapsed")
+	}
+	if !st.observe(t0.Add(syncStallAfter), 100, "syncing") {
+		t.Fatal("frozen height past syncStallAfter must report stalled")
+	}
+	// Any advance resets the clock.
+	if st.observe(t0.Add(syncStallAfter+time.Second), 101, "syncing") {
+		t.Fatal("advancing height must clear the stall")
+	}
+	if st.observe(t0.Add(syncStallAfter+2*time.Second), 101, "syncing") {
+		t.Fatal("stall must not re-trigger immediately after an advance")
+	}
+}
+
+func TestStallTrackerNeverFlagsSynced(t *testing.T) {
+	var st stallTracker
+	t0 := time.Now()
+	st.observe(t0, 100, "synced")
+	if st.observe(t0.Add(2*syncStallAfter), 100, "synced") {
+		t.Fatal("a synced node with a quiet chain is not stalled")
+	}
+}
+
+func TestStallTrackerErrorsConvergeToStalled(t *testing.T) {
+	var st stallTracker
+	t0 := time.Now()
+	if st.observeError(t0) {
+		t.Fatal("errors before any baseline must not report stalled")
+	}
+	st.observe(t0, 100, "syncing")
+	if st.observeError(t0.Add(time.Minute)) {
+		t.Fatal("stalled too early on errors")
+	}
+	if !st.observeError(t0.Add(syncStallAfter)) {
+		t.Fatal("persistent errors past syncStallAfter must report stalled")
+	}
+}

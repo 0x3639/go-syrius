@@ -14,17 +14,14 @@ const ui = useUiStore()
 
 const nodeMode = ref('remote')
 const remoteUrl = ref('')
-const localUrl = ref('')
 const nodeMsg = ref('')
 const nodeErr = ref('')
 let loadedMode = 'remote'
 let loadedRemote = ''
-let loadedLocal = ''
 // Track explicit user edits so the async config load can't clobber them and
-// so picking a mode never makes the (still-pristine) URL fields look "edited".
+// so picking a mode never makes the (still-pristine) URL field look "edited".
 const modeDirty = ref(false)
 const remoteDirty = ref(false)
-const localDirty = ref(false)
 const showEmbeddedConfirm = ref(false)
 const embeddedSize = ref(0)
 
@@ -93,10 +90,8 @@ onMounted(async () => {
   const c = await node.getConfig()
   loadedMode = c.mode
   loadedRemote = c.remoteUrl
-  loadedLocal = c.localUrl
   if (!modeDirty.value) nodeMode.value = c.mode
   if (!remoteDirty.value) remoteUrl.value = c.remoteUrl
-  if (!localDirty.value) localUrl.value = c.localUrl
   await refreshEmbedded()
   try {
     const settings = await Cfg.GetSettings()
@@ -123,11 +118,9 @@ async function applyNode() {
   applyingNode.value = true
   try {
     const remoteEdited = remoteDirty.value && remoteUrl.value !== loadedRemote
-    const localEdited = localDirty.value && localUrl.value !== loadedLocal
     if (remoteEdited) { await node.setUrl('remote', remoteUrl.value); loadedRemote = remoteUrl.value }
-    if (localEdited) { await node.setUrl('local', localUrl.value); loadedLocal = localUrl.value }
     if (nodeMode.value !== loadedMode) { await node.setMode(nodeMode.value); loadedMode = nodeMode.value }
-    else if (nodeMode.value === 'remote' ? remoteEdited : localEdited) { await node.setMode(nodeMode.value) }
+    else if (nodeMode.value === 'remote' && remoteEdited) { await node.setMode(nodeMode.value) }
     nodeMsg.value = 'Node settings applied'
   } catch (e: any) { nodeErr.value = e?.message ?? String(e) }
   finally { applyingNode.value = false }
@@ -262,19 +255,20 @@ function hide() { revealed.value = '' }
       <h2 class="text-sm text-muted-foreground">Node</h2>
       <label class="flex items-center gap-2 text-foreground"><input type="radio" v-model="nodeMode" value="remote" @change="modeDirty = true" /> Remote</label>
       <input class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm text-foreground" v-model="remoteUrl" @input="remoteDirty = true" aria-label="wss endpoint url" />
-      <label class="flex items-center gap-2 text-foreground"><input type="radio" v-model="nodeMode" value="local" @change="modeDirty = true" /> Local</label>
-      <input class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm text-foreground" v-model="localUrl" @input="localDirty = true" aria-label="ws endpoint url" />
+      <p class="text-xs text-muted-foreground">Running your own znnd? Point Remote at ws://127.0.0.1:35998.</p>
       <label class="flex items-center gap-2 text-foreground"><input type="radio" v-model="nodeMode" value="embedded" @change="modeDirty = true" /> Embedded</label>
       <p class="text-xs text-muted-foreground">Runs a full node in-app at ws://127.0.0.1:35998</p>
 
       <div v-if="node.mode === 'embedded' && node.sync" class="rounded bg-background p-3 space-y-1 text-sm text-foreground">
-        <template v-if="node.sync.targetHeight === 0">
-          <p class="text-muted-foreground">connecting to peers…</p>
-        </template>
-        <template v-else>
-          <div class="h-2 w-full rounded bg-card"><div class="h-2 rounded bg-primary" :style="`width:${node.sync.percent}%`"></div></div>
-          <p>{{ node.sync.state }} · {{ node.sync.currentHeight }} / {{ node.sync.targetHeight }} ({{ node.sync.percent.toFixed(1) }}%)<template v-if="node.sync.etaSeconds > 0"> · ETA {{ fmtEta(node.sync.etaSeconds) }}</template></p>
-        </template>
+        <div v-if="node.sync.targetHeight > 0" class="h-2 w-full rounded bg-card"><div class="h-2 rounded bg-primary" :style="`width:${node.sync.percent}%`"></div></div>
+        <!-- Stalled wins over every other rendering: a node that died before any
+             peer answered stalls at targetHeight 0, and that must not read as the
+             optimistic "connecting to peers…". Heights only when we have a target. -->
+        <p v-if="node.sync.state === 'stalled'" class="text-destructive" role="alert">
+          sync stalled — restart go-syrius if this persists<template v-if="node.sync.targetHeight > 0"> · {{ node.sync.currentHeight }} / {{ node.sync.targetHeight }}</template>
+        </p>
+        <p v-else-if="node.sync.targetHeight === 0" class="text-muted-foreground">connecting to peers…</p>
+        <p v-else>{{ node.sync.state }} · {{ node.sync.currentHeight }} / {{ node.sync.targetHeight }} ({{ node.sync.percent.toFixed(1) }}%)<template v-if="node.sync.etaSeconds > 0"> · ETA {{ fmtEta(node.sync.etaSeconds) }}</template></p>
         <p class="text-muted-foreground">{{ node.sync.peers }} peers · {{ (embeddedSize / 1e9).toFixed(2) }} GB on disk</p>
       </div>
 

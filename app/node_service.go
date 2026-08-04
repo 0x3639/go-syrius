@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	neturl "net/url"
 	"os"
 	"path/filepath"
@@ -21,6 +22,11 @@ import (
 	api "github.com/zenon-network/go-zenon/rpc/api"
 	"github.com/zenon-network/go-zenon/rpc/server"
 )
+
+// embeddedStopTimeout bounds how long a mode transition waits for the embedded
+// node to stop. A wedged Stop() (2026-08-03 incident) otherwise blocks opMu —
+// and with it every future transition — forever. Var, not const: tests shorten it.
+var embeddedStopTimeout = 10 * time.Second
 
 // embeddedHandle abstracts a running embedded node (real or test stub).
 type embeddedHandle interface {
@@ -65,6 +71,20 @@ type NodeService struct {
 	embedded      embeddedHandle
 	embeddedStart func(dataDir string) (embeddedHandle, error)
 	syncStop      chan struct{}
+
+	// embeddedWedged latches when an embedded stop timed out: the abandoned
+	// node still owns the WS port, so starting another in-process is doomed —
+	// require an app restart instead (spec §4).
+	embeddedWedged bool
+
+	// embeddedStopping is latched by stopEmbedded for the duration of its
+	// bounded wait — the window in which the handle is already nil but the
+	// embeddednode package mutex is still held by the in-flight Stop(). A start
+	// attempted in that window would block on that mutex forever (OnShutdown
+	// calls stopEmbedded without opMu, so a concurrent Connect can get here).
+	// Unlike embeddedWedged this is transient: it clears when the stop lands or
+	// times out. Guarded by mu.
+	embeddedStopping bool
 
 	// appNapBegin/appNapEnd hold a macOS App Nap prevention assertion for
 	// exactly the embedded node's lifetime (no-ops off darwin; stubbed in tests).
@@ -352,7 +372,7 @@ func (n *NodeService) emitStatus(connected bool) {
 // is persisted before connecting, so an unreachable node leaves the chosen mode
 // in effect (the UI shows disconnected + Retry).
 func (n *NodeService) SetNodeMode(mode string) error {
-	if mode != "remote" && mode != "local" && mode != "embedded" {
+	if mode != "remote" && mode != "embedded" {
 		return fmt.Errorf("unknown node mode %q", mode)
 	}
 	// One transition at a time: persist-mode, embedded stop/start, n.mode, and
@@ -360,6 +380,21 @@ func (n *NodeService) SetNodeMode(mode string) error {
 	// concurrent Apply/Connect.
 	n.opMu.Lock()
 	defer n.opMu.Unlock()
+
+	// Refuse embedded while a previous embedded node is wedged: the abandoned
+	// node still owns the WS port, so an in-process restart cannot succeed.
+	// BEFORE the persist — a refused transition must write nothing, so on-disk
+	// mode, in-memory mode, and NodeStatus never disagree. Read inside opMu:
+	// checking outside it could observe wedged==false, then block on opMu behind
+	// the very transition that latches the wedge, and start a doomed node anyway.
+	if mode == "embedded" {
+		n.mu.Lock()
+		wedged := n.embeddedWedged
+		n.mu.Unlock()
+		if wedged {
+			return errors.New("embedded node did not shut down cleanly — restart go-syrius before using Embedded again")
+		}
+	}
 
 	// One settings mutation captures both the persisted mode and the URL the
 	// transition will dial — no separate re-read another writer could slip into.
@@ -372,13 +407,28 @@ func (n *NodeService) SetNodeMode(mode string) error {
 		return err
 	}
 
-	// Tear down any running embedded node when leaving embedded mode.
+	// Honest transition status (spec §5): flip the mode and tell the UI the
+	// switch has STARTED before any teardown or dialing. The frontend clears
+	// stale embedded sync state on this mode change; the footer shows
+	// "Disconnected (<new mode>)" until the connect lands.
+	//
+	// The outgoing connection is dropped in the SAME critical section, because
+	// the emit is not the only way status is observed: NodeStatus() pulls (and
+	// currentClient/currentChainID consumers) read the live fields. Leaving the
+	// old client installed would have them report connected=true with the old
+	// height and chain id under the NEW mode for the entire teardown — up to
+	// embeddedStopTimeout. disconnectLocked is idempotent (every field is
+	// nil-guarded); setNode/startEmbedded call it again below.
+	n.mu.Lock()
+	n.mode = mode
+	n.disconnectLocked()
+	n.emitStatusLocked(false)
+	n.mu.Unlock()
+
+	// Tear down any running embedded node when leaving embedded mode (bounded).
 	if mode != "embedded" {
 		n.stopEmbedded()
 	}
-	n.mu.Lock()
-	n.mode = mode
-	n.mu.Unlock()
 
 	if mode == "embedded" {
 		return n.startEmbedded()
@@ -393,11 +443,36 @@ func (n *NodeService) SetNodeMode(mode string) error {
 // an app restart. The caller has already persisted/marked mode == "embedded".
 // Mutex discipline: mu is never held across embeddedStart/SetNode/startSyncPoller.
 func (n *NodeService) startEmbedded() error {
+	// Backstop wedged guard, covering EVERY path into an embedded start —
+	// notably Connect(), which arrives with the mode already persisted and so
+	// never passes SetNodeMode's guard. This is not merely a doomed start: the
+	// embeddednode package mutex is held across the wedged node's Stop(), so
+	// embeddednode.Start() would block on it forever while the caller holds
+	// opMu — deadlocking every future transition, i.e. the original incident.
+	//
+	// The guards, the teardown, and the running-handle read are ONE critical
+	// section, and that is load-bearing: stopEmbedded latches embeddedStopping in
+	// the same section that nils the handle, so observing "not stopping, not
+	// wedged, and here is the handle" under a single lock is what proves no Stop
+	// is in flight. Reading the guards under their own lock and re-acquiring for
+	// the handle leaves a gap in which a stop can latch invisibly — the caller
+	// would then see h == nil and dive into embeddedStart anyway. Refusals return
+	// before the teardown, so a refused start still changes nothing.
+	n.mu.Lock()
+	if n.embeddedWedged {
+		n.mu.Unlock()
+		return errors.New("embedded node did not shut down cleanly — restart go-syrius before using Embedded again")
+	}
+	// Same deadlock, transient cause: a stop is in flight and still holds the
+	// embeddednode package mutex, but has not (yet) wedged. Refusing with a
+	// deliberately different, retryable message keeps the permanent "restart
+	// go-syrius" wording meaningful.
+	if n.embeddedStopping {
+		n.mu.Unlock()
+		return errors.New("embedded node is stopping — try again in a few seconds")
+	}
 	// Switching to embedded supersedes any current connection; drop it first so a
 	// failed embedded start cannot leave the old client emitting as "embedded".
-	// The running-handle read shares the critical section so a concurrent stop
-	// can't slip between teardown and reuse.
-	n.mu.Lock()
 	n.disconnectLocked()
 	h := n.embedded
 	n.mu.Unlock()
@@ -440,12 +515,15 @@ func redactURLUserinfo(msg, rawURL string) string {
 	return strings.ReplaceAll(msg, u.User.String()+"@", "***@")
 }
 
-// SetNodeURL persists a mode's URL (validated) and reconnects if it is active.
+// SetNodeURL persists the remote node URL (validated) and reconnects if remote
+// is the active mode. Remote is the only configurable URL: the embedded node's
+// is fixed. The mode parameter survives Local's removal for explicitness; only
+// "remote" is accepted.
 func (n *NodeService) SetNodeURL(mode, url string) error {
 	if mode == "embedded" {
 		return fmt.Errorf("embedded node url is fixed and cannot be changed")
 	}
-	if mode != "remote" && mode != "local" {
+	if mode != "remote" {
 		return fmt.Errorf("unknown node mode %q", mode)
 	}
 	u, perr := neturl.Parse(url)
@@ -466,11 +544,7 @@ func (n *NodeService) SetNodeURL(mode, url string) error {
 
 	activeMode := ""
 	if err := n.config.updateSettings(func(s *Settings) error {
-		if mode == "local" {
-			s.LocalNodeURL = url
-		} else {
-			s.RemoteNodeURL = url
-		}
+		s.RemoteNodeURL = url
 		activeMode = s.NodeMode
 		return nil
 	}); err != nil {
@@ -482,7 +556,17 @@ func (n *NodeService) SetNodeURL(mode, url string) error {
 	return nil
 }
 
-// stopEmbedded halts the embedded node + sync poller if running.
+// stopEmbedded halts the embedded node + sync poller if running, waiting at
+// most embeddedStopTimeout for the node to stop. On timeout the handle is
+// abandoned (the background goroutine keeps waiting; if the stop ever finishes
+// the embeddednode package's single-instance guard clears itself) and the
+// service latches embeddedWedged — see SetNodeMode's embedded guard.
+//
+// For the whole wait it also latches embeddedStopping. The nil-out below makes
+// the handle invisible while the in-flight Stop() still holds the embeddednode
+// package mutex; OnShutdown calls this WITHOUT opMu, so a concurrent Connect()
+// could otherwise find no handle, no wedge, and start a node that blocks on
+// that mutex forever — taking opMu, and OnShutdown's own Disconnect, with it.
 func (n *NodeService) stopEmbedded() {
 	n.mu.Lock()
 	if n.syncStop != nil {
@@ -491,11 +575,35 @@ func (n *NodeService) stopEmbedded() {
 	}
 	h := n.embedded
 	n.embedded = nil
-	n.mu.Unlock()
 	if h != nil {
-		_ = h.Stop()
-		n.appNapEnd()
+		// Same critical section as the nil-out: there must be no instant in
+		// which the handle is gone and neither flag is set.
+		n.embeddedStopping = true
 	}
+	n.mu.Unlock()
+	if h == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		_ = h.Stop()
+		close(done)
+	}()
+	select {
+	case <-done:
+		n.mu.Lock()
+		n.embeddedStopping = false
+		n.mu.Unlock()
+	case <-time.After(embeddedStopTimeout):
+		log.Printf("WARN: embedded node did not stop within %s; abandoning handle (restart recommended before using Embedded again)", embeddedStopTimeout)
+		n.mu.Lock()
+		// The transient refusal hands over to the permanent one in one step:
+		// no window in which a start is allowed again.
+		n.embeddedWedged = true
+		n.embeddedStopping = false
+		n.mu.Unlock()
+	}
+	n.appNapEnd()
 }
 
 // noteSyncHeight folds a sync-poller ledger-height sample into the status
@@ -534,6 +642,9 @@ func (n *NodeService) startSyncPoller() {
 	}
 	go func() {
 		var samples []heightSample
+		var tracker stallTracker
+		var lastTarget uint64
+		var lastPeers int
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -543,17 +654,42 @@ func (n *NodeService) startSyncPoller() {
 			case now := <-ticker.C:
 				info, err := client.StatsApi.SyncInfo()
 				if err != nil {
+					// A dead node stops answering; after the stall window,
+					// say so instead of freezing the last good frame.
+					if tracker.observeError(now) {
+						// A superseded poller must not paint a stalled frame
+						// over a fresher connection's status.
+						select {
+						case <-stop:
+							return
+						default:
+						}
+						// Through computeSync, not a bare literal: the last
+						// known-good heights still carry a real percent, and
+						// collapsing the bar to 0.0% would misreport a node
+						// that stalled at 80% as one that never started.
+						st := computeSync(nil, tracker.lastHeight, lastTarget, lastPeers, "stalled")
+						runtime.EventsEmit(ctx, EventNodeSync, st)
+					}
 					continue
 				}
 				peers := 0
 				if ni, nerr := client.StatsApi.NetworkInfo(); nerr == nil {
 					peers = ni.NumPeers
+					// Only cache a real reading: a failed NetworkInfo must not
+					// overwrite the last known peer count with a phantom 0.
+					lastPeers = peers
 				}
+				lastTarget = info.TargetHeight
 				samples = append(samples, heightSample{T: now, Height: info.CurrentHeight})
 				if len(samples) > 10 {
 					samples = samples[len(samples)-10:]
 				}
-				st := computeSync(samples, info.CurrentHeight, info.TargetHeight, peers, mapSyncState(info.State))
+				state := mapSyncState(info.State)
+				if tracker.observe(now, info.CurrentHeight, state) {
+					state = "stalled"
+				}
+				st := computeSync(samples, info.CurrentHeight, info.TargetHeight, peers, state)
 				runtime.EventsEmit(ctx, EventNodeSync, st)
 				n.noteSyncHeight(info.CurrentHeight)
 			}
@@ -582,9 +718,23 @@ func (n *NodeService) DeleteEmbeddedData() error {
 	defer n.opMu.Unlock()
 	n.mu.RLock()
 	running := n.embedded != nil
+	wedged := n.embeddedWedged
+	stopping := n.embeddedStopping
 	n.mu.RUnlock()
 	if running {
 		return errors.New("stop the embedded node first")
+	}
+	// A wedged node was abandoned, not stopped: n.embedded is nil, so the
+	// running check above passes, but the process may still be writing to the
+	// data dir. RemoveAll under a live node risks corrupting whatever it fails
+	// to delete — refuse until a restart clears the abandoned process.
+	if wedged {
+		return errors.New("embedded node did not shut down cleanly — restart go-syrius before deleting embedded data")
+	}
+	// Identical hazard, transient: a stop is still in flight, so the handle is
+	// already nil while the node is very much alive and writing. Wait it out.
+	if stopping {
+		return errors.New("embedded node is stopping — try again in a few seconds")
 	}
 	dir, err := n.config.dataDir()
 	if err != nil {
@@ -622,13 +772,13 @@ func (n *NodeService) Connect() error {
 	return n.setNode(s.ActiveNodeURL())
 }
 
-// GetNodeConfig returns the node mode and per-mode URLs for the settings UI.
+// GetNodeConfig returns the node mode and remote URL for the settings UI.
 func (n *NodeService) GetNodeConfig() (NodeConfig, error) {
 	s, err := n.config.GetSettings()
 	if err != nil {
 		return NodeConfig{}, err
 	}
-	return NodeConfig{Mode: s.NodeMode, RemoteURL: s.RemoteNodeURL, LocalURL: s.LocalNodeURL}, nil
+	return NodeConfig{Mode: s.NodeMode, RemoteURL: s.RemoteNodeURL}, nil
 }
 
 // GetBalances returns the active address's balances.

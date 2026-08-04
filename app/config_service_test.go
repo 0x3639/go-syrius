@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -77,9 +78,6 @@ func TestSettingsMigrationFromLegacyNodeURL(t *testing.T) {
 	if s.RemoteNodeURL != "wss://custom:35998" {
 		t.Fatalf("legacy nodeUrl should migrate to RemoteNodeURL, got %q", s.RemoteNodeURL)
 	}
-	if s.LocalNodeURL != defaultLocalNodeURL {
-		t.Fatalf("LocalNodeURL default, got %q", s.LocalNodeURL)
-	}
 	if s.NodeMode != "remote" {
 		t.Fatalf("NodeMode default remote, got %q", s.NodeMode)
 	}
@@ -109,19 +107,91 @@ func TestSettingsDefaultsWhenNoFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.NodeMode != "remote" || s.RemoteNodeURL != defaultNodeURL || s.LocalNodeURL != defaultLocalNodeURL {
+	if s.NodeMode != "remote" || s.RemoteNodeURL != defaultNodeURL {
 		t.Fatalf("unexpected defaults: %+v", s)
 	}
 }
 
 func TestActiveNodeURL(t *testing.T) {
-	s := Settings{NodeMode: "remote", RemoteNodeURL: "wss://r", LocalNodeURL: "ws://l"}
+	s := Settings{NodeMode: "remote", RemoteNodeURL: "wss://r"}
 	if s.ActiveNodeURL() != "wss://r" {
 		t.Fatalf("remote active: %q", s.ActiveNodeURL())
 	}
-	s.NodeMode = "local"
-	if s.ActiveNodeURL() != "ws://l" {
-		t.Fatalf("local active: %q", s.ActiveNodeURL())
+	s.NodeMode = "embedded"
+	if s.ActiveNodeURL() != defaultEmbeddedNodeURL {
+		t.Fatalf("embedded active: %q", s.ActiveNodeURL())
+	}
+}
+
+func TestMigrateSettingsLocalModeBecomesRemote(t *testing.T) {
+	s := Settings{NodeMode: "local", RemoteNodeURL: "wss://example.org:35998"}
+	migrateSettings(&s)
+	if s.NodeMode != "remote" {
+		t.Fatalf("NodeMode = %q, want remote", s.NodeMode)
+	}
+	if s.RemoteNodeURL != "wss://example.org:35998" {
+		t.Fatalf("RemoteNodeURL changed: %q", s.RemoteNodeURL)
+	}
+}
+
+func TestSettingsJSONDropsLegacyLocalKey(t *testing.T) {
+	// Old settings.json with a localNodeUrl key must still parse (unknown keys
+	// are ignored) and must not resurface on the next marshal.
+	raw := []byte(`{"nodeMode":"local","remoteNodeUrl":"wss://r","localNodeUrl":"ws://127.0.0.1:35998"}`)
+	var s Settings
+	if err := json.Unmarshal(raw, &s); err != nil {
+		t.Fatalf("unmarshal legacy settings: %v", err)
+	}
+	migrateSettings(&s)
+	out, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(out), "localNodeUrl") {
+		t.Fatalf("legacy localNodeUrl key persisted: %s", out)
+	}
+	if s.NodeMode != "remote" {
+		t.Fatalf("NodeMode = %q, want remote", s.NodeMode)
+	}
+}
+
+// Spec §3: saving drops the legacy key. The in-memory marshal test above cannot
+// prove this — the real path is read a legacy settings.json → persist → the key
+// is gone from the FILE and the removed "local" mode has become "remote".
+func TestSavingDropsLegacyLocalKeyOnDisk(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GO_SYRIUS_DATA_DIR", dir)
+	path := filepath.Join(dir, "settings.json")
+	raw := []byte(`{"nodeMode":"local","remoteNodeUrl":"wss://r","localNodeUrl":"ws://x","theme":"dark"}`)
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatalf("seed settings.json: %v", err)
+	}
+
+	c := newConfigService()
+	s, err := c.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	if s.NodeMode != "remote" {
+		t.Fatalf("NodeMode = %q, want remote", s.NodeMode)
+	}
+	// A no-op mutator still rewrites the file through the migrated struct.
+	if err := c.updateSettings(func(*Settings) error { return nil }); err != nil {
+		t.Fatalf("updateSettings: %v", err)
+	}
+
+	out, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read back settings.json: %v", err)
+	}
+	if strings.Contains(string(out), "localNodeUrl") {
+		t.Fatalf("legacy localNodeUrl key survived a save: %s", out)
+	}
+	if !strings.Contains(string(out), `"nodeMode": "remote"`) {
+		t.Fatalf("persisted mode should be remote: %s", out)
+	}
+	if s.RemoteNodeURL != "wss://r" {
+		t.Fatalf("RemoteNodeURL changed: %q", s.RemoteNodeURL)
 	}
 }
 
@@ -132,7 +202,7 @@ func TestMigrationIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	s2, _ := c.GetSettings()
-	if s2.RemoteNodeURL != s1.RemoteNodeURL || s2.LocalNodeURL != s1.LocalNodeURL || s2.NodeMode != s1.NodeMode {
+	if s2.RemoteNodeURL != s1.RemoteNodeURL || s2.NodeMode != s1.NodeMode {
 		t.Fatalf("not idempotent: %+v vs %+v", s1, s2)
 	}
 }

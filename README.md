@@ -2,7 +2,7 @@
 
 A reimplementation of the Zenon **syrius** wallet as a **Go + [Wails v2](https://wails.io)** desktop app (Vue 3 + TypeScript frontend). It reuses the proven Go crypto/node stack — [`znn-sdk-go`](https://github.com/0x3639/znn-sdk-go) and `go-zenon` — so wallet files and transactions interoperate with the original syrius.
 
-**Working today:** send/receive, wallet lifecycle (create / import / manage / auto-lock), all three node modes (remote / local / embedded full node), the full Network-of-Momentum feature set (plasma, staking, pillars, sentinels, tokens, accelerator), and **WalletConnect v2** for bridge dApps. Mainnet-capable since `v0.3.0`.
+**Working today:** send/receive, wallet lifecycle (create / import / manage / auto-lock), both node modes (remote / embedded full node), the full Network-of-Momentum feature set (plasma, staking, pillars, sentinels, tokens, accelerator), and **WalletConnect v2** for bridge dApps. Mainnet-capable since `v0.3.0`.
 
 > The experimental **Governance** module is **temporarily disabled** pending an SDK update; it will return in a future release.
 
@@ -63,13 +63,14 @@ On first run, create a new wallet or import an existing mnemonic / syrius keysto
 
 ## 4. Choose a node
 
-**Settings → Node** offers three modes:
+**Settings → Node** offers two modes:
 
 | Mode | What it is |
 |---|---|
 | **Remote** (default) | A third-party public node over `wss://` — zero setup. |
-| **Local** | Your own `znnd` at `ws://127.0.0.1:35998`. |
 | **Embedded** | A full go-zenon node running *inside* the wallet — no separate install; expect an initial sync (progress is shown live). |
+
+Local mode was removed 2026-08-03 — run your own `znnd` and point Remote at `ws://127.0.0.1:35998`.
 
 ## 5. Enable mainnet sending (deliberate step)
 

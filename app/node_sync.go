@@ -52,3 +52,65 @@ func computeSync(samples []heightSample, current, target uint64, peers int, stat
 	s.EtaSeconds = int64(float64(target-current) / rate)
 	return s
 }
+
+// syncStallAfter is how long an unsynced node's height may stand still before
+// the poller reports "stalled" (spec §6 — the 2026-08-03 wedged-p2p incident
+// showed "starting · 100.0%" forever while nothing moved).
+const syncStallAfter = 3 * time.Minute
+
+// stallTracker decides when sync progress should be reported as stalled.
+// Pure state machine; the poller feeds it wall-clock samples. It runs two
+// independent clocks: lastAdvance (height standing still) and firstErr (an
+// unbroken run of failing samples).
+type stallTracker struct {
+	baseline    bool
+	lastHeight  uint64
+	lastAdvance time.Time
+	lastState   string
+	firstErr    time.Time
+}
+
+// observe folds a successful sample. Returns true when the node is unsynced
+// and its height has not moved for syncStallAfter. Any height CHANGE — not
+// merely an advance — re-baselines: an embedded DB rollback or a reorg walks
+// the height backwards, and treating that as "no progress" would pin a false
+// stall on a node that is in fact working.
+//
+// Leaving the synced state re-arms the height clock. A synced node on a quiet
+// chain can sit at one height for hours perfectly legitimately; when it then
+// drops out of sync (peer loss, reorg, restart) its very first unsynced sample
+// would otherwise be billed for that whole quiet stretch and report a stall
+// that never happened. The fresh window starts at the transition.
+func (st *stallTracker) observe(now time.Time, height uint64, state string) bool {
+	// A sample got through, so whatever error run was in flight is over.
+	st.firstErr = time.Time{}
+	if state != "synced" && st.lastState == "synced" {
+		st.lastAdvance = now
+	}
+	st.lastState = state
+	if !st.baseline || height != st.lastHeight {
+		st.baseline = true
+		st.lastHeight = height
+		st.lastAdvance = now
+		return false
+	}
+	return state != "synced" && now.Sub(st.lastAdvance) >= syncStallAfter
+}
+
+// observeError reports whether persistent RPC errors should surface as
+// stalled. The window is measured over the error RUN, not since the last
+// height advance: a synced node on a quiet chain can legitimately sit for
+// hours without advancing, and billing that quiet time against its first
+// failed sample would flag it stalled instantly. Requires a baseline —
+// before that the connection path, not the poller, owns the "not working"
+// story.
+func (st *stallTracker) observeError(now time.Time) bool {
+	if !st.baseline {
+		return false
+	}
+	if st.firstErr.IsZero() {
+		st.firstErr = now
+		return false
+	}
+	return now.Sub(st.firstErr) >= syncStallAfter
+}

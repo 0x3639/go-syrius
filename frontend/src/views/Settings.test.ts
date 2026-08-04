@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
-const GetNodeConfig = vi.hoisted(() => vi.fn().mockResolvedValue({ mode: 'remote', remoteUrl: 'wss://old', localUrl: 'ws://127.0.0.1:35998' }))
+const GetNodeConfig = vi.hoisted(() => vi.fn().mockResolvedValue({ mode: 'remote', remoteUrl: 'wss://old' }))
 const GetEmbeddedInfo = vi.hoisted(() => vi.fn().mockResolvedValue({ running: false, dataDir: '', sizeBytes: 0 }))
 const SetNodeMode = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const SetNodeURL = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
@@ -71,22 +71,76 @@ beforeEach(() => {
 })
 
 describe('Settings.vue', () => {
-  it('applies an edited remote URL then changed mode in order', async () => {
+  it('applies an edited remote URL then reconnects, in order', async () => {
     const w = mount(Settings)
     await flush() // onMounted getConfig + refreshEmbedded
 
-    // Edit the remote URL (marks remoteDirty)
+    // Edit the remote URL (marks remoteDirty); the mode stays remote, so the
+    // reconnect is the re-apply of the same mode against the new endpoint.
     await w.find('input[aria-label="wss endpoint url"]').setValue('wss://new')
-    // Change the mode to local (marks modeDirty)
-    await w.find('input[type="radio"][value="local"]').setValue()
 
     await w.find('button[aria-label="Apply node"]').trigger('click')
     await flush()
 
     expect(SetNodeURL).toHaveBeenCalledWith('remote', 'wss://new')
-    expect(SetNodeMode).toHaveBeenCalledWith('local')
+    expect(SetNodeMode).toHaveBeenCalledWith('remote')
     // URL applied before mode
     expect(SetNodeURL.mock.invocationCallOrder[0]).toBeLessThan(SetNodeMode.mock.invocationCallOrder[0])
+  })
+
+  it('switching to embedded requires the warning confirmation', async () => {
+    const w = mount(Settings)
+    await flush()
+
+    await w.find('input[type="radio"][value="embedded"]').setValue()
+    await w.find('button[aria-label="Apply node"]').trigger('click')
+    await flush()
+
+    // Apply alone must not start a full node.
+    expect(SetNodeMode).not.toHaveBeenCalled()
+    expect(w.text()).toContain('Embedded mode runs a full Zenon node in-app')
+
+    await w.findAll('button').find((b) => b.text() === 'Start embedded')!.trigger('click')
+    await flush()
+
+    expect(SetNodeMode).toHaveBeenCalledWith('embedded')
+  })
+
+  it('offers exactly two node modes: remote and embedded', async () => {
+    const w = mount(Settings)
+    await flush()
+    const radios = w.findAll('input[type="radio"]')
+    expect(radios.map((r) => (r.element as HTMLInputElement).value).sort()).toEqual(['embedded', 'remote'])
+    expect(w.find('input[aria-label="ws endpoint url"]').exists()).toBe(false) // local URL field gone
+    expect(w.text()).toContain('Running your own znnd? Point Remote at ws://127.0.0.1:35998.')
+  })
+
+  it('renders a stalled sync state as an alert', async () => {
+    const node = useNodeStore()
+    node.mode = 'embedded'
+    node.sync = { state: 'stalled', currentHeight: 100, targetHeight: 200, percent: 50, etaSeconds: 0, peers: 2 }
+    const w = mount(Settings)
+    await flush()
+
+    const alert = w.find('[role="alert"].text-destructive')
+    expect(alert.exists()).toBe(true)
+    expect(alert.text()).toContain('sync stalled — restart go-syrius if this persists')
+    expect(alert.text()).toContain('100 / 200')
+  })
+
+  it('renders the stalled alert even before any peer reported a target height', async () => {
+    // A node that dies before peers ever answer stalls at targetHeight 0 — that
+    // must read as stalled, never as the optimistic "connecting to peers…".
+    const node = useNodeStore()
+    node.mode = 'embedded'
+    node.sync = { state: 'stalled', currentHeight: 0, targetHeight: 0, percent: 0, etaSeconds: 0, peers: 0 }
+    const w = mount(Settings)
+    await flush()
+
+    const alert = w.find('[role="alert"].text-destructive')
+    expect(alert.exists()).toBe(true)
+    expect(alert.text()).toContain('sync stalled — restart go-syrius if this persists')
+    expect(w.text()).not.toContain('connecting to peers')
   })
 
   it('reveals the mnemonic with a password then Hide clears it', async () => {

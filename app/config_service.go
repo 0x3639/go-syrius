@@ -61,7 +61,6 @@ func defaultSettings() Settings {
 	return Settings{
 		NodeMode:        "remote",
 		RemoteNodeURL:   defaultNodeURL,
-		LocalNodeURL:    defaultLocalNodeURL,
 		Theme:           "dark",
 		ActiveAccount:   0,
 		AutoLockMinutes: intPtr(defaultAutoLockMinutes),
@@ -78,11 +77,8 @@ func migrateSettings(s *Settings) {
 			s.RemoteNodeURL = defaultNodeURL
 		}
 	}
-	if s.LocalNodeURL == "" {
-		s.LocalNodeURL = defaultLocalNodeURL
-	}
-	if s.NodeMode != "local" && s.NodeMode != "remote" && s.NodeMode != "embedded" {
-		s.NodeMode = "remote"
+	if s.NodeMode != "remote" && s.NodeMode != "embedded" {
+		s.NodeMode = "remote" // includes migrating the removed "local" mode
 	}
 	if s.Theme == "" {
 		s.Theme = "dark"

@@ -33,7 +33,6 @@ type Settings struct {
 	NodeURL          string `json:"nodeUrl,omitempty"`
 	NodeMode         string `json:"nodeMode"`
 	RemoteNodeURL    string `json:"remoteNodeUrl"`
-	LocalNodeURL     string `json:"localNodeUrl"`
 	Theme            string `json:"theme"`
 	LastWallet       string `json:"lastWallet"`
 	ActiveAccount    int    `json:"activeAccount"`
@@ -65,8 +64,6 @@ type Contact struct {
 // ActiveNodeURL returns the URL for the current NodeMode.
 func (s Settings) ActiveNodeURL() string {
 	switch s.NodeMode {
-	case "local":
-		return s.LocalNodeURL
 	case "embedded":
 		return defaultEmbeddedNodeURL
 	default:
@@ -74,11 +71,11 @@ func (s Settings) ActiveNodeURL() string {
 	}
 }
 
-// NodeConfig is the node mode + per-mode URLs for the settings UI.
+// NodeConfig is the node mode + the remote URL for the settings UI. The
+// embedded mode's URL is fixed, so remote is the only configurable one.
 type NodeConfig struct {
 	Mode      string `json:"mode"`
 	RemoteURL string `json:"remoteUrl"`
-	LocalURL  string `json:"localUrl"`
 }
 
 // WalletMeta identifies a keystore without exposing secrets.
@@ -134,7 +131,6 @@ type TxRecord struct {
 }
 
 const defaultNodeURL = "wss://my.hc1node.com:35998"
-const defaultLocalNodeURL = "ws://127.0.0.1:35998"
 
 // Phase 2 transaction event names.
 const (

@@ -22,6 +22,21 @@ func (s stubHandle) WSURL() string   { return s.url }
 func (s stubHandle) DataDir() string { return s.dir }
 func (s stubHandle) Stop() error     { return nil }
 
+// wedgedHandle simulates the 2026-08-03 incident: an embedded node whose
+// Stop() never returns (spec §2/§4).
+type wedgedHandle struct {
+	stopCalled chan struct{}
+	release    chan struct{}
+}
+
+func (w *wedgedHandle) WSURL() string   { return "ws://127.0.0.1:35998" }
+func (w *wedgedHandle) DataDir() string { return "" }
+func (w *wedgedHandle) Stop() error {
+	close(w.stopCalled)
+	<-w.release
+	return nil
+}
+
 func TestToTokenBalance(t *testing.T) {
 	bi := &api.BalanceInfo{
 		TokenInfo: &api.Token{ZenonTokenStandard: types.ZnnTokenStandard, TokenSymbol: "ZNN", Decimals: 8},
@@ -134,20 +149,291 @@ func TestSetNodeModeRejectsUnknown(t *testing.T) {
 	}
 }
 
+func TestSetNodeModeRejectsLocal(t *testing.T) {
+	n := newTestNode(t)
+	if err := n.SetNodeMode("local"); err == nil {
+		t.Fatal("SetNodeMode(local) succeeded, want error")
+	}
+	// Rejection must happen BEFORE any persistence: a removed mode is never user
+	// intent, so nothing may reach disk. Asserting the persisted mode via
+	// GetNodeConfig would be vacuous — it runs migrateSettings on read, which
+	// normalizes a persisted "local" back to "remote". The honest gate is that
+	// settings.json was never written at all (newTestConfig starts empty).
+	assertSettingsNotWritten(t, n)
+}
+
+func TestSetNodeURLRejectsLocal(t *testing.T) {
+	n := newTestNode(t)
+	if err := n.SetNodeURL("local", "ws://127.0.0.1:35998"); err == nil {
+		t.Fatal("SetNodeURL(local) succeeded, want error")
+	}
+	assertSettingsNotWritten(t, n)
+}
+
+// assertSettingsNotWritten fails if settings.json exists — the reject-before-
+// persist gate. It relies on newTestConfig's fresh empty data dir, so absence
+// of the file is proof no write happened.
+func assertSettingsNotWritten(t *testing.T, n *NodeService) {
+	t.Helper()
+	d, err := n.config.dataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(d, "settings.json")); !os.IsNotExist(err) {
+		t.Fatal("rejected mode must not persist: settings.json was written")
+	}
+}
+
+// seedNodeMode persists a node mode WITHOUT connecting. It lets a test make
+// "remote" the non-active mode so SetNodeURL exercises its persist-only path
+// (no dial, hence no network dependence). The in-memory n.mode is set to match
+// so NodeStatus() reports the seeded mode — NodeStatus reports "remote" for an
+// empty mode, which would make a later "is it remote?" assertion vacuous.
+func seedNodeMode(t *testing.T, n *NodeService, mode string) {
+	t.Helper()
+	if err := n.config.updateSettings(func(s *Settings) error {
+		s.NodeMode = mode
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	n.mu.Lock()
+	n.mode = mode
+	n.mu.Unlock()
+}
+
 func TestSetNodeModePersistsEvenIfUnreachable(t *testing.T) {
 	n := newTestNode(t)
-	// No local node is running; the connect attempt fails, but the chosen mode
-	// must still be persisted (user intent), and reflected by GetNodeConfig.
-	_ = n.SetNodeMode("local") // connect error expected and ignored here
+	// Start from embedded so the transition below is a real mode change, and
+	// point remote at an unreachable node. The connect attempt fails, but the
+	// chosen mode must still be persisted (user intent) and reflected by
+	// GetNodeConfig.
+	seedNodeMode(t, n, "embedded")
+	if err := n.config.updateSettings(func(s *Settings) error {
+		s.RemoteNodeURL = "ws://127.0.0.1:1"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_ = n.SetNodeMode("remote") // connect error expected and ignored here
 	cfg, err := n.GetNodeConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Mode != "local" {
-		t.Fatalf("mode should persist as local, got %q", cfg.Mode)
+	if cfg.Mode != "remote" {
+		t.Fatalf("mode should persist as remote, got %q", cfg.Mode)
 	}
-	if n.NodeStatus().Mode != "local" {
-		t.Fatalf("NodeStatus().Mode should be local, got %q", n.NodeStatus().Mode)
+	if n.NodeStatus().Mode != "remote" {
+		t.Fatalf("NodeStatus().Mode should be remote, got %q", n.NodeStatus().Mode)
+	}
+}
+
+// A wedged embedded Stop() must not hold a mode transition hostage: the switch
+// completes on a bound, the status flips honestly, and embedded is then refused
+// in-process until the app restarts (the abandoned node still owns the WS port).
+func TestSetNodeModeBoundedTeardownOnWedgedStop(t *testing.T) {
+	old := embeddedStopTimeout
+	embeddedStopTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { embeddedStopTimeout = old })
+
+	n := newTestNode(t)
+	// Unreachable remote so the post-teardown dial fails fast instead of
+	// touching the network (same trick as TestSetNodeModePersistsEvenIfUnreachable).
+	if err := n.config.updateSettings(func(s *Settings) error {
+		s.RemoteNodeURL = "ws://127.0.0.1:1"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	seedNodeMode(t, n, "embedded")
+	// No real node may ever boot from this test: if a wedged guard regresses,
+	// fail loudly instead of starting a mainnet node in CI.
+	n.embeddedStart = func(string) (embeddedHandle, error) {
+		return nil, errors.New("test: embedded start must not be reached")
+	}
+	w := &wedgedHandle{stopCalled: make(chan struct{}), release: make(chan struct{})}
+	t.Cleanup(func() { close(w.release) }) // let the background waiter exit
+	n.mu.Lock()
+	n.embedded = w
+	// A live embedded connection, so the mid-teardown status assertion below is
+	// about the transition dropping it — not about a service that never had one.
+	n.client = &rpc_client.RpcClient{}
+	n.chainID = 3
+	n.mu.Unlock()
+
+	done := make(chan error, 1)
+	go func() { done <- n.SetNodeMode("remote") }()
+
+	// Stop must have been attempted…
+	select {
+	case <-w.stopCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop was never called")
+	}
+	// Honest transition status (spec §5): the mode must ALREADY read "remote"
+	// here — mid-teardown, with Stop still blocked and nothing dialed yet.
+	// This is deterministic, not a race: SetNodeMode writes n.mode before
+	// calling stopEmbedded, which happens-before close(w.stopCalled) inside
+	// Stop(). Pins the reorder; without it the flip could move back after
+	// teardown and no test would notice.
+	if got := n.NodeStatus().Mode; got != "remote" {
+		t.Fatalf("mode at transition start = %q, want remote (flip must precede teardown)", got)
+	}
+	// …and the status must be HONEST about it: the outgoing embedded client is
+	// dropped in the same critical section as the mode flip, so a NodeStatus()
+	// pull here cannot report the old connection (height/chain id included)
+	// under the new mode for the length of the teardown.
+	if st := n.NodeStatus(); st.Connected || st.ChainID != 0 {
+		t.Fatalf("status mid-teardown = %+v, want disconnected with chainID 0 (old client must be dropped at transition start)", st)
+	}
+	// …and the transition must complete despite Stop never returning.
+	// (The remote dial fails fast against the unreachable test URL — an error
+	// return is fine; a hang is the bug.)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("SetNodeMode hung on wedged embedded Stop")
+	}
+
+	// Honest status: the mode flipped even though Stop is still blocked.
+	if got := n.NodeStatus().Mode; got != "remote" {
+		t.Fatalf("mode = %q, want remote", got)
+	}
+	// The wedged service refuses to restart embedded in-process.
+	if err := n.SetNodeMode("embedded"); err == nil ||
+		!strings.Contains(err.Error(), "restart go-syrius") {
+		t.Fatalf("SetNodeMode(embedded) after wedge: err = %v, want restart-required error", err)
+	}
+	// Reject-before-persist: the refusal must not have written the mode it
+	// refused. settings.json EXISTS here (the remote transition above wrote it),
+	// so the honest gate is the persisted VALUE, which must still agree with
+	// in-memory mode and NodeStatus.
+	cfg, err := n.GetNodeConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Mode != "remote" {
+		t.Fatalf("refused mode must not persist: persisted mode = %q, want remote", cfg.Mode)
+	}
+	if got := n.NodeStatus().Mode; got != "remote" {
+		t.Fatalf("in-memory mode after refusal = %q, want remote", got)
+	}
+}
+
+// OnShutdown calls stopEmbedded WITHOUT opMu, so a user-driven Connect() can
+// arrive while that teardown is still in its bounded wait. In that window the
+// handle is already nil and the wedge is not yet latched, so an unguarded
+// Connect would sail into embeddednode.Start() and block forever on the package
+// mutex the in-flight Stop() holds — and OnShutdown's own Disconnect() would
+// then deadlock behind it on opMu. The stop must therefore be visible for the
+// whole wait, and Connect must refuse promptly instead of starting anything.
+func TestConnectDuringShutdownStopDoesNotDeadlock(t *testing.T) {
+	old := embeddedStopTimeout
+	// Registered FIRST so it runs LAST (cleanups are LIFO): the stop goroutine
+	// below reads this var, and must be joined before it is restored.
+	t.Cleanup(func() { embeddedStopTimeout = old })
+	// Long enough that the Connect below lands inside the stopping window rather
+	// than after the wedge latches — both refusals are accepted, but the
+	// transient one is the case under test.
+	embeddedStopTimeout = 3 * time.Second
+
+	n := newTestNode(t)
+	seedNodeMode(t, n, "embedded")
+	n.embeddedStart = func(string) (embeddedHandle, error) {
+		t.Errorf("embeddedStart must not be reached while a stop is in flight")
+		return nil, errors.New("test: embedded start must not be reached")
+	}
+	w := &wedgedHandle{stopCalled: make(chan struct{}), release: make(chan struct{})}
+	stopDone := make(chan struct{})
+	t.Cleanup(func() {
+		close(w.release)
+		<-stopDone
+	})
+	n.mu.Lock()
+	n.embedded = w
+	n.mu.Unlock()
+
+	// No opMu — exactly how OnShutdown calls it.
+	go func() {
+		n.stopEmbedded()
+		close(stopDone)
+	}()
+	select {
+	case <-w.stopCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop was never called")
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- n.Connect() }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Connect during an in-flight embedded stop must refuse, got nil error")
+		}
+		if !strings.Contains(err.Error(), "stopping") && !strings.Contains(err.Error(), "restart go-syrius") {
+			t.Fatalf("Connect mid-stop: err = %v, want a stopping (or already-wedged) refusal", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Connect deadlocked during an in-flight embedded stop")
+	}
+}
+
+// Connect() reaches startEmbedded with the mode already persisted, so the
+// SetNodeMode-level guard cannot cover it. It MUST still refuse: embeddednode's
+// package mutex is held across the wedged node.Stop(), so embeddednode.Start()
+// would block on mu.Lock() forever while Connect holds opMu — the original
+// incident, recreated. Hence the backstop guard inside startEmbedded.
+func TestConnectRefusesEmbeddedWhileWedged(t *testing.T) {
+	n := newTestNode(t)
+	seedNodeMode(t, n, "embedded")
+	n.embeddedStart = func(string) (embeddedHandle, error) {
+		return nil, errors.New("test: embedded start must not be reached")
+	}
+	n.mu.Lock()
+	n.embeddedWedged = true
+	n.mu.Unlock()
+
+	done := make(chan error, 1)
+	go func() { done <- n.Connect() }()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "restart go-syrius") {
+			t.Fatalf("Connect while wedged: err = %v, want restart-required error", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Connect hung on a wedged embedded node")
+	}
+}
+
+// A wedged embedded node may still be writing to its data dir, so deleting it
+// out from under the abandoned process risks corrupting whatever RemoveAll does
+// not manage to remove. Refuse until the app restarts.
+func TestDeleteEmbeddedDataRefusedWhileWedged(t *testing.T) {
+	n := newTestNode(t)
+	n.mu.Lock()
+	n.embeddedWedged = true
+	n.mu.Unlock()
+
+	err := n.DeleteEmbeddedData()
+	if err == nil || !strings.Contains(err.Error(), "restart go-syrius") {
+		t.Fatalf("DeleteEmbeddedData while wedged: err = %v, want restart-required error", err)
+	}
+}
+
+// Same hazard as the wedged case, transient cause: while stopEmbedded is in its
+// bounded wait the handle is already nil — so the "stop the embedded node first"
+// check passes — but the node is very much alive and still writing to the data
+// dir. RemoveAll under it risks corrupting whatever it fails to remove.
+func TestDeleteEmbeddedDataRefusedWhileStopping(t *testing.T) {
+	n := newTestNode(t)
+	n.mu.Lock()
+	n.embeddedStopping = true
+	n.mu.Unlock()
+
+	err := n.DeleteEmbeddedData()
+	if err == nil || !strings.Contains(err.Error(), "stopping") {
+		t.Fatalf("DeleteEmbeddedData mid-stop: err = %v, want a stopping refusal", err)
 	}
 }
 
@@ -156,16 +442,17 @@ func TestSetNodeURLValidatesAndPersists(t *testing.T) {
 	if err := n.SetNodeURL("bogus", "ws://x"); err == nil {
 		t.Fatal("expected unknown mode to error")
 	}
-	if err := n.SetNodeURL("local", "http://x"); err == nil {
+	if err := n.SetNodeURL("remote", "http://x"); err == nil {
 		t.Fatal("expected non-ws scheme to error")
 	}
 	// Setting the non-active mode's URL persists without a reconnect (no error).
-	if err := n.SetNodeURL("local", "ws://127.0.0.1:9"); err != nil {
-		t.Fatalf("SetNodeURL(local): %v", err)
+	seedNodeMode(t, n, "embedded")
+	if err := n.SetNodeURL("remote", "ws://127.0.0.1:9"); err != nil {
+		t.Fatalf("SetNodeURL(remote): %v", err)
 	}
 	cfg, _ := n.GetNodeConfig()
-	if cfg.LocalURL != "ws://127.0.0.1:9" {
-		t.Fatalf("LocalURL not persisted: %q", cfg.LocalURL)
+	if cfg.RemoteURL != "ws://127.0.0.1:9" {
+		t.Fatalf("RemoteURL not persisted: %q", cfg.RemoteURL)
 	}
 }
 
@@ -197,16 +484,18 @@ func TestSetNodeURLStrictValidation(t *testing.T) {
 	if err := n.SetNodeURL("remote", "not-a-url"); err == nil {
 		t.Fatal("expected non-url to error")
 	}
-	// Success on the non-active mode (local) so it persists without connecting.
-	if err := n.SetNodeURL("local", "wss://host.example:35998"); err != nil {
-		t.Fatalf("SetNodeURL(local, valid): %v", err)
+	// Success while remote is the non-active mode, so it persists without
+	// connecting.
+	seedNodeMode(t, n, "embedded")
+	if err := n.SetNodeURL("remote", "wss://host.example:35998"); err != nil {
+		t.Fatalf("SetNodeURL(remote, valid): %v", err)
 	}
 	cfg, err := n.GetNodeConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.LocalURL != "wss://host.example:35998" {
-		t.Fatalf("LocalURL not persisted: %q", cfg.LocalURL)
+	if cfg.RemoteURL != "wss://host.example:35998" {
+		t.Fatalf("RemoteURL not persisted: %q", cfg.RemoteURL)
 	}
 }
 
@@ -323,7 +612,7 @@ func TestGetNodeConfigDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Mode != "remote" || cfg.RemoteURL != defaultNodeURL || cfg.LocalURL != defaultLocalNodeURL {
+	if cfg.Mode != "remote" || cfg.RemoteURL != defaultNodeURL {
 		t.Fatalf("unexpected node config: %+v", cfg)
 	}
 }
@@ -701,10 +990,11 @@ func TestSetNodeURL_RejectsQueryAndFragment(t *testing.T) {
 			t.Fatalf("url %q must be rejected", bad)
 		}
 	}
-	// Userinfo must pass validation. Use the non-active mode (local) so it
-	// persists without dialing — the active mode is remote and would otherwise
-	// make this a network-dependent (flaky) test of the validation path.
-	if err := n.SetNodeURL("local", "wss://user:pass@h:35998"); err != nil {
+	// Userinfo must pass validation. Make embedded the active mode so remote
+	// persists without dialing — dialing would otherwise make this a
+	// network-dependent (flaky) test of the validation path.
+	seedNodeMode(t, n, "embedded")
+	if err := n.SetNodeURL("remote", "wss://user:pass@h:35998"); err != nil {
 		t.Fatalf("basic-auth userinfo must remain allowed: %v", err)
 	}
 }

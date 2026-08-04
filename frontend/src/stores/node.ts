@@ -4,7 +4,7 @@ import { EventsOn } from '../../wailsjs/runtime/runtime'
 
 export type TokenBalance = { zts: string; symbol: string; decimals: number; amount: string }
 
-export type NodeConfig = { mode: string; remoteUrl: string; localUrl: string }
+export type NodeConfig = { mode: string; remoteUrl: string }
 export type EmbeddedInfo = { running: boolean; dataDir: string; sizeBytes: number }
 export type SyncStatus = {
   state: string

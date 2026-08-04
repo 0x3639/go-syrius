@@ -255,6 +255,10 @@ func TestSetNodeModeBoundedTeardownOnWedgedStop(t *testing.T) {
 	t.Cleanup(func() { close(w.release) }) // let the background waiter exit
 	n.mu.Lock()
 	n.embedded = w
+	// A live embedded connection, so the mid-teardown status assertion below is
+	// about the transition dropping it — not about a service that never had one.
+	n.client = &rpc_client.RpcClient{}
+	n.chainID = 3
 	n.mu.Unlock()
 
 	done := make(chan error, 1)
@@ -274,6 +278,13 @@ func TestSetNodeModeBoundedTeardownOnWedgedStop(t *testing.T) {
 	// teardown and no test would notice.
 	if got := n.NodeStatus().Mode; got != "remote" {
 		t.Fatalf("mode at transition start = %q, want remote (flip must precede teardown)", got)
+	}
+	// …and the status must be HONEST about it: the outgoing embedded client is
+	// dropped in the same critical section as the mode flip, so a NodeStatus()
+	// pull here cannot report the old connection (height/chain id included)
+	// under the new mode for the length of the teardown.
+	if st := n.NodeStatus(); st.Connected || st.ChainID != 0 {
+		t.Fatalf("status mid-teardown = %+v, want disconnected with chainID 0 (old client must be dropped at transition start)", st)
 	}
 	// …and the transition must complete despite Stop never returning.
 	// (The remote dial fails fast against the unreachable test URL — an error
@@ -306,6 +317,65 @@ func TestSetNodeModeBoundedTeardownOnWedgedStop(t *testing.T) {
 	}
 	if got := n.NodeStatus().Mode; got != "remote" {
 		t.Fatalf("in-memory mode after refusal = %q, want remote", got)
+	}
+}
+
+// OnShutdown calls stopEmbedded WITHOUT opMu, so a user-driven Connect() can
+// arrive while that teardown is still in its bounded wait. In that window the
+// handle is already nil and the wedge is not yet latched, so an unguarded
+// Connect would sail into embeddednode.Start() and block forever on the package
+// mutex the in-flight Stop() holds — and OnShutdown's own Disconnect() would
+// then deadlock behind it on opMu. The stop must therefore be visible for the
+// whole wait, and Connect must refuse promptly instead of starting anything.
+func TestConnectDuringShutdownStopDoesNotDeadlock(t *testing.T) {
+	old := embeddedStopTimeout
+	// Registered FIRST so it runs LAST (cleanups are LIFO): the stop goroutine
+	// below reads this var, and must be joined before it is restored.
+	t.Cleanup(func() { embeddedStopTimeout = old })
+	// Long enough that the Connect below lands inside the stopping window rather
+	// than after the wedge latches — both refusals are accepted, but the
+	// transient one is the case under test.
+	embeddedStopTimeout = 3 * time.Second
+
+	n := newTestNode(t)
+	seedNodeMode(t, n, "embedded")
+	n.embeddedStart = func(string) (embeddedHandle, error) {
+		t.Errorf("embeddedStart must not be reached while a stop is in flight")
+		return nil, errors.New("test: embedded start must not be reached")
+	}
+	w := &wedgedHandle{stopCalled: make(chan struct{}), release: make(chan struct{})}
+	stopDone := make(chan struct{})
+	t.Cleanup(func() {
+		close(w.release)
+		<-stopDone
+	})
+	n.mu.Lock()
+	n.embedded = w
+	n.mu.Unlock()
+
+	// No opMu — exactly how OnShutdown calls it.
+	go func() {
+		n.stopEmbedded()
+		close(stopDone)
+	}()
+	select {
+	case <-w.stopCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop was never called")
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- n.Connect() }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Connect during an in-flight embedded stop must refuse, got nil error")
+		}
+		if !strings.Contains(err.Error(), "stopping") && !strings.Contains(err.Error(), "restart go-syrius") {
+			t.Fatalf("Connect mid-stop: err = %v, want a stopping (or already-wedged) refusal", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Connect deadlocked during an in-flight embedded stop")
 	}
 }
 

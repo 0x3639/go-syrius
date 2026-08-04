@@ -66,6 +66,7 @@ type stallTracker struct {
 	baseline    bool
 	lastHeight  uint64
 	lastAdvance time.Time
+	lastState   string
 	firstErr    time.Time
 }
 
@@ -74,9 +75,19 @@ type stallTracker struct {
 // merely an advance — re-baselines: an embedded DB rollback or a reorg walks
 // the height backwards, and treating that as "no progress" would pin a false
 // stall on a node that is in fact working.
+//
+// Leaving the synced state re-arms the height clock. A synced node on a quiet
+// chain can sit at one height for hours perfectly legitimately; when it then
+// drops out of sync (peer loss, reorg, restart) its very first unsynced sample
+// would otherwise be billed for that whole quiet stretch and report a stall
+// that never happened. The fresh window starts at the transition.
 func (st *stallTracker) observe(now time.Time, height uint64, state string) bool {
 	// A sample got through, so whatever error run was in flight is over.
 	st.firstErr = time.Time{}
+	if state != "synced" && st.lastState == "synced" {
+		st.lastAdvance = now
+	}
+	st.lastState = state
 	if !st.baseline || height != st.lastHeight {
 		st.baseline = true
 		st.lastHeight = height

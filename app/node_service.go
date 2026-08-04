@@ -77,6 +77,15 @@ type NodeService struct {
 	// require an app restart instead (spec §4).
 	embeddedWedged bool
 
+	// embeddedStopping is latched by stopEmbedded for the duration of its
+	// bounded wait — the window in which the handle is already nil but the
+	// embeddednode package mutex is still held by the in-flight Stop(). A start
+	// attempted in that window would block on that mutex forever (OnShutdown
+	// calls stopEmbedded without opMu, so a concurrent Connect can get here).
+	// Unlike embeddedWedged this is transient: it clears when the stop lands or
+	// times out. Guarded by mu.
+	embeddedStopping bool
+
 	// appNapBegin/appNapEnd hold a macOS App Nap prevention assertion for
 	// exactly the embedded node's lifetime (no-ops off darwin; stubbed in tests).
 	appNapBegin func(reason string)
@@ -402,8 +411,17 @@ func (n *NodeService) SetNodeMode(mode string) error {
 	// switch has STARTED before any teardown or dialing. The frontend clears
 	// stale embedded sync state on this mode change; the footer shows
 	// "Disconnected (<new mode>)" until the connect lands.
+	//
+	// The outgoing connection is dropped in the SAME critical section, because
+	// the emit is not the only way status is observed: NodeStatus() pulls (and
+	// currentClient/currentChainID consumers) read the live fields. Leaving the
+	// old client installed would have them report connected=true with the old
+	// height and chain id under the NEW mode for the entire teardown — up to
+	// embeddedStopTimeout. disconnectLocked is idempotent (every field is
+	// nil-guarded); setNode/startEmbedded call it again below.
 	n.mu.Lock()
 	n.mode = mode
+	n.disconnectLocked()
 	n.emitStatusLocked(false)
 	n.mu.Unlock()
 
@@ -433,9 +451,17 @@ func (n *NodeService) startEmbedded() error {
 	// opMu — deadlocking every future transition, i.e. the original incident.
 	n.mu.Lock()
 	wedged := n.embeddedWedged
+	stopping := n.embeddedStopping
 	n.mu.Unlock()
 	if wedged {
 		return errors.New("embedded node did not shut down cleanly — restart go-syrius before using Embedded again")
+	}
+	// Same deadlock, transient cause: a stop is in flight and still holds the
+	// embeddednode package mutex, but has not (yet) wedged. Refusing with a
+	// deliberately different, retryable message keeps the permanent "restart
+	// go-syrius" wording meaningful.
+	if stopping {
+		return errors.New("embedded node is stopping — try again in a few seconds")
 	}
 
 	// Switching to embedded supersedes any current connection; drop it first so a
@@ -531,6 +557,12 @@ func (n *NodeService) SetNodeURL(mode, url string) error {
 // abandoned (the background goroutine keeps waiting; if the stop ever finishes
 // the embeddednode package's single-instance guard clears itself) and the
 // service latches embeddedWedged — see SetNodeMode's embedded guard.
+//
+// For the whole wait it also latches embeddedStopping. The nil-out below makes
+// the handle invisible while the in-flight Stop() still holds the embeddednode
+// package mutex; OnShutdown calls this WITHOUT opMu, so a concurrent Connect()
+// could otherwise find no handle, no wedge, and start a node that blocks on
+// that mutex forever — taking opMu, and OnShutdown's own Disconnect, with it.
 func (n *NodeService) stopEmbedded() {
 	n.mu.Lock()
 	if n.syncStop != nil {
@@ -539,6 +571,11 @@ func (n *NodeService) stopEmbedded() {
 	}
 	h := n.embedded
 	n.embedded = nil
+	if h != nil {
+		// Same critical section as the nil-out: there must be no instant in
+		// which the handle is gone and neither flag is set.
+		n.embeddedStopping = true
+	}
 	n.mu.Unlock()
 	if h == nil {
 		return
@@ -550,10 +587,16 @@ func (n *NodeService) stopEmbedded() {
 	}()
 	select {
 	case <-done:
+		n.mu.Lock()
+		n.embeddedStopping = false
+		n.mu.Unlock()
 	case <-time.After(embeddedStopTimeout):
 		log.Printf("WARN: embedded node did not stop within %s; abandoning handle (restart recommended before using Embedded again)", embeddedStopTimeout)
 		n.mu.Lock()
+		// The transient refusal hands over to the permanent one in one step:
+		// no window in which a start is allowed again.
 		n.embeddedWedged = true
+		n.embeddedStopping = false
 		n.mu.Unlock()
 	}
 	n.appNapEnd()

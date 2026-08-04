@@ -449,26 +449,30 @@ func (n *NodeService) startEmbedded() error {
 	// embeddednode package mutex is held across the wedged node's Stop(), so
 	// embeddednode.Start() would block on it forever while the caller holds
 	// opMu — deadlocking every future transition, i.e. the original incident.
+	//
+	// The guards, the teardown, and the running-handle read are ONE critical
+	// section, and that is load-bearing: stopEmbedded latches embeddedStopping in
+	// the same section that nils the handle, so observing "not stopping, not
+	// wedged, and here is the handle" under a single lock is what proves no Stop
+	// is in flight. Reading the guards under their own lock and re-acquiring for
+	// the handle leaves a gap in which a stop can latch invisibly — the caller
+	// would then see h == nil and dive into embeddedStart anyway. Refusals return
+	// before the teardown, so a refused start still changes nothing.
 	n.mu.Lock()
-	wedged := n.embeddedWedged
-	stopping := n.embeddedStopping
-	n.mu.Unlock()
-	if wedged {
+	if n.embeddedWedged {
+		n.mu.Unlock()
 		return errors.New("embedded node did not shut down cleanly — restart go-syrius before using Embedded again")
 	}
 	// Same deadlock, transient cause: a stop is in flight and still holds the
 	// embeddednode package mutex, but has not (yet) wedged. Refusing with a
 	// deliberately different, retryable message keeps the permanent "restart
 	// go-syrius" wording meaningful.
-	if stopping {
+	if n.embeddedStopping {
+		n.mu.Unlock()
 		return errors.New("embedded node is stopping — try again in a few seconds")
 	}
-
 	// Switching to embedded supersedes any current connection; drop it first so a
 	// failed embedded start cannot leave the old client emitting as "embedded".
-	// The running-handle read shares the critical section so a concurrent stop
-	// can't slip between teardown and reuse.
-	n.mu.Lock()
 	n.disconnectLocked()
 	h := n.embedded
 	n.mu.Unlock()
@@ -715,6 +719,7 @@ func (n *NodeService) DeleteEmbeddedData() error {
 	n.mu.RLock()
 	running := n.embedded != nil
 	wedged := n.embeddedWedged
+	stopping := n.embeddedStopping
 	n.mu.RUnlock()
 	if running {
 		return errors.New("stop the embedded node first")
@@ -725,6 +730,11 @@ func (n *NodeService) DeleteEmbeddedData() error {
 	// to delete — refuse until a restart clears the abandoned process.
 	if wedged {
 		return errors.New("embedded node did not shut down cleanly — restart go-syrius before deleting embedded data")
+	}
+	// Identical hazard, transient: a stop is still in flight, so the handle is
+	// already nil while the node is very much alive and writing. Wait it out.
+	if stopping {
+		return errors.New("embedded node is stopping — try again in a few seconds")
 	}
 	dir, err := n.config.dataDir()
 	if err != nil {

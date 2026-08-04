@@ -421,6 +421,22 @@ func TestDeleteEmbeddedDataRefusedWhileWedged(t *testing.T) {
 	}
 }
 
+// Same hazard as the wedged case, transient cause: while stopEmbedded is in its
+// bounded wait the handle is already nil — so the "stop the embedded node first"
+// check passes — but the node is very much alive and still writing to the data
+// dir. RemoveAll under it risks corrupting whatever it fails to remove.
+func TestDeleteEmbeddedDataRefusedWhileStopping(t *testing.T) {
+	n := newTestNode(t)
+	n.mu.Lock()
+	n.embeddedStopping = true
+	n.mu.Unlock()
+
+	err := n.DeleteEmbeddedData()
+	if err == nil || !strings.Contains(err.Error(), "stopping") {
+		t.Fatalf("DeleteEmbeddedData mid-stop: err = %v, want a stopping refusal", err)
+	}
+}
+
 func TestSetNodeURLValidatesAndPersists(t *testing.T) {
 	n := newTestNode(t)
 	if err := n.SetNodeURL("bogus", "ws://x"); err == nil {

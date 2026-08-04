@@ -170,7 +170,7 @@ describe('WalletConnect request handling', () => {
     h.emit.mockReset().mockResolvedValue(undefined)
     h.disconnect.mockReset().mockResolvedValue(undefined)
     h.pair.mockReset().mockResolvedValue(undefined)
-    h.getConfig.mockReset().mockResolvedValue({ mode: 'remote', remoteUrl: 'wss://mainnet.example', localUrl: '' })
+    h.getConfig.mockReset().mockResolvedValue({ mode: 'remote', remoteUrl: 'wss://mainnet.example' })
     h.init.mockReset().mockResolvedValue(fakeClient)
     vi.stubEnv('VITE_WALLETCONNECT_PROJECT_ID', 'test-project-id')
   })
@@ -189,7 +189,7 @@ describe('WalletConnect request handling', () => {
 
   it('answers znn_info from authoritative backend status and omits credentialed URLs', async () => {
     h.nodeStatus.mockResolvedValue({ mode: 'remote', connected: true, chainId: 1, height: 10 })
-    h.getConfig.mockResolvedValue({ mode: 'remote', remoteUrl: 'wss://user:secret@mainnet.example', localUrl: '' })
+    h.getConfig.mockResolvedValue({ mode: 'remote', remoteUrl: 'wss://user:secret@mainnet.example' })
     const wallet = unlock('z1qvalid')
     const node = useNodeStore()
     node.chainId = 73404

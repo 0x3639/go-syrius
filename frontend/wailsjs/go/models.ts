@@ -318,7 +318,6 @@ export namespace app {
 	export class NodeConfig {
 	    mode: string;
 	    remoteUrl: string;
-	    localUrl: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new NodeConfig(source);
@@ -328,7 +327,6 @@ export namespace app {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.mode = source["mode"];
 	        this.remoteUrl = source["remoteUrl"];
-	        this.localUrl = source["localUrl"];
 	    }
 	}
 	export class NodeStatus {
@@ -709,7 +707,6 @@ export namespace app {
 	    nodeUrl?: string;
 	    nodeMode: string;
 	    remoteNodeUrl: string;
-	    localNodeUrl: string;
 	    theme: string;
 	    lastWallet: string;
 	    activeAccount: number;
@@ -731,7 +728,6 @@ export namespace app {
 	        this.nodeUrl = source["nodeUrl"];
 	        this.nodeMode = source["nodeMode"];
 	        this.remoteNodeUrl = source["remoteNodeUrl"];
-	        this.localNodeUrl = source["localNodeUrl"];
 	        this.theme = source["theme"];
 	        this.lastWallet = source["lastWallet"];
 	        this.activeAccount = source["activeAccount"];

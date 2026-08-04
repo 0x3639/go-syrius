@@ -124,6 +124,8 @@ In `startSyncPoller`'s loop:
 - `stalled` is a UI state only; it does not trigger automatic remediation
   (YAGNI — an in-process embedded restart is impossible while wedged, §4).
 
+**Amendment (2026-08-03, implementation review):** RPC-error convergence uses an error-run clock (first error starts a fresh 3-minute window; any successful sample resets it) rather than the last-advance window — the honest measure of "the node stopped answering". Accepted cost: in the freeze-then-die interleaving the worst-case stalled latency is ~6 minutes (two consecutive windows).
+
 ## 7. Testing requirements
 
 **Go (`app/…_test.go`):**

@@ -436,7 +436,7 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         }
         const cfg = await node.getConfig().catch(() => null)
         const configuredNodeUrl = cfg
-          ? (cfg.mode === 'remote' ? cfg.remoteUrl : cfg.mode === 'local' ? cfg.localUrl : 'ws://127.0.0.1:35998')
+          ? (cfg.mode === 'remote' ? cfg.remoteUrl : 'ws://127.0.0.1:35998')
           : undefined
         const nodeUrl = configuredNodeUrl ? publicWalletConnectNodeURL(configuredNodeUrl) : undefined
         await c.respond({

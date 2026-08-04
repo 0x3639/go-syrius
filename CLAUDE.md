@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-The wallet is **substantially built**: Phases 0–5 and Phase 7a are shipped and merged to `main`. Working today: read-only wallet, send/receive, wallet lifecycle (create/import/manage), all three node modes (remote/local/embedded), the full Network-of-Momentum feature set (plasma, staking, pillars, sentinels, tokens, accelerator), and CI. **Remaining:** Phase 7b–7f (release builds, signing/notarization, auto-update, a11y/telemetry, security pass + docs). **Phase 6 (Ledger) is deferred** (out of scope for now). See "Working order" below for per-phase status.
+The wallet is **substantially built**: Phases 0–5 and Phase 7a are shipped and merged to `main`. Working today: read-only wallet, send/receive, wallet lifecycle (create/import/manage), both node modes (remote/embedded), the full Network-of-Momentum feature set (plasma, staking, pillars, sentinels, tokens, accelerator), and CI. **Remaining:** Phase 7b–7f (release builds, signing/notarization, auto-update, a11y/telemetry, security pass + docs). **Phase 6 (Ledger) is deferred** (out of scope for now). See "Working order" below for per-phase status.
 
 `plan.md` is the authoritative spec; read it before substantial work, and keep it in sync as decisions change. Per-phase design specs and plans live under `docs/superpowers/{specs,plans}/`, and per-phase acceptance records under `docs/phase*-acceptance.md`.
 
@@ -29,12 +29,13 @@ The frontend (WebView) must **never** receive a private key, mnemonic seed, or d
 
 Wails-bound services live under `app/`, each a clear seam: `WalletService` (unlock/lock/accounts), `NodeService` (node modes + status events), `TxService` (build→pow→sign→publish), `NomService` (plasma/stake/pillar/sentinel/token/accelerator), `LedgerService` (Phase 6), `ConfigService` (settings/data dir). Non-bound internals under `internal/`: `signer/` (software | ledger abstraction), `powmgr/` (cancellable PoW), `compat/` (keystore compatibility + tests). Frontend under `frontend/src/` (Vue): `views/` (route components: public Unlock/Create/ImportMnemonic, plus authenticated Dashboard/Transfer/Receive/Tokens/NetworkPage/Settings/AddressBook), `components/AppShell.vue` (layout route wrapping every authenticated screen — Sidebar + TopBar + the single global data bootstrap/refresh after unlock), `router/` (vue-router + lock guard; authenticated routes nest under AppShell, `/` redirects to `/dashboard`), `stores/` (Pinia: wallet/node/balances/tx/txs/unreceived/token/plasma/pillar/stake/sentinel/accelerator/governance/contacts/price/ui/autoReceive), `components/` (+ `components/panels/` for the NoM panels rendered by NetworkPage), `lib/format.ts` (BigInt `formatAmount`/`formatAmountExact` — never use nom-ui `Amount` for balances, it loses precision), and the generated `frontend/wailsjs/` bindings.
 
-### Three node modes
+### Two node modes
 
-`NodeService` abstracts all three behind one interface so the frontend only sees "mode / connected / syncing / height / peers":
+`NodeService` abstracts both behind one interface so the frontend only sees "mode / connected / syncing / height / peers":
 1. **Remote** — `wss://` third-party node (built first)
-2. **Local** — user-run `znnd` at `ws://127.0.0.1:35998`
-3. **Embedded** — `go-zenon` imported and run in-process (goroutine); the feature where Wails materially beats the Flutter original
+2. **Embedded** — `go-zenon` imported and run in-process (goroutine); the feature where Wails materially beats the Flutter original
+
+Local mode removed 2026-08-03 (`docs/superpowers/specs/2026-08-03-node-mode-hardening-design.md`) — self-hosted `znnd` users point Remote at `ws://127.0.0.1:35998`.
 
 ### Frontend ⇄ Go contract
 

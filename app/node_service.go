@@ -487,7 +487,8 @@ func redactURLUserinfo(msg, rawURL string) string {
 
 // SetNodeURL persists the remote node URL (validated) and reconnects if remote
 // is the active mode. Remote is the only configurable URL: the embedded node's
-// is fixed.
+// is fixed. The mode parameter survives Local's removal for explicitness; only
+// "remote" is accepted.
 func (n *NodeService) SetNodeURL(mode, url string) error {
 	if mode == "embedded" {
 		return fmt.Errorf("embedded node url is fixed and cannot be changed")

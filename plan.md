@@ -68,14 +68,15 @@ This is one of the cases where Wails is a genuinely strong fit, not merely a pos
 └──────────────────────────────────────────────────────────┘
                   │ WebSocket (ws://… or wss://…)
                   ▼
-        Local node / Remote node / Embedded node
+        Remote node / Embedded node
 ```
 
-### 1.2 The three node modes (must match syrius)
+### 1.2 The two node modes (must match syrius)
 
 1. **Embedded Node** — bundle go-zenon, run it in-process/in-goroutine, connect locally. Heaviest, most "full node" trust model.
-2. **Local Node** — connect to a user-run `znnd` at `ws://127.0.0.1:35998`.
-3. **Remote Node** — connect to a third-party node over `wss://`.
+2. **Remote Node** — connect to a third-party node over `wss://`.
+
+Local mode removed 2026-08-03 (`docs/superpowers/specs/2026-08-03-node-mode-hardening-design.md`) — self-hosted `znnd` users point Remote at `ws://127.0.0.1:35998`.
 
 `NodeService` abstracts these behind one interface so the frontend only ever sees "connected / syncing / height / mode."
 
@@ -235,7 +236,7 @@ syrius-wails/
 ├── app/                         # Wails-bound services (the binding boundary)
 │   ├── app.go                   # App struct, lifecycle (startup/shutdown)
 │   ├── wallet_service.go        # unlock/lock/list/accounts
-│   ├── node_service.go          # remote/local/embedded modes + status events
+│   ├── node_service.go          # remote/embedded modes + status events
 │   ├── tx_service.go            # send/receive: build→pow→sign→publish
 │   ├── nom_service.go           # plasma/stake/pillar/sentinel/token/az
 │   ├── ledger_service.go        # hardware signing (Phase 6)
@@ -283,7 +284,7 @@ RevealMnemonic(password string) (string, error)
 ChangePassword(old, new string) error
 
 // Node
-SetNodeMode(mode string, url string) error                   // remote|local|embedded
+SetNodeMode(mode string, url string) error                   // remote|embedded
 NodeStatus() NodeStatus                                      // mode, connected, height, peers, syncing
 EmbeddedStart() error / EmbeddedStop() error
 
@@ -376,7 +377,7 @@ Parallelizing frontend and backend work, or reusing existing UI patterns, compre
 - Opens existing syrius wallets; wallets created here open in syrius.
 - Send/receive ZNN, QSR, and ZTS reliably on mainnet.
 - Plasma/fusion, staking, and pillar delegation functional.
-- All three node modes work (remote, local, embedded).
+- Both node modes work (remote, embedded).
 - Signed installers for Windows, macOS, Linux from reproducible CI.
 - Crypto-critical path independently reviewed; no secrets ever cross into the WebView.
 - (Stretch) Ledger hardware signing.

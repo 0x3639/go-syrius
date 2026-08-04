@@ -5,7 +5,7 @@ import { setActivePinia, createPinia } from 'pinia'
 const h = vi.hoisted(() => ({
   SetNodeMode: vi.fn().mockResolvedValue(undefined),
   SetNodeURL: vi.fn().mockResolvedValue(undefined),
-  GetNodeConfig: vi.fn().mockResolvedValue({ mode: 'remote', remoteUrl: 'wss://node', localUrl: 'ws://127.0.0.1:35998' }),
+  GetNodeConfig: vi.fn().mockResolvedValue({ mode: 'remote', remoteUrl: 'wss://node' }),
   GetEmbeddedInfo: vi.fn().mockResolvedValue({ running: true, dataDir: '/data/znn', sizeBytes: 4096 }),
   DeleteEmbeddedData: vi.fn().mockResolvedValue(undefined),
   ChangePassword: vi.fn().mockResolvedValue(undefined),
@@ -42,8 +42,8 @@ beforeEach(() => setActivePinia(createPinia()))
 describe('node store settings extensions', () => {
   it('setMode calls SetNodeMode', async () => {
     const s = useNodeStore()
-    await s.setMode('local')
-    expect(h.SetNodeMode).toHaveBeenCalledWith('local')
+    await s.setMode('embedded')
+    expect(h.SetNodeMode).toHaveBeenCalledWith('embedded')
   })
   it('setUrl calls SetNodeURL', async () => {
     const s = useNodeStore()
@@ -53,7 +53,7 @@ describe('node store settings extensions', () => {
   it('getConfig returns mocked config', async () => {
     const s = useNodeStore()
     const cfg = await s.getConfig()
-    expect(cfg).toEqual({ mode: 'remote', remoteUrl: 'wss://node', localUrl: 'ws://127.0.0.1:35998' })
+    expect(cfg).toEqual({ mode: 'remote', remoteUrl: 'wss://node' })
   })
   it('getEmbeddedInfo returns mocked info', async () => {
     const s = useNodeStore()

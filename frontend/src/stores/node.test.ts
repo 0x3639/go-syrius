@@ -110,6 +110,21 @@ describe('node store', () => {
     expect(cb).toHaveBeenCalledTimes(1)
   })
 
+  it('treats a stalled sync as not-synced (keeps the tick refresh paused)', async () => {
+    const s = useNodeStore()
+    const cb = vi.fn()
+    s.initEvents(cb)
+    await new Promise((r) => setTimeout(r))
+    handlers['node:status']?.({ connected: true, chainId: 1, mode: 'embedded' })
+    // A stalled node is still not synced: keep `syncing` true so the UI shows
+    // the stall and the tick refresh does not hammer a node that is wedged.
+    handlers['node:sync']?.({ state: 'stalled', currentHeight: 100, targetHeight: 200, percent: 50, etaSeconds: 0, peers: 2 })
+    expect(s.syncing).toBe(true)
+    expect(s.sync?.state).toBe('stalled')
+    handlers['momentum:tick']?.()
+    expect(cb).not.toHaveBeenCalled()
+  })
+
   it('clearTick detaches the callback (no refreshes while locked)', () => {
     const s = useNodeStore()
     const cb = vi.fn()

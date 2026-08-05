@@ -1,6 +1,7 @@
 package app
 
 import (
+	"math"
 	"math/big"
 	"strings"
 	"testing"
@@ -8,8 +9,20 @@ import (
 	embedded "github.com/0x3639/znn-sdk-go/api/embedded"
 	nom "github.com/zenon-network/go-zenon/chain/nom"
 	"github.com/zenon-network/go-zenon/common/types"
+	api "github.com/zenon-network/go-zenon/rpc/api"
 	constants "github.com/zenon-network/go-zenon/vm/constants"
 )
+
+// A node-supplied momentum timestamp above MaxInt64 must clamp, not wrap into
+// a negative chain time (which would corrupt every maturity computation).
+func TestFrontierUnixClampsOverflow(t *testing.T) {
+	if got := frontierUnix(&api.Momentum{Momentum: &nom.Momentum{TimestampUnix: math.MaxUint64}}); got != math.MaxInt64 {
+		t.Fatalf("overflowing timestamp must clamp to MaxInt64, got %d", got)
+	}
+	if got := frontierUnix(&api.Momentum{Momentum: &nom.Momentum{TimestampUnix: 1_700_000_000}}); got != 1_700_000_000 {
+		t.Fatalf("normal timestamp must pass through, got %d", got)
+	}
+}
 
 func TestFusionEntryDTORevocable(t *testing.T) {
 	addr, _ := types.ParseAddress("z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz")

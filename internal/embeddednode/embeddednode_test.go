@@ -25,4 +25,16 @@ func TestBuildConfigLoopbackAndGenesis(t *testing.T) {
 	if len(cfg.Net.Seeders) == 0 {
 		t.Fatalf("expected built-in seeders to be preserved")
 	}
+	// An EMPTY origin list is go-zenon's localhost-any-port default, which lets
+	// any browser page served from localhost drive the RPC. The config must pin
+	// a sentinel origin no browser can present; no-Origin (native) clients —
+	// the wallet's own — always pass the validator regardless.
+	if len(cfg.RPC.WSOrigins) == 0 {
+		t.Fatal("WSOrigins must not be empty (empty ⇒ localhost browser pages allowed)")
+	}
+	for _, o := range cfg.RPC.WSOrigins {
+		if o == "*" || o == "http://localhost" {
+			t.Fatalf("WSOrigins must not admit browser origins, got %q", o)
+		}
+	}
 }

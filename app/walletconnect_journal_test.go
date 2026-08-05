@@ -76,11 +76,46 @@ func TestWalletConnectJournalPersistsAcrossInstances(t *testing.T) {
 	if err != nil || !ok || got.IntentHash != "abc" || got.State != wcStateSigned {
 		t.Fatalf("journal did not survive restart: %+v ok=%v err=%v", got, ok, err)
 	}
-	if err := tx2.wcJournal.delete(key); err != nil {
+	if err := tx2.wcJournal.markPublished(key); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx2.wcJournal.deletePublished(key); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok, _ := tx.wcJournal.get(key); ok {
 		t.Fatal("deleted journal record still present")
+	}
+}
+
+// An acknowledge for an UNRESOLVED (signed) record must be refused: the record
+// is the only duplicate-protection guard for a possibly-published block, and
+// the frontend calling Ack is untrusted (CWE-863).
+func TestAckWalletConnectResultRefusesUnresolvedRecord(t *testing.T) {
+	tx := newTestTxService(t)
+	key := wcJournalKey("topic-ack", 11)
+	rec := wcPublicationRecord{Topic: "topic-ack", RequestID: 11, IntentHash: "abc", State: wcStateSigned, BlockJSON: json.RawMessage(`{"hash":"00"}`), Hash: "00", CreatedAt: 1}
+	if err := tx.wcJournal.put(key, rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.AckWalletConnectResult("topic-ack", 11); err == nil {
+		t.Fatal("ack of a signed (unresolved) record must be refused")
+	}
+	if _, ok, _ := tx.wcJournal.get(key); !ok {
+		t.Fatal("refused ack must leave the record in place")
+	}
+	// Once resolved, the same ack succeeds and clears the record.
+	if err := tx.wcJournal.markPublished(key); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.AckWalletConnectResult("topic-ack", 11); err != nil {
+		t.Fatalf("ack of a published record must succeed: %v", err)
+	}
+	if _, ok, _ := tx.wcJournal.get(key); ok {
+		t.Fatal("acked record must be deleted")
+	}
+	// Ack of a missing record stays idempotent (no error).
+	if err := tx.AckWalletConnectResult("topic-ack", 11); err != nil {
+		t.Fatalf("ack of a missing record must be a no-op: %v", err)
 	}
 }
 

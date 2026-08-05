@@ -428,9 +428,12 @@ func (t *TxService) ReconcileWalletConnectPublication(topic string, requestID ui
 }
 
 // AckWalletConnectResult removes a journaled record once its result reached
-// the dapp (or the user explicitly closed the delivery-failure state).
+// the dapp (or the user explicitly closed the delivery-failure state). Only a
+// RESOLVED (published) record may be acknowledged: the frontend is untrusted,
+// and deleting a still-signed record would discard the exactly-once guard for
+// a possibly-published block.
 func (t *TxService) AckWalletConnectResult(topic string, requestID uint64) error {
-	return t.wcJournal.delete(wcJournalKey(topic, requestID))
+	return t.wcJournal.deletePublished(wcJournalKey(topic, requestID))
 }
 
 func walletConnectBlockJSON(built *nom.AccountBlock) (map[string]interface{}, error) {

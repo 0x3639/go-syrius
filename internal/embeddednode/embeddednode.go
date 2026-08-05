@@ -36,7 +36,16 @@ func buildConfig(dataDir string) node.Config {
 		WSHost:     "127.0.0.1",
 		WSPort:     EmbeddedWSPort,
 		EnableHTTP: false,
-		WSOrigins:  []string{},
+		// A never-matchable origin, NOT the empty default. go-zenon's
+		// wsHandshakeValidator turns an empty list into {http://localhost,
+		// http://<hostname>} and its matcher treats a port-less rule as
+		// matching ANY port — so the default would let any browser page served
+		// from localhost (e.g. a dev server on localhost:3000) drive this RPC.
+		// Requests WITHOUT an Origin header always pass the validator, which is
+		// exactly how the wallet's own SDK clients connect (rpc/server.Dial and
+		// the gorilla subscription dialer send none), so this sentinel rejects
+		// every browser while changing nothing for the wallet itself.
+		WSOrigins: []string{"http://go-syrius-embedded.invalid"},
 	}
 	return cfg
 }

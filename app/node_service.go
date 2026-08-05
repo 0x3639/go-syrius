@@ -506,13 +506,27 @@ func (n *NodeService) startEmbedded() error {
 
 // redactURLUserinfo scrubs URL credentials from an error message bound for the
 // frontend: the websocket dial error text embeds the full URL, userinfo
-// included (GS-11).
+// included (GS-11). It scrubs BOTH the re-encoded userinfo (u.User.String())
+// and the verbatim userinfo text from the raw URL — the two can differ when the
+// input uses non-canonical percent-escapes (e.g. %41 for A), and the dial error
+// embeds the URL as it was given.
 func redactURLUserinfo(msg, rawURL string) string {
 	u, err := neturl.Parse(rawURL)
 	if err != nil || u.User == nil {
 		return msg
 	}
-	return strings.ReplaceAll(msg, u.User.String()+"@", "***@")
+	msg = strings.ReplaceAll(msg, u.User.String()+"@", "***@")
+	if i := strings.Index(rawURL, "://"); i >= 0 {
+		authority := rawURL[i+3:]
+		if j := strings.IndexAny(authority, "/?#"); j >= 0 {
+			authority = authority[:j]
+		}
+		// Last @ delimits userinfo from host (mirrors url.Parse).
+		if j := strings.LastIndex(authority, "@"); j > 0 {
+			msg = strings.ReplaceAll(msg, authority[:j]+"@", "***@")
+		}
+	}
+	return msg
 }
 
 // SetNodeURL persists the remote node URL (validated) and reconnects if remote

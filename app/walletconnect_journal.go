@@ -269,15 +269,24 @@ func (j *wcJournal) findByIntentAnyTopic(intentHash, excludeKey, skipTopic strin
 	return wcPublicationRecord{}, false, nil
 }
 
-func (j *wcJournal) delete(key string) error {
+// deletePublished removes a record ONLY once it is resolved (published). A
+// signed record is a possibly-published block whose retention is the sole
+// duplicate-protection guard; the frontend is untrusted, so an acknowledge for
+// an unresolved record must be refused, not honored (it would let a
+// redelivered request build and broadcast a second block for the same intent).
+func (j *wcJournal) deletePublished(key string) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	m, err := j.loadLocked()
 	if err != nil {
 		return err
 	}
-	if _, ok := m[key]; !ok {
+	rec, ok := m[key]
+	if !ok {
 		return nil
+	}
+	if rec.State != wcStatePublished {
+		return fmt.Errorf("the publication outcome for this request is unresolved; reconcile it before acknowledging")
 	}
 	delete(m, key)
 	return j.saveLocked(m)

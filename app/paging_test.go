@@ -24,6 +24,26 @@ func TestCollectPaged_CapsMaliciousCount(t *testing.T) {
 	}
 }
 
+// The page-count cap alone does not bound memory: a node can also inflate the
+// SIZE of each page. Accumulated items must be truncated at maxPagedItems.
+func TestCollectPaged_CapsAccumulatedItems(t *testing.T) {
+	huge := make([]int, maxPagedItems) // one page already at the item cap
+	calls := 0
+	out, err := collectPaged(func(pageIndex uint32) ([]int, int, error) {
+		calls++
+		return huge, 1 << 30, nil
+	})
+	if err != nil {
+		t.Fatalf("capped collection must not error: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("item cap must stop fetching: %d calls, want 1", calls)
+	}
+	if len(out) != maxPagedItems {
+		t.Fatalf("accumulated items must be truncated to %d, got %d", maxPagedItems, len(out))
+	}
+}
+
 func TestCollectPaged_NormalTermination(t *testing.T) {
 	// Terminates when the claimed total is reached.
 	pages := [][]int{{1, 2}, {3}}

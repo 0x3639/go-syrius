@@ -24,9 +24,14 @@ func collectPaged[T any](fetch func(pageIndex uint32) (page []T, total int, err 
 		if err != nil {
 			return nil, err
 		}
+		// Truncate BEFORE appending: append-then-cut would first allocate and
+		// copy the full node-supplied page, so one oversized page could still
+		// blow the memory bound it exists to enforce.
+		if remaining := maxPagedItems - len(out); len(page) > remaining {
+			page = page[:remaining]
+		}
 		out = append(out, page...)
 		if len(out) >= maxPagedItems {
-			out = out[:maxPagedItems]
 			break
 		}
 		if len(out) >= total || len(page) == 0 {

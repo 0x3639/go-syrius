@@ -22,7 +22,6 @@ const h = vi.hoisted(() => {
     disconnect: vi.fn(),
     pair: vi.fn(),
     getConfig: vi.fn(),
-    pendingRequests: vi.fn(() => [] as any[]),
   }
 })
 
@@ -36,7 +35,6 @@ const fakeClient = {
   disconnect: h.disconnect,
   session: { getAll: () => h.sessions },
   core: { pairing: { pair: h.pair } },
-  getPendingSessionRequests: h.pendingRequests,
 }
 
 vi.mock('@walletconnect/sign-client', () => ({ SignClient: { init: h.init } }))
@@ -107,12 +105,19 @@ function sendEvent(id: number, topic = 'topic', expiryTimestamp?: number) {
   }
 }
 
-async function prepareRequest(id = 7, topic = 'topic') {
+async function prepareRequest(id = 7, topic = 'topic', expiryTimestamp?: number) {
   const wc = useWalletConnectStore()
   h.prepare.mockResolvedValueOnce({ outcome: 'prepare', preview: { ...preview } })
-  await wc.handleRequest(sendEvent(id, topic))
+  await wc.handleRequest(sendEvent(id, topic, expiryTimestamp))
   return wc
 }
+
+// An expiry deadline that has already elapsed. A real session_request_expire
+// only fires at/after the request's own deadline (SignClient's expirer is the
+// sole emitter), so tests that fire the event must model an elapsed deadline —
+// the store now ignores expire events that precede the entry's recorded one
+// (dapp-chosen ids collide across sessions).
+const elapsedExpiry = () => Math.floor(Date.now() / 1000) - 1
 
 describe('WalletConnect Zenon namespace compatibility', () => {
   it('accepts the frozen namespace used by both bridge-dapp and nom-bridge', () => {
@@ -174,7 +179,6 @@ describe('WalletConnect request handling', () => {
     h.pair.mockReset().mockResolvedValue(undefined)
     h.getConfig.mockReset().mockResolvedValue({ mode: 'remote', remoteUrl: 'wss://mainnet.example' })
     h.init.mockReset().mockResolvedValue(fakeClient)
-    h.pendingRequests.mockReset().mockReturnValue([])
     vi.stubEnv('VITE_WALLETCONNECT_PROJECT_ID', 'test-project-id')
   })
 
@@ -501,7 +505,7 @@ describe('WalletConnect request handling', () => {
 
   it('releases an awaiting hold without responding when its request expires', async () => {
     unlock()
-    const wc = await prepareRequest(21, 'expiring-topic')
+    const wc = await prepareRequest(21, 'expiring-topic', elapsedExpiry())
 
     await wc.handleRequestExpired(21)
 
@@ -529,7 +533,7 @@ describe('WalletConnect request handling', () => {
     h.prepare.mockReturnValueOnce(new Promise((resolve) => { finishPrepare = resolve }))
     const wc = useWalletConnectStore()
 
-    const preparing = wc.handleRequest(sendEvent(23, 'expire-during-prepare'))
+    const preparing = wc.handleRequest(sendEvent(23, 'expire-during-prepare', elapsedExpiry()))
     await vi.waitFor(() => expect(wc.preparingRequest?.id).toBe(23))
     await wc.handleRequestExpired(23)
     finishPrepare({ outcome: 'prepare', preview: { ...preview } })
@@ -563,13 +567,17 @@ describe('WalletConnect request handling', () => {
   })
 
   it('does not let an expiry race an in-flight publication with an error response', async () => {
+    vi.useFakeTimers()
     unlock()
-    const wc = await prepareRequest(25, 'expire-during-publish')
+    const wc = await prepareRequest(25, 'expire-during-publish', Math.floor(Date.now() / 1000) + 300)
     let finishPublish!: (result: unknown) => void
     h.confirm.mockReturnValue(new Promise((resolve) => { finishPublish = resolve }))
 
     const publishing = wc.approveRequest()
     await Promise.resolve()
+    // The request's own deadline genuinely elapses while the publish is in
+    // flight; only then does SignClient emit the expire event.
+    vi.setSystemTime(Date.now() + 301_000)
     await wc.handleRequestExpired(25)
 
     expect(h.respond).not.toHaveBeenCalled()
@@ -582,6 +590,7 @@ describe('WalletConnect request handling', () => {
     expect(wc.request?.publishedHash).toBe('published-despite-expiry')
     expect(wc.request?.error).toContain('Do not submit it again')
     expect(h.respond.mock.calls.some(([call]) => 'error' in (call?.response ?? {}))).toBe(false)
+    vi.useRealTimers()
   })
 
   it('clears only the matching expired proposal', async () => {
@@ -665,7 +674,7 @@ describe('WalletConnect request handling', () => {
     expect(wc.error).toContain('scam')
   })
 
-  it('does not approve a proposal swapped in while awaiting the client', async () => {
+  it('does not approve a proposal swapped in while awaiting the client, even under the SAME id', async () => {
     unlock()
     const wc = useWalletConnectStore()
     wc.handleProposal({
@@ -675,39 +684,46 @@ describe('WalletConnect request handling', () => {
     fakeClient.approve.mockClear()
 
     const approving = wc.approveProposal()
-    // A second dapp's proposal lands during approveProposal's ensureClient
-    // await. The user reviewed A, not B — nothing may be approved.
+    // A replacement proposal lands during approveProposal's ensureClient
+    // await, REUSING the displaced proposal's peer-chosen numeric id (an id
+    // comparison would be blind to this, and SignClient's proposal store —
+    // also keyed by id — would approve the impostor). The user reviewed A,
+    // not B: nothing may be approved.
     wc.handleProposal({
-      id: 52,
-      params: { requiredNamespaces: bridgeNamespaces, proposer: { metadata: { name: 'Dapp B' } } },
+      id: 51,
+      params: { requiredNamespaces: bridgeNamespaces, proposer: { metadata: { name: 'Dapp B (impostor)' } } },
     })
     await approving
 
     expect(fakeClient.approve).not.toHaveBeenCalled()
     // The swapped-in proposal stays visible for its own explicit review.
-    expect(wc.proposal?.id).toBe(52)
+    expect(wc.proposal?.name).toBe('Dapp B (impostor)')
   })
 
-  it('ignores a request expiry whose id collides with another session (ours still pending)', async () => {
-    unlock()
-    const wc = await prepareRequest(107, 'topic-ours')
-    await wc.ensureClient()
-    expect(wc.request?.id).toBe(107)
+  it('ignores a request expire whose id collides with another session (own deadline not reached)', async () => {
+    vi.useFakeTimers()
+    try {
+      unlock()
+      // Our request carries a 10-minute deadline of its own.
+      const wc = await prepareRequest(107, 'topic-ours', Math.floor(Date.now() / 1000) + 600)
+      expect(wc.request?.id).toBe(107)
 
-    // Request ids are dapp-chosen: a malicious session can expire its own
-    // short-lived request with OUR id. Ours is still pending at the client, so
-    // the expiry must not cancel the displayed request.
-    h.pendingRequests.mockReturnValue([{ topic: 'topic-ours', id: 107 }])
-    await wc.handleRequestExpired(107)
-    expect(wc.request?.id).toBe(107)
-    expect(h.cancel).not.toHaveBeenCalled()
+      // Request ids are dapp-chosen: a malicious session issues a short-lived
+      // request with OUR id and lets it expire. SignClient deletes its (id-
+      // keyed) record and emits the bare id — but our request's own recorded
+      // deadline has not passed, so the event cannot be about it.
+      await wc.handleRequestExpired(107)
+      expect(wc.request?.id).toBe(107)
+      expect(h.cancel).not.toHaveBeenCalled()
 
-    // When OUR request really expires (gone from the pending store), the
-    // expiry cancels as before.
-    h.pendingRequests.mockReturnValue([])
-    await wc.handleRequestExpired(107)
-    expect(wc.request).toBeNull()
-    expect(h.cancel).toHaveBeenCalledWith(42)
+      // Once our own deadline elapses, the expire event is honored as before.
+      vi.setSystemTime(Date.now() + 601_000)
+      await wc.handleRequestExpired(107)
+      expect(wc.request).toBeNull()
+      expect(h.cancel).toHaveBeenCalledWith(42)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('captures the Verify identity on znn_send requests for the approval dialog', async () => {
@@ -845,7 +861,7 @@ describe('WalletConnect request handling', () => {
     let finishLookup!: (r: unknown) => void
     h.lookup.mockReturnValueOnce(new Promise((resolve) => { finishLookup = resolve }))
 
-    const pending = wc.handleRequest(sendEvent(74, 'expire-during-lookup'))
+    const pending = wc.handleRequest(sendEvent(74, 'expire-during-lookup', elapsedExpiry()))
     await vi.waitFor(() => expect(h.lookup).toHaveBeenCalled())
     await wc.handleRequestExpired(74)
     finishLookup({ outcome: 'none' })
@@ -1305,7 +1321,7 @@ describe('WalletConnect request handling', () => {
     let finishPrepareA!: (r: unknown) => void
     h.lookup.mockResolvedValueOnce({ outcome: 'none' })
     h.prepare.mockReturnValueOnce(new Promise((resolve) => { finishPrepareA = resolve }))
-    const a = wc.handleRequest(sendEvent(81, 'topic-a'))
+    const a = wc.handleRequest(sendEvent(81, 'topic-a', elapsedExpiry()))
     await vi.waitFor(() => expect(wc.preparingRequest?.id).toBe(81))
 
     // B: a second request; its lookup must NOT overwrite A's preparing marker.

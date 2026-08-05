@@ -131,6 +131,22 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+// session_request_expire carries only a numeric id, and request ids are
+// DAPP-CHOSEN — two sessions can hold the same id, so a malicious dapp could
+// expire a short-lived request whose id shadows another session's pending one.
+// Before treating an entry as expired, check the client's pending-request
+// store: if a request with this id is still pending under the entry's OWN
+// topic, the expired one belonged to a different session and the entry must be
+// left alone. Best-effort: when the store cannot be consulted, fall through to
+// the old id-only behavior.
+function idStillPendingFor(topic: string, id: number): boolean {
+  try {
+    return !!client?.getPendingSessionRequests?.().some((r: any) => r?.id === id && r?.topic === topic)
+  } catch {
+    return false
+  }
+}
+
 // Errors carrying this marker mean the signed block MAY be on chain (WC-01):
 // they must enter the reconcile flow and never be answered with a rejection.
 const OUTCOME_UNKNOWN_MARKER = 'walletconnect publication outcome unknown'
@@ -326,25 +342,31 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       }
     },
     async approveProposal() {
-      if (!this.proposal) return
+      // Capture the proposal BEFORE any await: every check below (and the
+      // approval itself) must run against the proposal the user actually saw.
+      const proposal = this.proposal
+      if (!proposal) return
       // Defense in depth alongside the proposal_expire listener: approving an
       // already-expired proposal can only fail at the relay.
-      if (this.proposal.expiryTimestamp && Date.now() >= this.proposal.expiryTimestamp * 1000) {
-        this.proposal = null
+      if (proposal.expiryTimestamp && Date.now() >= proposal.expiryTimestamp * 1000) {
+        if (this.proposal?.id === proposal.id) this.proposal = null
         this.error = 'The connection proposal expired; ask the dapp for a fresh pairing'
         return
       }
       // Verify flagged this peer as a known scam; the proposal stays visible so
       // the user can reject it, but it can never be approved.
-      if (this.proposal.isScam) {
+      if (proposal.isScam) {
         this.error = 'Connection blocked: WalletConnect Verify flagged this dapp as a known scam'
         return
       }
       const c = await this.ensureClient()
+      // A different proposal swapped in during the await: approving it would
+      // grant a session the user never reviewed (checks above ran against the
+      // OLD one). Abort; the new proposal goes through its own approve click.
+      if (this.proposal?.id !== proposal.id) return
       const wallet = useWalletStore()
       const address = wallet.activeAddress()
       if (wallet.locked || !address) throw new Error('Unlock a wallet before approving a session')
-      const proposal = this.proposal
       this.error = ''
       try {
         const { acknowledged } = await c.approve({
@@ -358,7 +380,9 @@ export const useWalletConnectStore = defineStore('walletconnect', {
           },
         })
         await acknowledged()
-        this.proposal = null
+        // Only clear the proposal we approved — never a newer one that
+        // arrived while the relay round-trips were in flight.
+        if (this.proposal?.id === proposal.id) this.proposal = null
         this.refreshSessions()
       } catch (error) {
         this.error = messageOf(error)
@@ -366,11 +390,13 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       }
     },
     async rejectProposal() {
-      if (!this.proposal) return
+      // Same capture-before-await rule as approveProposal: reject the proposal
+      // the user saw, and never clear a newer one swapped in during the await.
+      const proposal = this.proposal
+      if (!proposal) return
       const c = await this.ensureClient()
-      const id = this.proposal.id
-      this.proposal = null
-      await c.reject({ id, reason: { code: 5000, message: 'User rejected' } })
+      if (this.proposal?.id === proposal.id) this.proposal = null
+      await c.reject({ id: proposal.id, reason: { code: 5000, message: 'User rejected' } })
     },
     async disconnect(topic: string) {
       const c = await this.ensureClient()
@@ -1042,24 +1068,30 @@ export const useWalletConnectStore = defineStore('walletconnect', {
     },
     async handleRequestExpired(id: number) {
       // A request still inside its journal lookup must observe its own expiry,
-      // or it could fall through to a fresh, approvable hold.
+      // or it could fall through to a fresh, approvable hold. Every match below
+      // is id+topic-guarded via idStillPendingFor: an id-only match could be a
+      // colliding id from a DIFFERENT session (dapp-chosen ids), whose expiry
+      // must not cancel this one.
       for (const marker of lookupMarkers.values()) {
-        if (marker.id === id) marker.ended = true
+        if (marker.id === id && !idStillPendingFor(marker.topic, id)) marker.ended = true
       }
       for (let i = pendingReplays.length - 1; i >= 0; i--) {
-        if (pendingReplays[i].id === id && !pendingReplays[i].localRecovery) pendingReplays.splice(i, 1)
+        if (pendingReplays[i].id === id && !pendingReplays[i].localRecovery && !idStillPendingFor(pendingReplays[i].topic, id)) pendingReplays.splice(i, 1)
       }
       for (const [k, entry] of failedLookups) {
-        if (entry.id === id) failedLookups.delete(k)
+        if (entry.id === id && !idStillPendingFor(entry.topic, id)) failedLookups.delete(k)
       }
       const preparing = this.preparingRequest
       // The expired request no longer exists at the relay, so there is nothing
       // to answer; reuse the session-ended path, which cancels silently.
-      if (preparing && preparing.id === id) preparing.sessionEnded = true
+      if (preparing && preparing.id === id && !idStillPendingFor(preparing.topic, id)) preparing.sessionEnded = true
       // A local-recovery record is journal-owned; leave it untouched.
       if (this.request?.localRecovery) return
       const current = this.request
       if (!current || current.id !== id) return
+      // Our displayed request is still pending at the client under its own
+      // topic: the expired one was another session's colliding id.
+      if (idStillPendingFor(current.topic, id)) return
       if (current.status === 'publishing' || current.status === 'notifying' || current.status === 'delivery-error' || current.status === 'unknown') {
         // Publication already started: only its actual outcome may drive the
         // terminal state. Marking the request ended suppresses any response

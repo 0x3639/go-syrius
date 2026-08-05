@@ -41,6 +41,14 @@ describe('isValidPillarName', () => {
       expect(isValidPillarName(n)).toBe(false)
     }
   })
+  it('rejects a worst-case non-match in linear time (no catastrophic backtracking)', () => {
+    // 39 alphanumerics + a non-matching tail: the old nested-quantifier regex
+    // (([a-zA-Z0-9]+[-._]?)*) explored ~2^38 partitions here and froze the UI.
+    const pathological = 'a'.repeat(39) + '!'
+    const start = performance.now()
+    expect(isValidPillarName(pathological)).toBe(false)
+    expect(performance.now() - start).toBeLessThan(100)
+  })
 })
 
 // GS-12: malformed decimal strings must be rejected, not silently normalized

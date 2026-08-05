@@ -31,7 +31,10 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
         // failure is otherwise invisible — record it for the UI to surface. The
         // backend emits { hash, error }; tolerate a bare string too.
         EventsOn('auto-receive:error', (payload: { hash?: string; error?: string } | string) => {
-          const msg = typeof payload === 'string' ? payload : payload?.error
+          // Error text can embed node-supplied content (rendered as text by the
+          // toast — Vue escapes — but still untrusted): bound its size so a
+          // malicious node cannot shove megabytes into UI state.
+          const msg = (typeof payload === 'string' ? payload : payload?.error)?.slice(0, 300)
           this.lastError = msg && msg.length > 0 ? msg : 'Auto-receive failed'
           this.errorCount++
         })

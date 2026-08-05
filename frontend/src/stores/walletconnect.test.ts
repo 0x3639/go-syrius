@@ -22,6 +22,7 @@ const h = vi.hoisted(() => {
     disconnect: vi.fn(),
     pair: vi.fn(),
     getConfig: vi.fn(),
+    pendingRequests: vi.fn(() => [] as any[]),
   }
 })
 
@@ -35,6 +36,7 @@ const fakeClient = {
   disconnect: h.disconnect,
   session: { getAll: () => h.sessions },
   core: { pairing: { pair: h.pair } },
+  getPendingSessionRequests: h.pendingRequests,
 }
 
 vi.mock('@walletconnect/sign-client', () => ({ SignClient: { init: h.init } }))
@@ -172,6 +174,7 @@ describe('WalletConnect request handling', () => {
     h.pair.mockReset().mockResolvedValue(undefined)
     h.getConfig.mockReset().mockResolvedValue({ mode: 'remote', remoteUrl: 'wss://mainnet.example' })
     h.init.mockReset().mockResolvedValue(fakeClient)
+    h.pendingRequests.mockReset().mockReturnValue([])
     vi.stubEnv('VITE_WALLETCONNECT_PROJECT_ID', 'test-project-id')
   })
 
@@ -660,6 +663,51 @@ describe('WalletConnect request handling', () => {
     expect(fakeClient.approve).not.toHaveBeenCalled()
     expect(wc.proposal).not.toBeNull()
     expect(wc.error).toContain('scam')
+  })
+
+  it('does not approve a proposal swapped in while awaiting the client', async () => {
+    unlock()
+    const wc = useWalletConnectStore()
+    wc.handleProposal({
+      id: 51,
+      params: { requiredNamespaces: bridgeNamespaces, proposer: { metadata: { name: 'Dapp A' } } },
+    })
+    fakeClient.approve.mockClear()
+
+    const approving = wc.approveProposal()
+    // A second dapp's proposal lands during approveProposal's ensureClient
+    // await. The user reviewed A, not B — nothing may be approved.
+    wc.handleProposal({
+      id: 52,
+      params: { requiredNamespaces: bridgeNamespaces, proposer: { metadata: { name: 'Dapp B' } } },
+    })
+    await approving
+
+    expect(fakeClient.approve).not.toHaveBeenCalled()
+    // The swapped-in proposal stays visible for its own explicit review.
+    expect(wc.proposal?.id).toBe(52)
+  })
+
+  it('ignores a request expiry whose id collides with another session (ours still pending)', async () => {
+    unlock()
+    const wc = await prepareRequest(107, 'topic-ours')
+    await wc.ensureClient()
+    expect(wc.request?.id).toBe(107)
+
+    // Request ids are dapp-chosen: a malicious session can expire its own
+    // short-lived request with OUR id. Ours is still pending at the client, so
+    // the expiry must not cancel the displayed request.
+    h.pendingRequests.mockReturnValue([{ topic: 'topic-ours', id: 107 }])
+    await wc.handleRequestExpired(107)
+    expect(wc.request?.id).toBe(107)
+    expect(h.cancel).not.toHaveBeenCalled()
+
+    // When OUR request really expires (gone from the pending store), the
+    // expiry cancels as before.
+    h.pendingRequests.mockReturnValue([])
+    await wc.handleRequestExpired(107)
+    expect(wc.request).toBeNull()
+    expect(h.cancel).toHaveBeenCalledWith(42)
   })
 
   it('captures the Verify identity on znn_send requests for the approval dialog', async () => {

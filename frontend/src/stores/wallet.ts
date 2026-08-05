@@ -52,11 +52,16 @@ export const useWalletStore = defineStore('wallet', {
       await W.RenameWallet(id, name)
       await this.loadWallets()
     },
-    lock() {
-      // Re-lock the keystore in the Go backend, not just the UI — otherwise the
-      // wallet shows locked while the backend keystore stays decrypted.
-      W.Lock().catch(() => {})
-      this._applyLocked()
+    // Re-lock the keystore in the Go backend, not just the UI. The local
+    // teardown always runs (the session is over either way), but a backend
+    // failure is rethrown — swallowing it would show "locked" while the
+    // keystore stays decrypted in Go memory, with nobody told (CWE-362).
+    async lock() {
+      try {
+        await W.Lock()
+      } finally {
+        this._applyLocked()
+      }
     },
     // Local session teardown shared by manual lock() and the backend-initiated
     // wallet:locked event (auto-lock watchdog).

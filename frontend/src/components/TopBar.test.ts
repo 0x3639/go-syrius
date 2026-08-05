@@ -33,7 +33,7 @@ describe('TopBar', () => {
 
   it('locks the wallet when the lock button is clicked', async () => {
     const wallet = useWalletStore(); wallet.locked = false
-    const lock = vi.spyOn(wallet, 'lock').mockImplementation(() => {})
+    const lock = vi.spyOn(wallet, 'lock').mockResolvedValue(undefined)
     const w = mount(TopBar, { props: { title: 'Dashboard' }, global: { stubs } })
     await w.find('button[aria-label="Lock wallet"]').trigger('click')
     expect(lock).toHaveBeenCalled()

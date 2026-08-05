@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"regexp"
 	"sort"
@@ -168,9 +169,14 @@ const stakeTimeUnitSec int64 = 2_592_000 // 30 days; go-zenon StakeTimeUnitSec
 
 // frontierUnix returns the unix-seconds timestamp of an RPC frontier momentum.
 // The momentum's *time.Time Timestamp is json:"-" (nil over RPC); the wire value
-// is the TimestampUnix uint64 field (json:"timestamp").
+// is the TimestampUnix uint64 field (json:"timestamp"). The value is
+// NODE-SUPPLIED: clamp instead of wrapping, so a malicious timestamp above
+// MaxInt64 cannot turn into a negative chain time (CWE-190).
 func frontierUnix(m *api.Momentum) int64 {
-	return int64(m.TimestampUnix) // #nosec G115 -- unix-seconds timestamp; no realistic int64 overflow
+	if m.TimestampUnix > math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return int64(m.TimestampUnix)
 }
 
 // stakeEntryDTO maps an SDK StakeEntry, deriving duration (months) and maturity

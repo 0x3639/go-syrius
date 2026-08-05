@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/0x3639/znn-sdk-go/rpc_client"
+	sdkwallet "github.com/0x3639/znn-sdk-go/wallet"
 	"github.com/zenon-network/go-zenon/chain/nom"
 	"github.com/zenon-network/go-zenon/common/types"
 )
@@ -151,6 +152,54 @@ func TestCancelPendingIdentityChecked(t *testing.T) {
 	}
 	if tx.pending != nil {
 		t.Fatal("matching cancel must release the hold")
+	}
+}
+
+// A cancel that arrives while ConfirmPublish is in flight (mid-PoW) must be
+// REFUSED with an error, not silently clear the hold: the broadcast proceeds
+// regardless, and a "successful" cancel would invite the caller to re-issue
+// the request — a duplicate publication (Loupe M7 / CWE-362).
+func TestCancelPendingRefusedWhilePublishing(t *testing.T) {
+	tx := newTestTxService(t)
+	unlockTestWallet(t, tx.wallet)
+	tx.node.chainID = 3
+	tx.node.client = &rpc_client.RpcClient{}
+	from, _ := tx.wallet.activeAddress()
+	const addr = "z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz"
+	exTo, _ := types.ParseAddress(addr)
+	block := &nom.AccountBlock{
+		Address:         from,
+		ToAddress:       types.ParseAddressPanic(addr),
+		Amount:          big.NewInt(1),
+		TokenStandard:   types.ZnnTokenStandard,
+		ChainIdentifier: 3,
+	}
+	id := mustHoldPending(t, tx, block, callExpect{from: from, to: exTo, zts: types.ZnnTokenStandard, amount: big.NewInt(1)}, tx.wallet.sessionGen())
+
+	var cancelErr, cancelZeroErr error
+	tx.prepareBlockFn = func(_ *rpc_client.RpcClient, tpl *nom.AccountBlock, _ *sdkwallet.KeyPair) (*nom.AccountBlock, error) {
+		// The user's cancel racing the slow PoW window.
+		cancelErr = tx.CancelPending(id)
+		cancelZeroErr = tx.CancelPending(0)
+		built := *tpl
+		built.Hash = types.HexToHashPanic("2222222222222222222222222222222222222222222222222222222222222222")
+		return &built, nil
+	}
+	published := false
+	tx.publishFn = func(*rpc_client.RpcClient, *nom.AccountBlock) error { published = true; return nil }
+
+	if _, err := tx.ConfirmPublish(id); err != nil {
+		t.Fatalf("ConfirmPublish: %v", err)
+	}
+	if cancelErr == nil || cancelZeroErr == nil {
+		t.Fatalf("mid-publish cancels must be refused: id=%v zero=%v", cancelErr, cancelZeroErr)
+	}
+	if !published {
+		t.Fatal("the confirmed publication must proceed")
+	}
+	// The latch clears with the confirm: a later cancel is an ordinary no-op.
+	if err := tx.CancelPending(id); err != nil {
+		t.Fatalf("post-publish cancel must not error: %v", err)
 	}
 }
 

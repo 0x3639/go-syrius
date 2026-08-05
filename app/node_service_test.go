@@ -1011,4 +1011,16 @@ func TestRedactURLUserinfo(t *testing.T) {
 	if msg := redactURLUserinfo("connect refused", "wss://h:1"); msg != "connect refused" {
 		t.Fatalf("no-userinfo message altered: %q", msg)
 	}
+	// Non-canonical percent-escapes: url.Parse decodes %41→A, so the re-encoded
+	// userinfo no longer matches the raw text the dial error embeds. The raw
+	// form must be scrubbed too.
+	got = redactURLUserinfo("dial ws://user:p%41ss@h:1/ failed", "ws://user:p%41ss@h:1")
+	if strings.Contains(got, "p%41ss") {
+		t.Fatalf("raw-encoded credentials leaked: %q", got)
+	}
+	// Passwords containing a literal @ (last @ delimits the host).
+	got = redactURLUserinfo("dial ws://user:p@ss@h:1/ failed", "ws://user:p@ss@h:1")
+	if strings.Contains(got, "p@ss@") {
+		t.Fatalf("credentials with @ leaked: %q", got)
+	}
 }

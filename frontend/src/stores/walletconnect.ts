@@ -125,10 +125,44 @@ export function __resetWalletConnectModuleState() {
   lookupMarkers.clear()
   pendingReplays.length = 0
   failedLookups.clear()
+  requestExpiries.clear()
 }
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+// session_request_expire carries only a numeric id, and request ids are
+// DAPP-CHOSEN — two sessions can hold the same id, so a malicious dapp could
+// expire a short-lived request whose id shadows another session's pending one.
+// SignClient keys BOTH its pendingRequest store and its expirer by that bare
+// id, and it deletes the record BEFORE emitting the event — so at handler time
+// the topic is unrecoverable from the client, and a colliding request has
+// already overwritten the honest entry there. The wallet therefore keeps its
+// own topic#id → expiry ledger: an expire event only ends entries whose OWN
+// recorded deadline has actually passed. A genuine expire fires only from the
+// expirer, at or after the deadline, so an earlier one can only be a colliding
+// id from a different session.
+const requestExpiries = new Map<string, number>()
+// Mirrors SignClient's wc_sessionRequest request TTL, stamped when the dapp
+// sets no explicit expiryTimestamp (SignClient applies the same default).
+const REQUEST_EXPIRY_DEFAULT_SEC = 300
+
+function recordRequestExpiry(topic: string, id: number, expiryTimestamp?: number) {
+  const nowSec = Math.floor(Date.now() / 1000)
+  // Prune long-dead entries so the ledger tracks roughly the live requests.
+  for (const [k, exp] of requestExpiries) {
+    if (nowSec >= exp + 3600) requestExpiries.delete(k)
+  }
+  requestExpiries.set(`${topic}#${id}`, expiryTimestamp && expiryTimestamp > 0 ? expiryTimestamp : nowSec + REQUEST_EXPIRY_DEFAULT_SEC)
+}
+
+// True when the entry's own recorded deadline has passed. No recorded deadline
+// (an entry that never arrived as a live request this session, e.g. a journal
+// replay after restart) keeps the event-is-authoritative behavior.
+function requestExpiryPassed(topic: string, id: number): boolean {
+  const exp = requestExpiries.get(`${topic}#${id}`)
+  return exp === undefined || Date.now() >= exp * 1000
 }
 
 // Errors carrying this marker mean the signed block MAY be on chain (WC-01):
@@ -326,25 +360,35 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       }
     },
     async approveProposal() {
-      if (!this.proposal) return
+      // Capture the proposal BEFORE any await: every check below (and the
+      // approval itself) must run against the proposal the user actually saw.
+      const proposal = this.proposal
+      if (!proposal) return
       // Defense in depth alongside the proposal_expire listener: approving an
       // already-expired proposal can only fail at the relay.
-      if (this.proposal.expiryTimestamp && Date.now() >= this.proposal.expiryTimestamp * 1000) {
-        this.proposal = null
+      if (proposal.expiryTimestamp && Date.now() >= proposal.expiryTimestamp * 1000) {
+        if (this.proposal === proposal) this.proposal = null
         this.error = 'The connection proposal expired; ask the dapp for a fresh pairing'
         return
       }
       // Verify flagged this peer as a known scam; the proposal stays visible so
       // the user can reject it, but it can never be approved.
-      if (this.proposal.isScam) {
+      if (proposal.isScam) {
         this.error = 'Connection blocked: WalletConnect Verify flagged this dapp as a known scam'
         return
       }
       const c = await this.ensureClient()
+      // A different proposal swapped in during the await: approving it would
+      // grant a session the user never reviewed (checks above ran against the
+      // OLD one). Compared by OBJECT identity, not id — proposal ids are
+      // peer-chosen, so a malicious replacement can reuse the displaced
+      // proposal's numeric id (SignClient's proposal store is also keyed by
+      // id, so approve(id) would land on the impostor). Abort; the new
+      // proposal goes through its own approve click.
+      if (this.proposal !== proposal) return
       const wallet = useWalletStore()
       const address = wallet.activeAddress()
       if (wallet.locked || !address) throw new Error('Unlock a wallet before approving a session')
-      const proposal = this.proposal
       this.error = ''
       try {
         const { acknowledged } = await c.approve({
@@ -358,7 +402,10 @@ export const useWalletConnectStore = defineStore('walletconnect', {
           },
         })
         await acknowledged()
-        this.proposal = null
+        // Only clear the exact proposal we approved (object identity — a
+        // same-id impostor must stay visible for its own review), never a
+        // newer one that arrived while the relay round-trips were in flight.
+        if (this.proposal === proposal) this.proposal = null
         this.refreshSessions()
       } catch (error) {
         this.error = messageOf(error)
@@ -366,11 +413,16 @@ export const useWalletConnectStore = defineStore('walletconnect', {
       }
     },
     async rejectProposal() {
-      if (!this.proposal) return
+      // Same capture-before-await rule as approveProposal: reject the proposal
+      // the user saw, and clear only that exact object (identity, not id — a
+      // same-id impostor swapped in during the await stays visible for its own
+      // review). Sending the reject for the captured id is fail-safe either
+      // way: at worst it voids the impostor's relay record.
+      const proposal = this.proposal
+      if (!proposal) return
       const c = await this.ensureClient()
-      const id = this.proposal.id
-      this.proposal = null
-      await c.reject({ id, reason: { code: 5000, message: 'User rejected' } })
+      if (this.proposal === proposal) this.proposal = null
+      await c.reject({ id: proposal.id, reason: { code: 5000, message: 'User rejected' } })
     },
     async disconnect(topic: string) {
       const c = await this.ensureClient()
@@ -455,14 +507,11 @@ export const useWalletConnectStore = defineStore('walletconnect', {
         return
       }
       const sendExpiry = Number(params?.request?.expiryTimestamp)
-      await this.resolveZnnSend(
-        topic,
-        id,
-        params?.request?.params,
-        Number.isFinite(sendExpiry) && sendExpiry > 0 ? sendExpiry : undefined,
-        verify,
-        0,
-      )
+      const expiry = Number.isFinite(sendExpiry) && sendExpiry > 0 ? sendExpiry : undefined
+      // Ledger the deadline BEFORE any await: the expire listener consults it
+      // to tell this request's genuine expiry from a colliding id's.
+      recordRequestExpiry(topic, id, expiry)
+      await this.resolveZnnSend(topic, id, params?.request?.params, expiry, verify, 0)
     },
     // resolveZnnSend runs the journal-lookup-then-prepare flow for a znn_send.
     // It is shared by handleRequest and the failed-lookup retry, so a request
@@ -1042,24 +1091,30 @@ export const useWalletConnectStore = defineStore('walletconnect', {
     },
     async handleRequestExpired(id: number) {
       // A request still inside its journal lookup must observe its own expiry,
-      // or it could fall through to a fresh, approvable hold.
+      // or it could fall through to a fresh, approvable hold. Every match below
+      // is guarded by requestExpiryPassed: request ids are dapp-chosen, so an
+      // id-only match could be a colliding id from a DIFFERENT session whose
+      // expiry must not cancel this entry before its own recorded deadline.
       for (const marker of lookupMarkers.values()) {
-        if (marker.id === id) marker.ended = true
+        if (marker.id === id && requestExpiryPassed(marker.topic, id)) marker.ended = true
       }
       for (let i = pendingReplays.length - 1; i >= 0; i--) {
-        if (pendingReplays[i].id === id && !pendingReplays[i].localRecovery) pendingReplays.splice(i, 1)
+        if (pendingReplays[i].id === id && !pendingReplays[i].localRecovery && requestExpiryPassed(pendingReplays[i].topic, id)) pendingReplays.splice(i, 1)
       }
       for (const [k, entry] of failedLookups) {
-        if (entry.id === id) failedLookups.delete(k)
+        if (entry.id === id && requestExpiryPassed(entry.topic, id)) failedLookups.delete(k)
       }
       const preparing = this.preparingRequest
       // The expired request no longer exists at the relay, so there is nothing
       // to answer; reuse the session-ended path, which cancels silently.
-      if (preparing && preparing.id === id) preparing.sessionEnded = true
+      if (preparing && preparing.id === id && requestExpiryPassed(preparing.topic, id)) preparing.sessionEnded = true
       // A local-recovery record is journal-owned; leave it untouched.
       if (this.request?.localRecovery) return
       const current = this.request
       if (!current || current.id !== id) return
+      // Our displayed request has not reached its own recorded deadline: the
+      // expired one was another session's colliding id.
+      if (!requestExpiryPassed(current.topic, id)) return
       if (current.status === 'publishing' || current.status === 'notifying' || current.status === 'delivery-error' || current.status === 'unknown') {
         // Publication already started: only its actual outcome may drive the
         // terminal state. Marking the request ended suppresses any response

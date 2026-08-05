@@ -41,8 +41,18 @@ describe('wallet store', () => {
   it('lock() re-locks the backend keystore, not just the UI', async () => {
     const s = useWalletStore()
     await s.unlock('Main', 'pw')
-    s.lock()
+    await s.lock()
     expect(Lock).toHaveBeenCalled()
+    expect(s.locked).toBe(true)
+    expect(s.active).toBe('')
+  })
+  it('lock() surfaces a backend failure instead of swallowing it, but still tears down locally', async () => {
+    const s = useWalletStore()
+    await s.unlock('Main', 'pw')
+    Lock.mockRejectedValueOnce(new Error('keystore busy'))
+    // Rethrown: the caller must learn the keystore may still be decrypted.
+    await expect(s.lock()).rejects.toThrow('keystore busy')
+    // The local session still ends — the UI must not stay usable.
     expect(s.locked).toBe(true)
     expect(s.active).toBe('')
   })
@@ -113,7 +123,7 @@ describe('wallet store', () => {
     const s = useWalletStore()
     await s.unlock('Main.dat', 'pw')
     s.initLockEvent()
-    s.lock()
+    await s.lock()
     expect(s.locked).toBe(true)
     // Go Lock() emits wallet:locked after manual lock too; already-locked → no-op.
     expect(() => eventHandlers['wallet:locked']()).not.toThrow()

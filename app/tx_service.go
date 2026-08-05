@@ -34,6 +34,14 @@ type TxService struct {
 	pendingGen    uint64 // wallet session generation captured at PrepareSend
 	pendingHoldID uint64 // identity of the current hold (stamped into previews)
 	holdCounter   uint64 // monotonically increasing hold-id source
+	// publishingHold marks the hold a ConfirmPublish is actively working on
+	// (PoW→broadcast). While set, CancelPending for that hold is REFUSED with an
+	// error instead of silently clearing it: a cancel that "succeeded" while the
+	// broadcast proceeded anyway would let the caller treat the request as dead
+	// and re-issue it — a duplicate publication. A cancel that lands BEFORE the
+	// latch clears the hold, and the confirm path re-checks the hold when it
+	// latches, so exactly one of them wins. Guarded by mu.
+	publishingHold uint64
 
 	// publishMu serializes ConfirmPublish for its whole duration. PoW+publish run
 	// for seconds outside mu, so without this a second (untrusted) caller could
@@ -297,6 +305,25 @@ func (t *TxService) confirmPublishBlock(holdId uint64) (*nom.AccountBlock, error
 		// of the actual hold may cancel or confirm it.
 		return nil, errors.New("the pending transaction changed since it was displayed; please review and confirm again")
 	}
+
+	// Latch this hold as publishing, atomically with a re-check that it is
+	// still live. A CancelPending that won the race since the snapshot above
+	// stops the publication here; once the latch is set, CancelPending refuses
+	// instead. Exactly one of cancel and publish wins — a cancel can never
+	// "succeed" while the broadcast quietly proceeds (which would invite the
+	// caller to re-issue the request: a duplicate publication).
+	t.mu.Lock()
+	if t.pendingHoldID != holdID {
+		t.mu.Unlock()
+		return nil, errors.New("the pending transaction was cancelled; nothing was published")
+	}
+	t.publishingHold = holdID
+	t.mu.Unlock()
+	defer func() {
+		t.mu.Lock()
+		t.publishingHold = 0
+		t.mu.Unlock()
+	}()
 
 	// Refuse if the wallet was locked, its session changed, or the active
 	// account is no longer the sender the user approved. The session generation
@@ -562,11 +589,25 @@ func (t *TxService) Receive(fromHash string) (string, error) {
 // identity-aware: it only discards the hold it was issued for, so a stale
 // cancel that loses a race against a newer Prepare cannot release the newer
 // block. holdId 0 discards whatever is held (unconditional).
+//
+// A hold whose ConfirmPublish is in flight (publishingHold latch) cannot be
+// cancelled: the block may broadcast regardless, so pretending the cancel
+// succeeded would misreport a possibly-published transaction as dead. The
+// refusal is an error the caller can surface; the check and the clear are one
+// critical section, so a cancel can never slip between the confirm's latch and
+// its broadcast.
 func (t *TxService) CancelPending(holdId uint64) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.publishingHold != 0 && (holdId == 0 || holdId == t.publishingHold) {
+		return errors.New("the transaction is being published and can no longer be cancelled")
+	}
 	if holdId != 0 {
-		t.clearPendingIf(holdId)
+		if t.pendingHoldID == holdId {
+			t.clearPendingLocked()
+		}
 	} else {
-		t.clearPending()
+		t.clearPendingLocked()
 	}
 	return nil
 }

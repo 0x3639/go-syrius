@@ -66,7 +66,11 @@ export function formatAmount(base: string, decimals: number): string {
 // isValidPillarName mirrors go-zenon's pillar name rule (1–40 chars; alphanumerics
 // with single - . _ allowed only between alphanumerics) for instant client-side
 // feedback. The backend + CheckNameAvailability remain authoritative.
-const PILLAR_NAME_RE = /^([a-zA-Z0-9]+[-._]?)*[a-zA-Z0-9]$/
+// Written as alnum-runs joined by single separators — equivalent to go-zenon's
+// ([a-zA-Z0-9]+[-._]?)*[a-zA-Z0-9] but with no nested quantifier, so a
+// non-matching input backtracks linearly instead of exponentially (CWE-1333:
+// the original froze the UI on inputs like 39 alphanumerics + "!").
+const PILLAR_NAME_RE = /^[a-zA-Z0-9]+([-._][a-zA-Z0-9]+)*$/
 export function isValidPillarName(name: string): boolean {
   if (name.length === 0 || name.length > 40) return false
   return PILLAR_NAME_RE.test(name)

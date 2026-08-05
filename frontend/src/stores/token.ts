@@ -15,7 +15,13 @@ export const useTokenStore = defineStore('token', {
         const myTokens = await Nom.GetMyTokens()
         if (epoch !== currentRequestEpoch()) return // stale: another account's data
         this.myTokens = myTokens
-      } catch { /* not connected / locked — leave as-is */ }
+      } catch {
+        if (epoch !== currentRequestEpoch()) return
+        // Clear rather than leave as-is (mirrors balances): after an account
+        // switch a failed refresh would otherwise keep showing the PREVIOUS
+        // account's token list as if it were this one's (CWE-200).
+        this.myTokens = []
+      }
     },
     // Search by ZTS id, name, or symbol (backend decides which).
     async search(query: string) {

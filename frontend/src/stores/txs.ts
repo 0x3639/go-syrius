@@ -9,6 +9,12 @@ export type TxRecord = {
 
 const PAGE_SIZE = 10 // displayed rows per page
 const BLOCK_FETCH = 20 // account blocks fetched per backend call
+// Hard cap on backend chunks fetched into the buffer. `hasMore` and the
+// records are NODE-SUPPLIED and untrusted: without a cap, a malicious node
+// claiming hasMore forever while returning only filtered-out records (e.g.
+// 'pair' rows) drives ensure()/load() — and wallet memory — unbounded
+// (CWE-835; mirrors the Go side's maxPagedPages, audit GS-03).
+const MAX_CHUNKS = 50
 
 function isTransfer(t: { direction: string; amount: string }): boolean {
   if (t.direction === 'pair') return false
@@ -44,13 +50,13 @@ export const useTxsStore = defineStore('txs', {
   },
   actions: {
     async fetchChunk(): Promise<boolean> {
-      if (!this.hasMoreBlocks) return false
+      if (!this.hasMoreBlocks || this.chunkIndex >= MAX_CHUNKS) return false
       const epoch = currentRequestEpoch()
       try {
         const r = (await N.GetTransactions(this.chunkIndex, BLOCK_FETCH)) as unknown as { records: TxRecord[]; hasMore: boolean }
         if (epoch !== currentRequestEpoch()) return false // stale: another account's blocks
         this.buffer.push(...(r.records ?? []))
-        this.hasMoreBlocks = !!r.hasMore
+        this.hasMoreBlocks = !!r.hasMore && this.chunkIndex + 1 < MAX_CHUNKS
         this.chunkIndex++
         return true
       } catch {
@@ -74,7 +80,7 @@ export const useTxsStore = defineStore('txs', {
       let idx = 0
       let more = true
       const filteredLen = () => (this.transfersOnly ? fresh.filter(isTransfer) : fresh).length
-      while (filteredLen() <= (this.page + 1) * PAGE_SIZE && more) {
+      while (filteredLen() <= (this.page + 1) * PAGE_SIZE && more && idx < MAX_CHUNKS) {
         try {
           const r = (await N.GetTransactions(idx, BLOCK_FETCH)) as unknown as { records: TxRecord[]; hasMore: boolean }
           fresh.push(...(r.records ?? []))
@@ -85,6 +91,7 @@ export const useTxsStore = defineStore('txs', {
           break
         }
       }
+      if (idx >= MAX_CHUNKS) more = false
       if (epoch !== currentRequestEpoch()) return // stale: another account's history
       this.buffer = fresh
       this.chunkIndex = idx

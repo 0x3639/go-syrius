@@ -44,6 +44,16 @@ watch(
   () => autoReceive.errorCount,
   () => { if (autoReceive.lastError) toast?.show(autoReceive.lastError, 'error') },
 )
+
+// The UI locks either way (the store tears down locally), but a backend Lock
+// failure means the keystore is still decrypted in Go memory — surface it.
+async function lockWallet() {
+  try {
+    await wallet.lock()
+  } catch {
+    toast?.show('The wallet screen is locked, but the backend reported a lock error — restart go-syrius to be safe', 'error')
+  }
+}
 </script>
 
 <template>
@@ -119,7 +129,7 @@ watch(
 
       <button type="button" aria-label="Lock wallet" title="Lock wallet"
         class="grid h-8.5 w-8.5 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
-        @click="wallet.lock()">
+        @click="lockWallet">
         <LockIcon :size="16" />
       </button>
     </div>

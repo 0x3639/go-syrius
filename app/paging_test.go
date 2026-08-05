@@ -24,6 +24,40 @@ func TestCollectPaged_CapsMaliciousCount(t *testing.T) {
 	}
 }
 
+// The page-count cap alone does not bound memory: a node can also inflate the
+// SIZE of each page. Accumulation must stop at maxPagedItems, truncating an
+// oversized page BEFORE it is appended (append-then-cut would still allocate
+// and copy the whole page).
+func TestCollectPaged_CapsAccumulatedItems(t *testing.T) {
+	huge := make([]int, 4*maxPagedItems) // one page far past the item cap
+	calls := 0
+	out, err := collectPaged(func(pageIndex uint32) ([]int, int, error) {
+		calls++
+		return huge, 1 << 30, nil
+	})
+	if err != nil {
+		t.Fatalf("capped collection must not error: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("item cap must stop fetching: %d calls, want 1", calls)
+	}
+	if len(out) != maxPagedItems {
+		t.Fatalf("accumulated items must be capped at %d, got %d", maxPagedItems, len(out))
+	}
+	if cap(out) >= len(huge) {
+		t.Fatalf("the oversized page must be truncated before append: result capacity %d admits the full %d-item page", cap(out), len(huge))
+	}
+	// Partial fills accumulate across pages up to the cap (no per-page reset).
+	calls = 0
+	out, err = collectPaged(func(pageIndex uint32) ([]int, int, error) {
+		calls++
+		return make([]int, maxPagedItems-1), 1 << 30, nil
+	})
+	if err != nil || len(out) != maxPagedItems || calls != 2 {
+		t.Fatalf("cross-page cap: got %d items in %d calls (err %v), want %d in 2", len(out), calls, err, maxPagedItems)
+	}
+}
+
 func TestCollectPaged_NormalTermination(t *testing.T) {
 	// Terminates when the claimed total is reached.
 	pages := [][]int{{1, 2}, {3}}

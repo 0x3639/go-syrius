@@ -1,9 +1,9 @@
 module github.com/0x3639/go-syrius
 
-go 1.25.12
+go 1.25.13
 
 require (
-	github.com/0x3639/znn-sdk-go v0.2.1
+	github.com/0x3639/znn-sdk-go v0.3.0
 	github.com/tyler-smith/go-bip39 v1.1.0
 	github.com/wailsapp/wails/v2 v2.12.0
 	github.com/zenon-network/go-zenon v0.0.8-alphanet.0.20250515170359-667a69d9e9a4

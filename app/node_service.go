@@ -127,7 +127,7 @@ func (n *NodeService) setNode(url string) error {
 		n.emitDisconnectedIfCurrent(gen)
 		return fmt.Errorf("node unreachable: %s", redactURLUserinfo(err.Error(), url))
 	}
-	// Governance is not exposed by the stable v0.2 SDK surface.
+	// Governance is not exposed by the stable SDK surface (still absent in v0.3.0).
 	// Keep the shipped testnet feature through the app-local adapter, using its
 	// own raw caller because RpcClient does not expose its underlying transport.
 	governanceClient, err := server.Dial(url)

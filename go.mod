@@ -3,7 +3,8 @@ module github.com/0x3639/go-syrius
 go 1.25.13
 
 require (
-	github.com/0x3639/znn-sdk-go v0.3.0
+	github.com/0x3639/znn-sdk-go v0.3.1
+	github.com/gorilla/websocket v1.5.3
 	github.com/tyler-smith/go-bip39 v1.1.0
 	github.com/wailsapp/wails/v2 v2.12.0
 	github.com/zenon-network/go-zenon v0.0.8-alphanet.0.20250515170359-667a69d9e9a4
@@ -23,7 +24,6 @@ require (
 	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect

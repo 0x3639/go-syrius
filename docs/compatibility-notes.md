@@ -50,7 +50,7 @@ real keystores and live nodes, not assumptions.
 
 - go-syrius uses the SDK's `zenon` facade: `zenon.NewZenon(client).Send(template, kp)`
   performs autofill → required-PoW query → PoW (or plasma) → hash → sign → publish.
-  First released in **znn-sdk-go v0.1.16**; go-syrius now pins v0.3.0 (whose hardened
+  First released in **znn-sdk-go v0.1.16**; go-syrius now pins v0.3.1 (whose hardened
   `utils.GetTransactionHash` rejects malformed amounts inside this flow but produces
   identical hashes for valid blocks — covered by the SDK's regression tests).
 - **Verified on testnet:** a 0.1 ZNN self-send confirmed on-chain — tx
@@ -80,7 +80,7 @@ real keystores and live nodes, not assumptions.
 
 ## SDK dependency
 
-- Pinned `github.com/0x3639/znn-sdk-go v0.3.0`, no SDK `replace`. The stable SDK omits
+- Pinned `github.com/0x3639/znn-sdk-go v0.3.1`, no SDK `replace`. The stable SDK omits
   the testnet governance extension used by this wallet, so `internal/governance` owns
   that narrow adapter on top of the SDK's public transport and contract-template APIs.
   go-zenon (`v0.0.8-alphanet…`, replaced by the pinned project fork) remains a direct

@@ -2,8 +2,8 @@ git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 h1:N3IGoHHp9pb6mj1cbXbuaSXV/UMKwmbKLf
 git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3/go.mod h1:QtOLZGz8olr4qH2vWK0QH0w0O4T9fEIjMuWpKUsH7nc=
 github.com/0x3639/go-zenon v0.0.0-20260615011802-81c247408859 h1:osfzJY40Uk1e557s1yw9rK2tLK/aytdtggxb/kRe+6M=
 github.com/0x3639/go-zenon v0.0.0-20260615011802-81c247408859/go.mod h1:2dco94cgLkNSq9KsxpDRowYVB8crPhQuqRHpn3ywLDI=
-github.com/0x3639/znn-sdk-go v0.3.0 h1:iWzjX0YZywB9pGTHVZnQ24wmZFrQoU5SvsFM2BMqYZA=
-github.com/0x3639/znn-sdk-go v0.3.0/go.mod h1:4RAjgYC2pFKV9E9cNgDxxfxootG8CttUY5mixroTUhM=
+github.com/0x3639/znn-sdk-go v0.3.1 h1:OiGt8sx9EGqTJPrXTzsZ2H37ck/g6i3JLjZjEE6Tce8=
+github.com/0x3639/znn-sdk-go v0.3.1/go.mod h1:4RAjgYC2pFKV9E9cNgDxxfxootG8CttUY5mixroTUhM=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
 github.com/aead/siphash v1.0.1/go.mod h1:Nywa3cDsYNNK3gaciGTWPwHt0wlpNV15vwmswBAUSII=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=

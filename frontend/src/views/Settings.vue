@@ -86,7 +86,18 @@ async function confirmMainnetTransactions() {
   finally { showMainnetConfirm.value = false }
 }
 
+const buildVersion = ref('')
+const buildCommit = ref('')
+
 onMounted(async () => {
+  try {
+    const build = await Cfg.GetBuildInfo()
+    buildVersion.value = build.version
+    buildCommit.value = build.commit
+  } catch {
+    buildVersion.value = 'dev'
+    buildCommit.value = 'unknown'
+  }
   const c = await node.getConfig()
   loadedMode = c.mode
   loadedRemote = c.remoteUrl
@@ -347,6 +358,21 @@ function hide() { revealed.value = '' }
       </label>
       <p class="text-xs text-destructive">
         Governance is experimental and only functional on testnet. Enabling it adds a Governance tab to the navigation.
+      </p>
+    </section>
+
+    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+      <h2 class="text-sm text-muted-foreground">About</h2>
+      <div class="flex justify-between gap-4 text-sm">
+        <span class="text-muted-foreground">Version</span>
+        <span class="font-mono text-foreground">{{ buildVersion }}</span>
+      </div>
+      <div class="flex justify-between gap-4 text-sm">
+        <span class="text-muted-foreground">Build commit</span>
+        <span class="font-mono text-foreground">{{ buildCommit }}</span>
+      </div>
+      <p class="text-xs text-muted-foreground">
+        Verify downloaded binaries against the SHA256SUMS file published with each release.
       </p>
     </section>
   </div>

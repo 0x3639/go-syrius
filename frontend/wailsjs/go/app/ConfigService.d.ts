@@ -6,6 +6,8 @@ export function AddContact(arg1:string,arg2:string):Promise<Array<app.Contact>>;
 
 export function DeleteContact(arg1:string):Promise<Array<app.Contact>>;
 
+export function GetBuildInfo():Promise<app.BuildInfo>;
+
 export function GetSettings():Promise<app.Settings>;
 
 export function IsGovernanceFeatureEnabled():Promise<boolean>;

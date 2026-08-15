@@ -21,7 +21,8 @@ const SetChainID = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const SetAllowMainnetSend = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const SetShowGovernance = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const IsGovernanceFeatureEnabled = vi.hoisted(() => vi.fn().mockResolvedValue(false))
-vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetChainID, SetAllowMainnetSend, SetShowGovernance, IsGovernanceFeatureEnabled }))
+const GetBuildInfo = vi.hoisted(() => vi.fn().mockResolvedValue({ version: 'v9.9.9', commit: 'abc1234' }))
+vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetChainID, SetAllowMainnetSend, SetShowGovernance, IsGovernanceFeatureEnabled, GetBuildInfo }))
 
 const RevealMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue('alpha bravo charlie delta'))
 const ChangePassword = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
@@ -287,6 +288,14 @@ describe('Settings.vue', () => {
     await flush()
     const sel = w.find('select[aria-label="auto-lock timeout"]')
     expect((sel.element as HTMLSelectElement).value).toBe('15')
+  })
+
+  it('shows the build version and commit in the About section', async () => {
+    const w = mount(Settings)
+    await flush()
+    const text = w.text()
+    expect(text).toContain('v9.9.9')
+    expect(text).toContain('abc1234')
   })
 
   it('changing auto-lock persists via SetAutoLockMinutes', async () => {

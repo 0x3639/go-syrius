@@ -4,6 +4,11 @@ import { setActivePinia, createPinia } from 'pinia'
 import Sidebar from './Sidebar.vue'
 import { useNodeStore } from '../stores/node'
 import { useUiStore } from '../stores/ui'
+import { vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
+
+const GetBuildInfo = vi.hoisted(() => vi.fn().mockResolvedValue({ version: 'v9.9.9', commit: 'abc1234' }))
+vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetBuildInfo }))
 
 function mountSidebar() {
   return mount(Sidebar, { global: { stubs: { RouterLink: RouterLinkStub } } })
@@ -31,6 +36,14 @@ describe('Sidebar', () => {
     ui.governanceFeatureEnabled = true
     await w.vm.$nextTick()
     expect(w.text()).toContain('Governance')
+  })
+
+  it('shows the app version below the sync pill', async () => {
+    const w = mountSidebar()
+    await flushPromises()
+    expect(w.text()).toContain('v9.9.9')
+    // Version only in the sidebar — the commit lives in Settings.
+    expect(w.text()).not.toContain('abc1234')
   })
 
   it('shows the node-sync height when connected', async () => {

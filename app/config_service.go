@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/0x3639/go-syrius/internal/version"
 )
 
 // ConfigService resolves the data directory and persists user settings.
@@ -212,4 +214,10 @@ func (c *ConfigService) SetShowGovernance(v bool) error {
 // resurrected from — settings.json.
 func (c *ConfigService) IsGovernanceFeatureEnabled() bool {
 	return governanceFeatureEnabled
+}
+
+// GetBuildInfo reports the running binary's release version and build commit.
+// Read-only and secret-free by construction — safe to expose to the WebView.
+func (c *ConfigService) GetBuildInfo() BuildInfo {
+	return BuildInfo{Version: version.Version, Commit: version.Commit()}
 }

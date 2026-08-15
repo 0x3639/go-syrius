@@ -27,6 +27,14 @@ type SyncStatus struct {
 	Peers         int     `json:"peers"`
 }
 
+// BuildInfo identifies the running binary: the release tag it was built from
+// ("dev" for unstamped builds) and the short VCS commit ("unknown" without
+// VCS stamping).
+type BuildInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+}
+
 // Settings is the persisted user configuration.
 type Settings struct {
 	// Deprecated: read-only for migration from the pre-4a single-URL format.

@@ -63,15 +63,18 @@ jobs:
       # wails build runs frontend:install + frontend:build then compiles the Go
       # app into build/bin/. ubuntu-24.04 ships webkit2gtk-4.1 → needs webkit2_41.
       # macOS builds a universal (x86_64 + arm64) binary so one DMG covers every Mac.
+      # LDFLAGS stamps the release tag and commit into internal/version — wails
+      # build suppresses Go's automatic VCS stamping, so the commit is passed
+      # explicitly. Unstamped builds report "dev" / "unknown".
       - name: Wails build (Linux)
         if: runner.os == 'Linux'
-        run: wails build -tags webkit2_41
+        run: wails build -tags webkit2_41 -ldflags "-X github.com/0x3639/go-syrius/internal/version.Version=${{ github.ref_name }} -X github.com/0x3639/go-syrius/internal/version.CommitOverride=${{ github.sha }}"
       - name: Wails build (macOS)
         if: runner.os == 'macOS'
-        run: wails build -platform darwin/universal
+        run: wails build -platform darwin/universal -ldflags "-X github.com/0x3639/go-syrius/internal/version.Version=${{ github.ref_name }} -X github.com/0x3639/go-syrius/internal/version.CommitOverride=${{ github.sha }}"
       - name: Wails build (Windows)
         if: runner.os == 'Windows'
-        run: wails build
+        run: wails build -ldflags "-X github.com/0x3639/go-syrius/internal/version.Version=${{ github.ref_name }} -X github.com/0x3639/go-syrius/internal/version.CommitOverride=${{ github.sha }}"
 
       # --- package each platform's output into one asset, named with the tag ---
       # Binary/bundle name is "go-syrius" (wails.json name + outputfilename).

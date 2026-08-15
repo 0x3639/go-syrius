@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   LayoutDashboardIcon, SendIcon, DownloadIcon, CoinsIcon, ZapIcon, LayersIcon,
   Building2Icon, ShieldCheckIcon, RocketIcon, GiftIcon, VoteIcon, SettingsIcon,
@@ -8,6 +8,7 @@ import {
 import { useNodeStore } from '../stores/node'
 import { useUiStore } from '../stores/ui'
 import SidebarLink from './SidebarLink.vue'
+import { GetBuildInfo } from '../../wailsjs/go/app/ConfigService'
 
 const node = useNodeStore()
 const ui = useUiStore()
@@ -37,6 +38,15 @@ const bottomNav = [
 
 const heightLabel = computed(() => node.height.toLocaleString('en-US'))
 const synced = computed(() => node.connected && !node.syncing)
+
+const appVersion = ref('')
+onMounted(async () => {
+  try {
+    appVersion.value = (await GetBuildInfo()).version
+  } catch {
+    appVersion.value = 'dev'
+  }
+})
 </script>
 
 <template>
@@ -69,6 +79,7 @@ const synced = computed(() => node.connected && !node.syncing)
         <span class="text-xs text-muted-foreground">{{ synced ? 'Node synced' : 'Syncing…' }}</span>
         <span class="ml-auto font-mono text-xs" :class="synced ? 'text-success' : 'text-warning'">#{{ heightLabel }}</span>
       </div>
+      <p v-if="appVersion" class="px-3 pt-1.5 text-center font-mono text-[11px] text-muted-foreground">{{ appVersion }}</p>
     </div>
   </aside>
 </template>

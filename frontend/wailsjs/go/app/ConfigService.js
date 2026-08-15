@@ -10,6 +10,10 @@ export function DeleteContact(arg1) {
   return window['go']['app']['ConfigService']['DeleteContact'](arg1);
 }
 
+export function GetBuildInfo() {
+  return window['go']['app']['ConfigService']['GetBuildInfo']();
+}
+
 export function GetSettings() {
   return window['go']['app']['ConfigService']['GetSettings']();
 }

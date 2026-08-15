@@ -336,3 +336,16 @@ func TestAutoLockMinutes_AbsentFieldMigrates(t *testing.T) {
 		t.Fatalf("absent autoLockMinutes must migrate to 5, got %v", s.AutoLockMinutes)
 	}
 }
+
+func TestGetBuildInfo(t *testing.T) {
+	c := newConfigService()
+	info := c.GetBuildInfo()
+	// Unstamped test build: version must be the honest "dev" fallback, and the
+	// commit must be a non-empty displayable string (real hash or "unknown").
+	if info.Version != "dev" {
+		t.Fatalf("BuildInfo.Version = %q, want \"dev\" in tests", info.Version)
+	}
+	if info.Commit == "" {
+		t.Fatal("BuildInfo.Commit is empty")
+	}
+}

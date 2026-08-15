@@ -130,6 +130,20 @@ export namespace app {
 		    return a;
 		}
 	}
+	export class BuildInfo {
+	    version: string;
+	    commit: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BuildInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.commit = source["commit"];
+	    }
+	}
 	export class EffectField {
 	    label: string;
 	    value: string;
@@ -1029,11 +1043,11 @@ export namespace app {
 	    publishedHash?: string;
 	    journalTopic?: string;
 	    journalRequestId?: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new WalletConnectPrepareResult(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.outcome = source["outcome"];
@@ -1043,7 +1057,7 @@ export namespace app {
 	        this.journalTopic = source["journalTopic"];
 	        this.journalRequestId = source["journalRequestId"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1067,11 +1081,11 @@ export namespace app {
 	    accountBlock: WalletConnectAccountBlockInput;
 	    topic: string;
 	    requestId: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new WalletConnectSendRequest(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.fromAddress = source["fromAddress"];

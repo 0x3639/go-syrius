@@ -76,7 +76,7 @@ onMounted(async () => {
       <SidebarLink v-for="item in bottomNav" :key="item.to" v-bind="item" />
       <div class="mt-1.5 flex items-center gap-2 rounded-md bg-sidebar-accent px-3 py-2.5">
         <ShieldIcon :size="16" :class="synced ? 'text-success' : 'text-warning'" />
-        <span class="text-xs text-muted-foreground">{{ synced ? 'Node synced' : 'Syncing…' }}</span>
+        <span class="text-xs text-muted-foreground">{{ synced ? 'Synced' : 'Syncing…' }}</span>
         <span class="ml-auto font-mono text-xs" :class="synced ? 'text-success' : 'text-warning'">#{{ heightLabel }}</span>
       </div>
       <p v-if="appVersion" class="px-3 pt-1.5 text-center font-mono text-[11px] text-muted-foreground">{{ appVersion }}</p>

@@ -66,15 +66,28 @@ jobs:
       # LDFLAGS stamps the release tag and commit into internal/version — wails
       # build suppresses Go's automatic VCS stamping, so the commit is passed
       # explicitly. Unstamped builds report "dev" / "unknown".
+      # The tag/sha reach the shell via env (never ${{ }} inside run:) so a
+      # crafted tag name cannot inject into the build script; Windows gets
+      # shell: bash for the same $VAR expansion as the other platforms.
       - name: Wails build (Linux)
         if: runner.os == 'Linux'
-        run: wails build -tags webkit2_41 -ldflags "-X github.com/0x3639/go-syrius/internal/version.Version=${{ github.ref_name }} -X github.com/0x3639/go-syrius/internal/version.CommitOverride=${{ github.sha }}"
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: wails build -tags webkit2_41 -ldflags "-X github.com/0x3639/go-syrius/internal/version.Version=$RELEASE_TAG -X github.com/0x3639/go-syrius/internal/version.CommitOverride=$RELEASE_COMMIT"
       - name: Wails build (macOS)
         if: runner.os == 'macOS'
-        run: wails build -platform darwin/universal -ldflags "-X github.com/0x3639/go-syrius/internal/version.Version=${{ github.ref_name }} -X github.com/0x3639/go-syrius/internal/version.CommitOverride=${{ github.sha }}"
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: wails build -platform darwin/universal -ldflags "-X github.com/0x3639/go-syrius/internal/version.Version=$RELEASE_TAG -X github.com/0x3639/go-syrius/internal/version.CommitOverride=$RELEASE_COMMIT"
       - name: Wails build (Windows)
         if: runner.os == 'Windows'
-        run: wails build -ldflags "-X github.com/0x3639/go-syrius/internal/version.Version=${{ github.ref_name }} -X github.com/0x3639/go-syrius/internal/version.CommitOverride=${{ github.sha }}"
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        shell: bash
+        run: wails build -ldflags "-X github.com/0x3639/go-syrius/internal/version.Version=$RELEASE_TAG -X github.com/0x3639/go-syrius/internal/version.CommitOverride=$RELEASE_COMMIT"
 
       # --- package each platform's output into one asset, named with the tag ---
       # Binary/bundle name is "go-syrius" (wails.json name + outputfilename).

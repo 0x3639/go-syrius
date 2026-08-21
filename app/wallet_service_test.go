@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"sync"
 	"testing"
 	"time"
@@ -919,24 +918,53 @@ func TestImportRejectsOversizedSource(t *testing.T) {
 	}
 }
 
-// TestImportRejectsNonRegularSource: a FIFO (or device, socket, directory)
-// must be rejected by a stat check rather than opened — opening a FIFO with
-// no writer blocks forever, which would wedge the bound call.
-func TestImportRejectsNonRegularSource(t *testing.T) {
+// TestImportRejectedKeystoreLeavesNoOrphan: the import persists the bytes it
+// read and validates that copy; a rejected source must not leave a stray file
+// in the wallets dir.
+func TestImportRejectedKeystoreLeavesNoOrphan(t *testing.T) {
 	w := newTestWalletService(t)
-	fifo := filepath.Join(t.TempDir(), "pipe.dat")
-	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
-		t.Skipf("mkfifo unavailable: %v", err)
+	bad := filepath.Join(t.TempDir(), "notakeystore.json")
+	if err := os.WriteFile(bad, []byte(`{"hello":"world"}`), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	done := make(chan error, 1)
-	go func() { _, err := w.ImportKeystore(fifo, ""); done <- err }()
-	select {
-	case err := <-done:
-		if err == nil || !strings.Contains(err.Error(), "regular file") {
-			t.Fatalf("expected non-regular-file rejection, got: %v", err)
+	if _, err := w.ImportKeystore(bad, ""); err == nil {
+		t.Fatal("expected rejection")
+	}
+	dir, _ := w.config.walletsDir()
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if e.Name() != manifestFile {
+			t.Fatalf("rejected import left %q in wallets dir", e.Name())
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("ImportKeystore blocked opening a FIFO: source is not stat-checked before reading")
+	}
+}
+
+// TestImportManifestAddressMatchesPersistedBytes: the manifest's base address
+// must derive from the persisted copy, which must be byte-identical to what was
+// read — one descriptor feeds both, so a path swap cannot desynchronize them.
+func TestImportManifestAddressMatchesPersistedBytes(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+	seed, err := w.ImportMnemonic("seed", "pw", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, _ := w.config.walletsDir()
+	src := filepath.Join(t.TempDir(), "export.json")
+	if err := copyFile(filepath.Join(dir, seed.ID), src); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := w.ImportKeystore(src, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, meta.ID))
+	want, _ := os.ReadFile(src)
+	if !bytes.Equal(got, want) {
+		t.Fatal("persisted keystore bytes differ from the source that was read")
+	}
+	if meta.BaseAddress != seed.BaseAddress {
+		t.Fatalf("manifest address %s != address of persisted bytes %s", meta.BaseAddress, seed.BaseAddress)
 	}
 }
 

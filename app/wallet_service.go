@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"sync"
+	"syscall"
 
 	sdkwallet "github.com/0x3639/znn-sdk-go/wallet"
 	bip39 "github.com/tyler-smith/go-bip39"
@@ -248,23 +249,15 @@ const maxKeystoreFileSize = 64 * 1024
 // are not blocked here — the frontend warns by comparing the returned
 // baseAddress against its existing list. No keystore content is modified.
 func (w *WalletService) ImportKeystore(srcPath, name string) (WalletMeta, error) {
-	// The path is renderer-supplied. Stat before reading: wallet.ReadKeyFile
-	// slurps the whole source, so a non-regular file (FIFO/device) could block
-	// the bound call forever and an oversized one could exhaust memory. Real
-	// syrius keystores are a few hundred bytes.
-	st, err := os.Stat(srcPath)
+	// The path is renderer-supplied. Everything below binds to ONE opened
+	// descriptor — stat, bounded read, and the bytes that get persisted — so a
+	// concurrent replacement of the path cannot slip a different file past the
+	// checks (TOCTOU). The size/type checks exist because a non-regular file
+	// (FIFO/device) would block the bound call forever and an oversized one
+	// would exhaust memory; real syrius keystores are a few hundred bytes.
+	data, err := readBoundedRegularFile(srcPath, maxKeystoreFileSize)
 	if err != nil {
-		return WalletMeta{}, fmt.Errorf("cannot read keystore: %w", err)
-	}
-	if !st.Mode().IsRegular() {
-		return WalletMeta{}, errors.New("keystore source must be a regular file")
-	}
-	if st.Size() > maxKeystoreFileSize {
-		return WalletMeta{}, fmt.Errorf("keystore source too large (%d bytes; limit %d)", st.Size(), maxKeystoreFileSize)
-	}
-	kf, err := wallet.ReadKeyFile(srcPath)
-	if err != nil {
-		return WalletMeta{}, fmt.Errorf("not a valid syrius keystore: %w", err)
+		return WalletMeta{}, err
 	}
 	if name == "" {
 		base := filepath.Base(srcPath)
@@ -278,14 +271,79 @@ func (w *WalletService) ImportKeystore(srcPath, name string) (WalletMeta, error)
 	if err != nil {
 		return WalletMeta{}, err
 	}
-	if err := copyFile(srcPath, dst); err != nil {
+	// Persist the exact bytes we read, then validate OUR copy: the manifest's
+	// base address is thereby derived from the persisted file, never from a
+	// separate re-read of the caller's path.
+	if err := writeFileExcl(dst, data); err != nil {
 		return WalletMeta{}, err
+	}
+	kf, err := wallet.ReadKeyFile(dst)
+	if err != nil {
+		_ = os.Remove(dst)
+		return WalletMeta{}, fmt.Errorf("not a valid syrius keystore: %w", err)
 	}
 	meta := WalletMeta{ID: id, Name: name, BaseAddress: kf.BaseAddress.String()}
 	if err := w.addToManifest(meta); err != nil {
+		_ = os.Remove(dst)
 		return WalletMeta{}, err
 	}
 	return meta, nil
+}
+
+// readBoundedRegularFile opens path once and, on that descriptor, requires a
+// regular file no larger than limit before reading it. The read itself is also
+// capped (LimitReader) so a file that grows after the fstat still cannot exceed
+// limit.
+func readBoundedRegularFile(path string, limit int64) ([]byte, error) {
+	// O_NONBLOCK: opening a FIFO with no writer otherwise blocks forever, before
+	// the fstat below could reject it. It is a no-op for regular files.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0) // #nosec G304 -- renderer-chosen import source; bounded + type-checked below, only ever parsed as a keystore
+	if err != nil {
+		return nil, fmt.Errorf("cannot read keystore: %w", err)
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("cannot read keystore: %w", err)
+	}
+	if !st.Mode().IsRegular() {
+		return nil, errors.New("keystore source must be a regular file")
+	}
+	if st.Size() > limit {
+		return nil, fmt.Errorf("keystore source too large (%d bytes; limit %d)", st.Size(), limit)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read keystore: %w", err)
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("keystore source too large (limit %d bytes)", limit)
+	}
+	return data, nil
+}
+
+// writeFileExcl creates dst (failing if it exists), writes data, and fsyncs.
+// On any failure the partial file is removed.
+func writeFileExcl(dst string, data []byte) error {
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- dst is an app-internal keystore path
+	if err != nil {
+		return err
+	}
+	if _, err := out.Write(data); err != nil {
+		_ = out.Close()
+		_ = os.Remove(dst)
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		_ = os.Remove(dst)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		_ = os.Remove(dst)
+		return err
+	}
+	return nil
 }
 
 // addToManifest loads the manifest, appends meta, and persists it atomically.

@@ -104,13 +104,16 @@ describe('TxModal (confirm-what-you-sign)', () => {
     expect(w.text()).toContain('node-reported')
   })
 
-  it('does not add the base-unit line for protocol-fixed ZNN/QSR', () => {
+  it.each([
+    ['ZNN', 'zts1znnxxxxxxxxxxxxx9z4ulx'],
+    ['QSR', 'zts1qsrxxxxxxxxxxxxxmrhjll'],
+  ])('does not add the base-unit line for protocol-fixed %s', (symbol, zts) => {
     const tx = useTxStore()
     tx.preview = {
       toAddress: 'z1abc',
       amount: '100000000',
-      zts: 'zts1znnxxxxxxxxxxxxx9z4ulx',
-      symbol: 'ZNN',
+      zts,
+      symbol,
       decimals: 8,
       needsPoW: false,
       difficulty: 0,

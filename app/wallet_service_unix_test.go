@@ -10,9 +10,11 @@ import (
 	"time"
 )
 
-// TestImportRejectsNonRegularSource: a FIFO (or device, socket, directory)
-// must be rejected by a stat check rather than opened — opening a FIFO with
-// no writer blocks forever, which would wedge the bound call.
+// TestImportRejectsNonRegularSource: a FIFO (or device, socket) must be
+// rejected without ever blocking the bound call. The source is opened once
+// with O_NONBLOCK (a blocking open of a FIFO with no writer never returns) and
+// then fstat'd on that descriptor, so the rejection is bound to the file that
+// was actually opened rather than to a separate path lookup.
 func TestImportRejectsNonRegularSource(t *testing.T) {
 	w := newTestWalletService(t)
 	fifo := filepath.Join(t.TempDir(), "pipe.dat")
@@ -27,6 +29,6 @@ func TestImportRejectsNonRegularSource(t *testing.T) {
 			t.Fatalf("expected non-regular-file rejection, got: %v", err)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("ImportKeystore blocked opening a FIFO: source is not stat-checked before reading")
+		t.Fatal("ImportKeystore blocked on a FIFO: open must be non-blocking and the opened descriptor fstat-checked before reading")
 	}
 }

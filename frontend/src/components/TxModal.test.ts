@@ -78,6 +78,54 @@ describe('TxModal (confirm-what-you-sign)', () => {
     expect(w.text()).not.toContain('0.015')
   })
 
+  it('shows the exact base-unit amount and full ZTS for a custom token, labelled as node-reported formatting', () => {
+    // The human rendering of a custom token depends on decimals reported by the
+    // (untrusted) remote node. The base-unit integer is what the held block
+    // actually transfers, so it must be visible alongside the human form.
+    const tx = useTxStore()
+    tx.preview = {
+      toAddress: 'z1abc',
+      amount: '1500000',
+      zts: 'zts1customtoken000000000',
+      symbol: 'CUSTOM',
+      decimals: 6,
+      needsPoW: false,
+      difficulty: 0,
+      hash: 'h',
+      usedPlasma: 0,
+    } as any
+    tx.status = 'awaiting'
+
+    const w = mount(TxModal)
+    const exact = w.find('[data-testid="exact-base-units"]')
+    expect(exact.exists()).toBe(true)
+    expect(exact.text()).toContain('1500000')
+    expect(exact.text()).toContain('zts1customtoken000000000')
+    expect(w.text()).toContain('node-reported')
+  })
+
+  it.each([
+    ['ZNN', 'zts1znnxxxxxxxxxxxxx9z4ulx'],
+    ['QSR', 'zts1qsrxxxxxxxxxxxxxmrhjll'],
+  ])('does not add the base-unit line for protocol-fixed %s', (symbol, zts) => {
+    const tx = useTxStore()
+    tx.preview = {
+      toAddress: 'z1abc',
+      amount: '100000000',
+      zts,
+      symbol,
+      decimals: 8,
+      needsPoW: false,
+      difficulty: 0,
+      hash: 'h',
+      usedPlasma: 0,
+    } as any
+    tx.status = 'awaiting'
+
+    const w = mount(TxModal)
+    expect(w.find('[data-testid="exact-base-units"]').exists()).toBe(false)
+  })
+
   it('shows the FULL recipient address (not truncated) so the user verifies it', () => {
     const tx = useTxStore()
     const full = 'z1qrr0sample00000000000000000000000000pcjmg'

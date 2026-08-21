@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"sync"
+	"syscall"
 
 	sdkwallet "github.com/0x3639/znn-sdk-go/wallet"
 	bip39 "github.com/tyler-smith/go-bip39"
@@ -92,6 +93,60 @@ type WalletService struct {
 	// beforeSelectPersist, when non-nil, runs between a selection's in-memory
 	// switch and its persistence — a test hook for deterministic interleaving.
 	beforeSelectPersist func()
+
+	// kdfSem caps concurrent password derivations. Every keystore Encrypt/
+	// Decrypt runs a 64 MiB Argon2id KDF; the bound methods that reach it
+	// (Unlock, RevealMnemonic, ChangePassword, ImportMnemonic) are all
+	// renderer-callable, so without a backend-owned cap a flood of calls
+	// multiplies that memory without bound. A legitimate UI never runs more
+	// than one at a time; the cap is small headroom, not throughput.
+	kdfSem chan struct{}
+
+	// kdfMu guards the consecutive-failure counter driving the bounded backoff
+	// applied (inside the gated slot) after each wrong password. It is a leaf
+	// lock: never held across a KDF or while taking any other wallet lock.
+	kdfMu          sync.Mutex
+	kdfFailures    int
+	kdfBackoffStep time.Duration // per-failure step; zero → kdfBackoffStepDefault
+}
+
+const (
+	kdfMaxConcurrent      = 2
+	kdfBackoffStepDefault = 250 * time.Millisecond
+	kdfBackoffMax         = 3 * time.Second
+)
+
+// withKDF runs fn inside a KDF slot. fn reports whether the password was
+// accepted; a rejection is delayed by min(failures*step, max) BEFORE the slot
+// is released, so repeated guesses are throttled as well as capped.
+func (w *WalletService) withKDF(fn func() (ok bool)) {
+	w.kdfSem <- struct{}{}
+	defer func() { <-w.kdfSem }()
+
+	w.kdfMu.Lock()
+	failures := w.kdfFailures
+	step := w.kdfBackoffStep
+	w.kdfMu.Unlock()
+	if step == 0 {
+		step = kdfBackoffStepDefault
+	}
+	if failures > 0 {
+		delay := time.Duration(failures) * step
+		if delay > kdfBackoffMax {
+			delay = kdfBackoffMax
+		}
+		time.Sleep(delay)
+	}
+
+	ok := fn()
+
+	w.kdfMu.Lock()
+	if ok {
+		w.kdfFailures = 0
+	} else {
+		w.kdfFailures++
+	}
+	w.kdfMu.Unlock()
 }
 
 // setOnSessionChange wires a callback invoked on Lock and account switch,
@@ -100,7 +155,7 @@ type WalletService struct {
 func (w *WalletService) setOnSessionChange(fn func()) { w.onSessionChange = fn }
 
 func newWalletService(c *ConfigService) *WalletService {
-	return &WalletService{config: c}
+	return &WalletService{config: c, kdfSem: make(chan struct{}, kdfMaxConcurrent)}
 }
 
 // walletPath validates a wallet file name and returns its absolute path inside
@@ -182,6 +237,11 @@ func (w *WalletService) ListWallets() ([]WalletMeta, error) {
 	return m.Wallets, nil
 }
 
+// maxKeystoreFileSize caps the size of a keystore file ImportKeystore will read.
+// A syrius .dat/.json keystore is well under 1 KiB; 64 KiB leaves ample headroom
+// for metadata while bounding what a renderer-supplied path can make us load.
+const maxKeystoreFileSize = 64 * 1024
+
 // ImportKeystore validates a keystore file and copies it into the wallets dir
 // under a fresh uuid filename, recording a manifest entry with the display name
 // (defaulting to the source filename stem when empty). The source filename is
@@ -189,9 +249,15 @@ func (w *WalletService) ListWallets() ([]WalletMeta, error) {
 // are not blocked here — the frontend warns by comparing the returned
 // baseAddress against its existing list. No keystore content is modified.
 func (w *WalletService) ImportKeystore(srcPath, name string) (WalletMeta, error) {
-	kf, err := wallet.ReadKeyFile(srcPath)
+	// The path is renderer-supplied. Everything below binds to ONE opened
+	// descriptor — stat, bounded read, and the bytes that get persisted — so a
+	// concurrent replacement of the path cannot slip a different file past the
+	// checks (TOCTOU). The size/type checks exist because a non-regular file
+	// (FIFO/device) would block the bound call forever and an oversized one
+	// would exhaust memory; real syrius keystores are a few hundred bytes.
+	data, err := readBoundedRegularFile(srcPath, maxKeystoreFileSize)
 	if err != nil {
-		return WalletMeta{}, fmt.Errorf("not a valid syrius keystore: %w", err)
+		return WalletMeta{}, err
 	}
 	if name == "" {
 		base := filepath.Base(srcPath)
@@ -205,14 +271,79 @@ func (w *WalletService) ImportKeystore(srcPath, name string) (WalletMeta, error)
 	if err != nil {
 		return WalletMeta{}, err
 	}
-	if err := copyFile(srcPath, dst); err != nil {
+	// Persist the exact bytes we read, then validate OUR copy: the manifest's
+	// base address is thereby derived from the persisted file, never from a
+	// separate re-read of the caller's path.
+	if err := writeFileExcl(dst, data); err != nil {
 		return WalletMeta{}, err
+	}
+	kf, err := wallet.ReadKeyFile(dst)
+	if err != nil {
+		_ = os.Remove(dst)
+		return WalletMeta{}, fmt.Errorf("not a valid syrius keystore: %w", err)
 	}
 	meta := WalletMeta{ID: id, Name: name, BaseAddress: kf.BaseAddress.String()}
 	if err := w.addToManifest(meta); err != nil {
+		_ = os.Remove(dst)
 		return WalletMeta{}, err
 	}
 	return meta, nil
+}
+
+// readBoundedRegularFile opens path once and, on that descriptor, requires a
+// regular file no larger than limit before reading it. The read itself is also
+// capped (LimitReader) so a file that grows after the fstat still cannot exceed
+// limit.
+func readBoundedRegularFile(path string, limit int64) ([]byte, error) {
+	// O_NONBLOCK: opening a FIFO with no writer otherwise blocks forever, before
+	// the fstat below could reject it. It is a no-op for regular files.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0) // #nosec G304 -- renderer-chosen import source; bounded + type-checked below, only ever parsed as a keystore
+	if err != nil {
+		return nil, fmt.Errorf("cannot read keystore: %w", err)
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("cannot read keystore: %w", err)
+	}
+	if !st.Mode().IsRegular() {
+		return nil, errors.New("keystore source must be a regular file")
+	}
+	if st.Size() > limit {
+		return nil, fmt.Errorf("keystore source too large (%d bytes; limit %d)", st.Size(), limit)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read keystore: %w", err)
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("keystore source too large (limit %d bytes)", limit)
+	}
+	return data, nil
+}
+
+// writeFileExcl creates dst (failing if it exists), writes data, and fsyncs.
+// On any failure the partial file is removed.
+func writeFileExcl(dst string, data []byte) error {
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- dst is an app-internal keystore path
+	if err != nil {
+		return err
+	}
+	if _, err := out.Write(data); err != nil {
+		_ = out.Close()
+		_ = os.Remove(dst)
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		_ = os.Remove(dst)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		_ = os.Remove(dst)
+		return err
+	}
+	return nil
 }
 
 // addToManifest loads the manifest, appends meta, and persists it atomically.
@@ -386,7 +517,8 @@ func (w *WalletService) writeKeystoreFromMnemonic(name, password, mnemonic strin
 	if err != nil {
 		return WalletMeta{}, err
 	}
-	kf, err := ks.Encrypt(password)
+	var kf *wallet.KeyFile
+	w.withKDF(func() bool { kf, err = ks.Encrypt(password); return err == nil })
 	if err != nil {
 		return WalletMeta{}, err
 	}
@@ -420,7 +552,8 @@ func (w *WalletService) Unlock(name, password string) error {
 	if err != nil {
 		return fmt.Errorf("cannot read keystore: %w", err)
 	}
-	ks, err := kf.Decrypt(password)
+	var ks *wallet.KeyStore
+	w.withKDF(func() bool { ks, err = kf.Decrypt(password); return err == nil })
 	if err != nil {
 		return errors.New("incorrect password")
 	}
@@ -458,12 +591,14 @@ func (w *WalletService) ChangePassword(name, oldPassword, newPassword string) er
 	if err != nil {
 		return fmt.Errorf("cannot read keystore: %w", err)
 	}
-	ks, err := kf.Decrypt(oldPassword)
+	var ks *wallet.KeyStore
+	w.withKDF(func() bool { ks, err = kf.Decrypt(oldPassword); return err == nil })
 	if err != nil {
 		return errors.New("incorrect password")
 	}
 	defer ks.Zero()
-	newKf, err := ks.Encrypt(newPassword)
+	var newKf *wallet.KeyFile
+	w.withKDF(func() bool { newKf, err = ks.Encrypt(newPassword); return err == nil })
 	if err != nil {
 		return err
 	}
@@ -871,7 +1006,8 @@ func (w *WalletService) RevealMnemonic(password string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ks, err := kf.Decrypt(password)
+	var ks *wallet.KeyStore
+	w.withKDF(func() bool { ks, err = kf.Decrypt(password); return err == nil })
 	if err != nil {
 		return "", errors.New("incorrect password")
 	}

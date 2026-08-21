@@ -901,3 +901,144 @@ func TestGenerateMnemonicWithEntropyErrorsOmitInputs(t *testing.T) {
 		t.Fatalf("error echoes submitted input: %v", err)
 	}
 }
+
+// TestImportRejectsOversizedSource: ImportKeystore takes a renderer-supplied
+// path. The source must be size-checked BEFORE it is read and parsed — a real
+// syrius keystore is a few hundred bytes, so anything past the cap is refused
+// without reading it.
+func TestImportRejectsOversizedSource(t *testing.T) {
+	w := newTestWalletService(t)
+	big := filepath.Join(t.TempDir(), "huge.json")
+	if err := os.WriteFile(big, bytes.Repeat([]byte("x"), maxKeystoreFileSize+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := w.ImportKeystore(big, "")
+	if err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("expected oversized-source rejection, got: %v", err)
+	}
+}
+
+// TestImportRejectedKeystoreLeavesNoOrphan: the import persists the bytes it
+// read and validates that copy; a rejected source must not leave a stray file
+// in the wallets dir.
+func TestImportRejectedKeystoreLeavesNoOrphan(t *testing.T) {
+	w := newTestWalletService(t)
+	bad := filepath.Join(t.TempDir(), "notakeystore.json")
+	if err := os.WriteFile(bad, []byte(`{"hello":"world"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ImportKeystore(bad, ""); err == nil {
+		t.Fatal("expected rejection")
+	}
+	dir, _ := w.config.walletsDir()
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if e.Name() != manifestFile {
+			t.Fatalf("rejected import left %q in wallets dir", e.Name())
+		}
+	}
+}
+
+// TestImportManifestAddressMatchesPersistedBytes: the manifest's base address
+// must derive from the persisted copy, which must be byte-identical to what was
+// read — one descriptor feeds both, so a path swap cannot desynchronize them.
+func TestImportManifestAddressMatchesPersistedBytes(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+	seed, err := w.ImportMnemonic("seed", "pw", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, _ := w.config.walletsDir()
+	src := filepath.Join(t.TempDir(), "export.json")
+	if err := copyFile(filepath.Join(dir, seed.ID), src); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := w.ImportKeystore(src, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, meta.ID))
+	want, _ := os.ReadFile(src)
+	if !bytes.Equal(got, want) {
+		t.Fatal("persisted keystore bytes differ from the source that was read")
+	}
+	if meta.BaseAddress != seed.BaseAddress {
+		t.Fatalf("manifest address %s != address of persisted bytes %s", meta.BaseAddress, seed.BaseAddress)
+	}
+}
+
+// TestKDFConcurrencyIsCapped: every password operation (Unlock, RevealMnemonic,
+// ChangePassword, ImportMnemonic) runs a 64 MiB Argon2id derivation. A flood of
+// bound calls must queue on the backend-owned KDF gate instead of each
+// allocating its own 64 MiB — with the gate fully occupied, Unlock must not
+// reach Decrypt until a slot frees.
+func TestKDFConcurrencyIsCapped(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+	meta, err := w.ImportMnemonic("gate", "pw", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Occupy every slot.
+	for i := 0; i < cap(w.kdfSem); i++ {
+		w.kdfSem <- struct{}{}
+	}
+	done := make(chan error, 1)
+	go func() { done <- w.Unlock(meta.ID, "pw") }()
+	select {
+	case err := <-done:
+		t.Fatalf("Unlock completed (%v) while the KDF gate was full: derivation is not gated", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	<-w.kdfSem // free one slot
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Unlock after slot freed: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Unlock never proceeded after a KDF slot was freed")
+	}
+	for i := 0; i < cap(w.kdfSem)-1; i++ {
+		<-w.kdfSem
+	}
+}
+
+// TestKDFFailureBackoff: repeated wrong passwords accumulate a bounded delay
+// that a correct password resets.
+func TestKDFFailureBackoff(t *testing.T) {
+	w := newTestWalletService(t)
+	w.kdfBackoffStep = 150 * time.Millisecond
+	m, _ := w.GenerateMnemonic()
+	meta, err := w.ImportMnemonic("bo", "pw", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Unlock(meta.ID, "wrong"); err == nil {
+		t.Fatal("wrong password unlocked")
+	}
+	start := time.Now()
+	if err := w.Unlock(meta.ID, "wrong"); err == nil {
+		t.Fatal("wrong password unlocked")
+	}
+	// Second failure: one prior failure → at least one backoff step.
+	if el := time.Since(start); el < w.kdfBackoffStep {
+		t.Fatalf("second failed attempt returned in %v, want >= %v backoff", el, w.kdfBackoffStep)
+	}
+	w.kdfMu.Lock()
+	n := w.kdfFailures
+	w.kdfMu.Unlock()
+	if n != 2 {
+		t.Fatalf("kdfFailures = %d, want 2", n)
+	}
+	if err := w.Unlock(meta.ID, "pw"); err != nil {
+		t.Fatal(err)
+	}
+	w.kdfMu.Lock()
+	n = w.kdfFailures
+	w.kdfMu.Unlock()
+	if n != 0 {
+		t.Fatalf("kdfFailures after success = %d, want 0", n)
+	}
+}

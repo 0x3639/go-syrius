@@ -28,6 +28,14 @@ import (
 // and with it every future transition — forever. Var, not const: tests shorten it.
 var embeddedStopTimeout = 10 * time.Second
 
+// remoteVerifyTimeout bounds the frontier-momentum reachability check setNode
+// performs on a freshly dialed remote node. That check runs while the global
+// node-transition mutex (opMu) is held, and the SDK's API surface offers no
+// context-aware variant: a peer that completes the WebSocket handshake but never
+// answers would otherwise wedge every later Connect/Disconnect/SetNodeMode.
+// Variable (not const) so tests can shorten it.
+var remoteVerifyTimeout = 15 * time.Second
+
 // embeddedHandle abstracts a running embedded node (real or test stub).
 type embeddedHandle interface {
 	WSURL() string
@@ -121,7 +129,7 @@ func (n *NodeService) setNode(url string) error {
 		n.emitDisconnectedIfCurrent(gen)
 		return fmt.Errorf("connect: %s", redactURLUserinfo(err.Error(), url))
 	}
-	m, err := client.LedgerApi.GetFrontierMomentum()
+	m, err := verifyFrontierWithTimeout(client, remoteVerifyTimeout)
 	if err != nil {
 		client.Stop()
 		n.emitDisconnectedIfCurrent(gen)
@@ -206,6 +214,29 @@ func (n *NodeService) emitStatusLocked(connected bool) {
 	}
 	st := NodeStatus{Mode: mode, Connected: connected && n.client != nil, Height: n.height, ChainID: n.chainID}
 	runtime.EventsEmit(n.ctx, EventNodeStatus, st)
+}
+
+// verifyFrontierWithTimeout runs the reachability RPC with a hard deadline. On
+// timeout the caller Stop()s the client, which closes the underlying socket and
+// unblocks the abandoned call; its goroutine then exits via the buffered channel.
+func verifyFrontierWithTimeout(client *rpc_client.RpcClient, timeout time.Duration) (*api.Momentum, error) {
+	type result struct {
+		m   *api.Momentum
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		m, err := client.LedgerApi.GetFrontierMomentum()
+		ch <- result{m, err}
+	}()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case r := <-ch:
+		return r.m, r.err
+	case <-timer.C:
+		return nil, fmt.Errorf("verification timed out after %s (node accepted the connection but did not respond)", timeout)
+	}
 }
 
 // emitDisconnectedIfCurrent emits a disconnected status only if gen is still

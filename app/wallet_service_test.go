@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"sync"
 	"testing"
 	"time"
@@ -899,5 +900,42 @@ func TestGenerateMnemonicWithEntropyErrorsOmitInputs(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), payload) || strings.Contains(err.Error(), req.InteractionDigestBase64) {
 		t.Fatalf("error echoes submitted input: %v", err)
+	}
+}
+
+// TestImportRejectsOversizedSource: ImportKeystore takes a renderer-supplied
+// path. The source must be size-checked BEFORE it is read and parsed — a real
+// syrius keystore is a few hundred bytes, so anything past the cap is refused
+// without reading it.
+func TestImportRejectsOversizedSource(t *testing.T) {
+	w := newTestWalletService(t)
+	big := filepath.Join(t.TempDir(), "huge.json")
+	if err := os.WriteFile(big, bytes.Repeat([]byte("x"), maxKeystoreFileSize+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := w.ImportKeystore(big, "")
+	if err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("expected oversized-source rejection, got: %v", err)
+	}
+}
+
+// TestImportRejectsNonRegularSource: a FIFO (or device, socket, directory)
+// must be rejected by a stat check rather than opened — opening a FIFO with
+// no writer blocks forever, which would wedge the bound call.
+func TestImportRejectsNonRegularSource(t *testing.T) {
+	w := newTestWalletService(t)
+	fifo := filepath.Join(t.TempDir(), "pipe.dat")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Skipf("mkfifo unavailable: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := w.ImportKeystore(fifo, ""); done <- err }()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "regular file") {
+			t.Fatalf("expected non-regular-file rejection, got: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("ImportKeystore blocked opening a FIFO: source is not stat-checked before reading")
 	}
 }

@@ -182,6 +182,11 @@ func (w *WalletService) ListWallets() ([]WalletMeta, error) {
 	return m.Wallets, nil
 }
 
+// maxKeystoreFileSize caps the size of a keystore file ImportKeystore will read.
+// A syrius .dat/.json keystore is well under 1 KiB; 64 KiB leaves ample headroom
+// for metadata while bounding what a renderer-supplied path can make us load.
+const maxKeystoreFileSize = 64 * 1024
+
 // ImportKeystore validates a keystore file and copies it into the wallets dir
 // under a fresh uuid filename, recording a manifest entry with the display name
 // (defaulting to the source filename stem when empty). The source filename is
@@ -189,6 +194,20 @@ func (w *WalletService) ListWallets() ([]WalletMeta, error) {
 // are not blocked here — the frontend warns by comparing the returned
 // baseAddress against its existing list. No keystore content is modified.
 func (w *WalletService) ImportKeystore(srcPath, name string) (WalletMeta, error) {
+	// The path is renderer-supplied. Stat before reading: wallet.ReadKeyFile
+	// slurps the whole source, so a non-regular file (FIFO/device) could block
+	// the bound call forever and an oversized one could exhaust memory. Real
+	// syrius keystores are a few hundred bytes.
+	st, err := os.Stat(srcPath)
+	if err != nil {
+		return WalletMeta{}, fmt.Errorf("cannot read keystore: %w", err)
+	}
+	if !st.Mode().IsRegular() {
+		return WalletMeta{}, errors.New("keystore source must be a regular file")
+	}
+	if st.Size() > maxKeystoreFileSize {
+		return WalletMeta{}, fmt.Errorf("keystore source too large (%d bytes; limit %d)", st.Size(), maxKeystoreFileSize)
+	}
 	kf, err := wallet.ReadKeyFile(srcPath)
 	if err != nil {
 		return WalletMeta{}, fmt.Errorf("not a valid syrius keystore: %w", err)

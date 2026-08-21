@@ -92,6 +92,60 @@ type WalletService struct {
 	// beforeSelectPersist, when non-nil, runs between a selection's in-memory
 	// switch and its persistence — a test hook for deterministic interleaving.
 	beforeSelectPersist func()
+
+	// kdfSem caps concurrent password derivations. Every keystore Encrypt/
+	// Decrypt runs a 64 MiB Argon2id KDF; the bound methods that reach it
+	// (Unlock, RevealMnemonic, ChangePassword, ImportMnemonic) are all
+	// renderer-callable, so without a backend-owned cap a flood of calls
+	// multiplies that memory without bound. A legitimate UI never runs more
+	// than one at a time; the cap is small headroom, not throughput.
+	kdfSem chan struct{}
+
+	// kdfMu guards the consecutive-failure counter driving the bounded backoff
+	// applied (inside the gated slot) after each wrong password. It is a leaf
+	// lock: never held across a KDF or while taking any other wallet lock.
+	kdfMu          sync.Mutex
+	kdfFailures    int
+	kdfBackoffStep time.Duration // per-failure step; zero → kdfBackoffStepDefault
+}
+
+const (
+	kdfMaxConcurrent      = 2
+	kdfBackoffStepDefault = 250 * time.Millisecond
+	kdfBackoffMax         = 3 * time.Second
+)
+
+// withKDF runs fn inside a KDF slot. fn reports whether the password was
+// accepted; a rejection is delayed by min(failures*step, max) BEFORE the slot
+// is released, so repeated guesses are throttled as well as capped.
+func (w *WalletService) withKDF(fn func() (ok bool)) {
+	w.kdfSem <- struct{}{}
+	defer func() { <-w.kdfSem }()
+
+	w.kdfMu.Lock()
+	failures := w.kdfFailures
+	step := w.kdfBackoffStep
+	w.kdfMu.Unlock()
+	if step == 0 {
+		step = kdfBackoffStepDefault
+	}
+	if failures > 0 {
+		delay := time.Duration(failures) * step
+		if delay > kdfBackoffMax {
+			delay = kdfBackoffMax
+		}
+		time.Sleep(delay)
+	}
+
+	ok := fn()
+
+	w.kdfMu.Lock()
+	if ok {
+		w.kdfFailures = 0
+	} else {
+		w.kdfFailures++
+	}
+	w.kdfMu.Unlock()
 }
 
 // setOnSessionChange wires a callback invoked on Lock and account switch,
@@ -100,7 +154,7 @@ type WalletService struct {
 func (w *WalletService) setOnSessionChange(fn func()) { w.onSessionChange = fn }
 
 func newWalletService(c *ConfigService) *WalletService {
-	return &WalletService{config: c}
+	return &WalletService{config: c, kdfSem: make(chan struct{}, kdfMaxConcurrent)}
 }
 
 // walletPath validates a wallet file name and returns its absolute path inside
@@ -405,7 +459,8 @@ func (w *WalletService) writeKeystoreFromMnemonic(name, password, mnemonic strin
 	if err != nil {
 		return WalletMeta{}, err
 	}
-	kf, err := ks.Encrypt(password)
+	var kf *wallet.KeyFile
+	w.withKDF(func() bool { kf, err = ks.Encrypt(password); return err == nil })
 	if err != nil {
 		return WalletMeta{}, err
 	}
@@ -439,7 +494,8 @@ func (w *WalletService) Unlock(name, password string) error {
 	if err != nil {
 		return fmt.Errorf("cannot read keystore: %w", err)
 	}
-	ks, err := kf.Decrypt(password)
+	var ks *wallet.KeyStore
+	w.withKDF(func() bool { ks, err = kf.Decrypt(password); return err == nil })
 	if err != nil {
 		return errors.New("incorrect password")
 	}
@@ -477,12 +533,14 @@ func (w *WalletService) ChangePassword(name, oldPassword, newPassword string) er
 	if err != nil {
 		return fmt.Errorf("cannot read keystore: %w", err)
 	}
-	ks, err := kf.Decrypt(oldPassword)
+	var ks *wallet.KeyStore
+	w.withKDF(func() bool { ks, err = kf.Decrypt(oldPassword); return err == nil })
 	if err != nil {
 		return errors.New("incorrect password")
 	}
 	defer ks.Zero()
-	newKf, err := ks.Encrypt(newPassword)
+	var newKf *wallet.KeyFile
+	w.withKDF(func() bool { newKf, err = ks.Encrypt(newPassword); return err == nil })
 	if err != nil {
 		return err
 	}
@@ -890,7 +948,8 @@ func (w *WalletService) RevealMnemonic(password string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ks, err := kf.Decrypt(password)
+	var ks *wallet.KeyStore
+	w.withKDF(func() bool { ks, err = kf.Decrypt(password); return err == nil })
 	if err != nil {
 		return "", errors.New("incorrect password")
 	}

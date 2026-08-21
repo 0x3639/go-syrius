@@ -939,3 +939,78 @@ func TestImportRejectsNonRegularSource(t *testing.T) {
 		t.Fatal("ImportKeystore blocked opening a FIFO: source is not stat-checked before reading")
 	}
 }
+
+// TestKDFConcurrencyIsCapped: every password operation (Unlock, RevealMnemonic,
+// ChangePassword, ImportMnemonic) runs a 64 MiB Argon2id derivation. A flood of
+// bound calls must queue on the backend-owned KDF gate instead of each
+// allocating its own 64 MiB — with the gate fully occupied, Unlock must not
+// reach Decrypt until a slot frees.
+func TestKDFConcurrencyIsCapped(t *testing.T) {
+	w := newTestWalletService(t)
+	m, _ := w.GenerateMnemonic()
+	meta, err := w.ImportMnemonic("gate", "pw", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Occupy every slot.
+	for i := 0; i < cap(w.kdfSem); i++ {
+		w.kdfSem <- struct{}{}
+	}
+	done := make(chan error, 1)
+	go func() { done <- w.Unlock(meta.ID, "pw") }()
+	select {
+	case err := <-done:
+		t.Fatalf("Unlock completed (%v) while the KDF gate was full: derivation is not gated", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	<-w.kdfSem // free one slot
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Unlock after slot freed: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Unlock never proceeded after a KDF slot was freed")
+	}
+	for i := 0; i < cap(w.kdfSem)-1; i++ {
+		<-w.kdfSem
+	}
+}
+
+// TestKDFFailureBackoff: repeated wrong passwords accumulate a bounded delay
+// that a correct password resets.
+func TestKDFFailureBackoff(t *testing.T) {
+	w := newTestWalletService(t)
+	w.kdfBackoffStep = 150 * time.Millisecond
+	m, _ := w.GenerateMnemonic()
+	meta, err := w.ImportMnemonic("bo", "pw", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Unlock(meta.ID, "wrong"); err == nil {
+		t.Fatal("wrong password unlocked")
+	}
+	start := time.Now()
+	if err := w.Unlock(meta.ID, "wrong"); err == nil {
+		t.Fatal("wrong password unlocked")
+	}
+	// Second failure: one prior failure → at least one backoff step.
+	if el := time.Since(start); el < w.kdfBackoffStep {
+		t.Fatalf("second failed attempt returned in %v, want >= %v backoff", el, w.kdfBackoffStep)
+	}
+	w.kdfMu.Lock()
+	n := w.kdfFailures
+	w.kdfMu.Unlock()
+	if n != 2 {
+		t.Fatalf("kdfFailures = %d, want 2", n)
+	}
+	if err := w.Unlock(meta.ID, "pw"); err != nil {
+		t.Fatal(err)
+	}
+	w.kdfMu.Lock()
+	n = w.kdfFailures
+	w.kdfMu.Unlock()
+	if n != 0 {
+		t.Fatalf("kdfFailures after success = %d, want 0", n)
+	}
+}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Button } from 'nom-ui'
 import { useTxStore } from '../stores/tx'
@@ -14,6 +15,16 @@ import { LoaderCircleIcon } from '@lucide/vue'
 // preview.amount.
 const tx = useTxStore()
 const { preview: p, status } = storeToRefs(tx)
+
+// ZNN and QSR have protocol-fixed decimals (8). Any other token's decimals are
+// metadata reported by the connected node, which the wallet cannot verify: a
+// malicious node could understate/overstate them so the human rendering looks
+// small while the signed base-unit amount is large. For those tokens the exact
+// base-unit integer — the amount the held block actually transfers — is shown
+// alongside, and the human form is labelled as node-reported.
+const ZNN_ZTS = 'zts1znnxxxxxxxxxxxxx9z4ulx'
+const QSR_ZTS = 'zts1qsrxxxxxxxxxxxxxmrhjll'
+const isCustomToken = computed(() => !!p.value && p.value.zts !== ZNN_ZTS && p.value.zts !== QSR_ZTS)
 </script>
 
 <template>
@@ -67,6 +78,19 @@ const { preview: p, status } = storeToRefs(tx)
           (no tokens sent)
         </span>
       </span>
+    </div>
+    <div v-if="isCustomToken" class="space-y-1 rounded border border-border/60 p-2 text-sm" data-testid="exact-base-units">
+      <div class="flex justify-between gap-4">
+        <span class="shrink-0 text-muted-foreground">Exact amount (base units)</span>
+        <span class="break-all text-right font-mono">{{ p.amount }}</span>
+      </div>
+      <div class="flex justify-between gap-4">
+        <span class="shrink-0 text-muted-foreground">Token (ZTS)</span>
+        <span class="break-all text-right font-mono">{{ p.zts }}</span>
+      </div>
+      <p class="text-xs text-muted-foreground">
+        The amount above is formatted with node-reported decimals ({{ p.decimals ?? 8 }}) — verify the base-unit value.
+      </p>
     </div>
     <div class="flex justify-between">
       <span class="text-muted-foreground">Fee</span>

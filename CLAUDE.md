@@ -15,7 +15,7 @@ A reimplementation of the Zenon `syrius` wallet (originally Flutter/Dart) as a *
 ## Stack (locked decisions — see plan.md §6)
 
 - **Wails v2** (v2.12.0; not v3 — stability for a funds-handling app)
-- **Go 1.25.13** (go.mod toolchain floor), importing `znn-sdk-go` (pinned, author-controlled; currently v0.3.1) and `go-zenon`
+- **Go 1.26** (go.mod `go 1.26.0`, `toolchain go1.26.7`), importing `znn-sdk-go` (pinned, author-controlled; currently v0.5.0) and `go-zenon`
 - **Vue 3 + TypeScript + Vite**, **Tailwind CSS 4**, **Pinia** for state, **vue-router** (memory history). UI built on **nom-ui** (Vue component library, `github:digitalSloth/nom-ui` pinned) — Dialog/Tabs/Address/TxStatus/TxDirection/TokenIcon/toast + its blockchain primitives. *(Originally scaffolded in Svelte; migrated to Vue 3 + nom-ui — merged to main `a9c2880`, 2026-06-25. The Go backend + Wails bindings were untouched by the migration.)*
 - Build via Wails CLI + GitHub Actions cross-platform matrix
 
@@ -75,7 +75,7 @@ Ordered by risk; do not start UI-heavy work before the foundation is proven.
 
 ## Commands
 
-**Local dev hazard:** a parent `go.work` on the author's machine references a missing sibling module, so local `go`/`wails` commands need `GOWORK=off` (and `GOTOOLCHAIN=auto`, since go.mod pins go 1.25.13). CI does **not** need these (standalone checkout). The build emits an unrelated gopsutil/IOKit cgo deprecation warning — not an error.
+**Local dev hazard:** a parent `go.work` on the author's machine references a missing sibling module, so local `go`/`wails` commands need `GOWORK=off` (and `GOTOOLCHAIN=auto`, since go.mod pins go 1.26.0 / toolchain go1.26.7). CI does **not** need these (standalone checkout). The build emits an unrelated gopsutil/IOKit cgo deprecation warning — not an error.
 
 - **Run / build the app:** `GOWORK=off wails dev` (run), `GOWORK=off wails build` (package). Linux build needs `-tags webkit2_41` (+ `libgtk-3-dev libwebkit2gtk-4.1-dev`).
 - **Backend tests:** `GOWORK=off GOTOOLCHAIN=auto go test ./...` (plus `go vet ./...`, `go build ./...`). Integration/live-node tests are behind `//go:build integration` and need `ZNN_NODE_URL` (e.g. `... go test -tags integration ./internal/spike -run TestReadOnly... -v`).

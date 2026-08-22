@@ -99,7 +99,7 @@ Report issues: https://github.com/0x3639/go-syrius/issues — include platform, 
 
 ## Build from source (developers)
 
-Requires Go 1.25.x, Node 22 + pnpm 10.17.1, and the Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0`).
+Requires Go 1.26.x, Node 22 + pnpm 10.17.1, and the Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0`).
 
 ```bash
 # run (a parent go.work on some machines requires GOWORK=off)

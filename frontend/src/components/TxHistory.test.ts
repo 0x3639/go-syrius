@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { useNodeStore } from '../stores/node'
 import TxHistory from './TxHistory.vue'
 import { useTxsStore, type TxRecord } from '../stores/txs'
 import { useUnreceivedStore } from '../stores/unreceived'
@@ -11,6 +12,8 @@ vi.mock('nom-ui', () => {
   const passthrough = (tag: string) => ({ template: `<${tag}><slot /></${tag}>` })
   return {
     Table: passthrough('table'),
+    TableHeader: passthrough('thead'),
+    TableHead: passthrough('th'),
     TableBody: passthrough('tbody'),
     TableRow: passthrough('tr'),
     TableCell: passthrough('td'),
@@ -22,7 +25,7 @@ vi.mock('nom-ui', () => {
 })
 
 const flush = () => new Promise((r) => setTimeout(r))
-beforeEach(() => setActivePinia(createPinia()))
+beforeEach(() => { setActivePinia(createPinia()); useNodeStore().connected = true; useTxsStore().loaded = true })
 
 const tx: TxRecord = {
   hash: 'h1',
@@ -47,6 +50,18 @@ function seed(records: TxRecord[]) {
 }
 
 describe('TxHistory', () => {
+  it('disables history filters while disconnected', async () => {
+    useNodeStore().connected = false
+    const s = useTxsStore()
+    const filter = vi.spyOn(s, 'setTransfersOnly')
+    const w = mount(TxHistory)
+    for (const label of ['show transfers only', 'show all transactions']) {
+      const button = w.get(`[aria-label="${label}"]`)
+      expect(button.attributes('disabled')).toBeDefined()
+      await button.trigger('click')
+    }
+    expect(filter).not.toHaveBeenCalled()
+  })
   it('renders a row with the formatted amount', async () => {
     const w = mount(TxHistory)
     seed([tx])
@@ -70,10 +85,10 @@ describe('TxHistory', () => {
     const w = mount(TxHistory)
     seed([tx, { ...tx, hash: 'z1', amount: '0' }])
     await w.vm.$nextTick()
-    expect(w.findAll('tr').length).toBe(1) // only the real transfer
+    expect(w.findAll('tbody tr').length).toBe(1) // only the real transfer
     await w.find('button[aria-label="show all transactions"]').trigger('click')
     await flush()
-    expect(w.findAll('tr').length).toBe(2) // both rows now
+    expect(w.findAll('tbody tr').length).toBe(2) // both rows now
   })
 
   it('shows method labels + a Pair chip under All, hidden under Transfers', async () => {

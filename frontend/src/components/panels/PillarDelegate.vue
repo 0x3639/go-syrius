@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { useNodeRefresh } from '../../lib/useNodeRefresh'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Input, Button } from 'nom-ui'
 import * as Nom from '../../../wailsjs/go/app/NomService'
@@ -33,7 +34,7 @@ const filtered = computed(() =>
 async function delegate(name: string) {
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareDelegate(name))
+    await tx.prepareCall(() => Nom.PrepareDelegate(name))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -41,7 +42,7 @@ async function delegate(name: string) {
 async function undelegate() {
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareUndelegate())
+    await tx.prepareCall(() => Nom.PrepareUndelegate())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -49,13 +50,13 @@ async function undelegate() {
 async function collect() {
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareCollectPillarReward())
+    await tx.prepareCall(() => Nom.PrepareCollectPillarReward())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
 }
 
-onMounted(() => pillar.refresh())
+useNodeRefresh(() => pillar.refresh())
 watch(
   () => tx.status,
   (s) => {
@@ -65,8 +66,8 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-4 p-4">
-    <section class="space-y-2 rounded-lg border border-border bg-card p-4">
+  <div class="space-y-5">
+    <section class="space-y-2 panel-card">
       <h2 class="text-sm font-medium text-foreground">Your delegation</h2>
       <div v-if="delegated && delegation" class="flex items-center justify-between pr-2 text-sm">
         <p>
@@ -87,7 +88,7 @@ watch(
       </div>
     </section>
 
-    <section class="space-y-3 rounded-lg border border-border bg-card p-4">
+    <section class="space-y-3 panel-card">
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-sm font-medium text-foreground">Pillars</h2>
         <span class="text-xs text-muted-foreground">Sorted by Rank</span>
@@ -98,14 +99,14 @@ watch(
         <div
           v-for="p in filtered"
           :key="p.name"
-          class="flex items-center justify-between gap-3 rounded-md border px-2 py-2 transition-colors"
+          class="flex flex-col gap-3 rounded-md border px-2 py-3 transition-colors lg:flex-row lg:items-center lg:justify-between"
           :class="p.name === mine
             ? 'border-success/50 bg-success/10'
             : 'border-transparent hover:border-border hover:bg-muted'"
         >
           <div class="flex min-w-0 items-baseline gap-3">
             <span class="shrink-0 font-mono text-xs text-muted-foreground">#{{ p.rank }}</span>
-            <span class="truncate text-sm text-foreground">{{ p.name }}</span>
+            <span class="truncate text-sm text-foreground" :title="p.name">{{ p.name }}</span>
             <span
               v-if="p.name === mine"
               class="shrink-0 rounded bg-success/20 px-1.5 py-0.5 text-[10px] font-medium text-success"
@@ -117,8 +118,8 @@ watch(
               >delegated</span
             >
           </div>
-          <div class="flex shrink-0 items-center gap-4">
-            <span class="text-xs text-primary">{{ p.delegateRewardPercent }}% APR</span>
+          <div class="flex flex-wrap items-center justify-end gap-3">
+            <span class="text-xs text-primary" title="Share of delegation rewards distributed to delegators; this is not an annual yield.">{{ p.delegateRewardPercent }}% reward share</span>
             <span class="font-mono text-xs text-muted-foreground"
               >{{ formatAmount(p.weight, 8) }} ZNN</span
             >
@@ -131,7 +132,7 @@ watch(
 
     <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>
 
-    <p v-if="tx.status === 'preparing'" class="text-muted-foreground">Preparing… (PoW if required)</p>
+    <p v-if="tx.status === 'preparing'" class="text-muted-foreground">Preparing transaction…</p>
     <p v-if="tx.status === 'error'" class="text-destructive" role="alert">{{ tx.error }}</p>
   </div>
 </template>

@@ -5,13 +5,46 @@ const ConfirmPublish = vi.hoisted(() => vi.fn())
 const CancelPending = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('../../wailsjs/go/app/TxService', () => ({ PrepareSend, ConfirmPublish, CancelPending }))
 import { useTxStore } from './tx'
+import { useNodeStore } from './node'
+import { bumpRequestEpoch } from '../lib/requestEpoch'
 beforeEach(() => {
   setActivePinia(createPinia())
+  useNodeStore().connected = true
   PrepareSend.mockReset()
   ConfirmPublish.mockReset()
   CancelPending.mockReset().mockResolvedValue(undefined)
 })
 describe('tx store (confirm-what-you-sign)', () => {
+  it('releases a panel preview prepared before a disconnect/reconnect', async () => {
+    let finish!: (r: any) => void
+    const s = useTxStore()
+    const preparing = s.prepareCall(() => new Promise(resolve => { finish = resolve }))
+    useNodeStore().applyStatus({ connected: false })
+    useNodeStore().applyStatus({ connected: true })
+    finish({ holdId: 101 })
+    await preparing
+    expect(s.status).toBe('idle')
+    expect(CancelPending).toHaveBeenCalledWith(101)
+  })
+  it('releases a late panel preview while offline', () => {
+    useNodeStore().connected = false
+    const s = useTxStore()
+    s.awaitConfirm({ holdId: 99 } as any)
+    expect(s.status).toBe('idle')
+    expect(CancelPending).toHaveBeenCalledWith(99)
+  })
+
+  it('releases a send prepared across a connection change', async () => {
+    let finish!: (r: unknown) => void
+    PrepareSend.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const s = useTxStore()
+    const preparing = s.prepare('z1', 'zts1znn', '1')
+    bumpRequestEpoch()
+    finish({ holdId: 100 })
+    await preparing
+    expect(s.status).toBe('idle')
+    expect(CancelPending).toHaveBeenCalledWith(100)
+  })
   it('prepare seats the built-block preview', async () => {
     PrepareSend.mockResolvedValue({ toAddress: 'z1', amount: '150000000', zts: 'zts1znn', needsPoW: true, difficulty: 1, hash: 'h' })
     const s = useTxStore(); await s.prepare('z1', 'zts1znn', '150000000')

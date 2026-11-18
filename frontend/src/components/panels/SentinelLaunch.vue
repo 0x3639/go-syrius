@@ -36,7 +36,7 @@ async function depositQsr() {
   error.value = ''
   lastAction = 'deposit'
   try {
-    tx.awaitConfirm(await Nom.PrepareDepositQsr(shortfall.value.toString()))
+    await tx.prepareCall(() => Nom.PrepareDepositQsr(shortfall.value.toString()))
   } catch (e: unknown) {
     lastAction = null
     error.value = e instanceof Error ? e.message : String(e)
@@ -46,7 +46,7 @@ async function register() {
   error.value = ''
   lastAction = 'register'
   try {
-    tx.awaitConfirm(await Nom.PrepareRegisterSentinel())
+    await tx.prepareCall(() => Nom.PrepareRegisterSentinel())
   } catch (e: unknown) {
     lastAction = null
     error.value = e instanceof Error ? e.message : String(e)
@@ -57,7 +57,7 @@ async function withdrawQsr() {
   error.value = ''
   lastAction = null
   try {
-    tx.awaitConfirm(await Nom.PrepareWithdrawQsr())
+    await tx.prepareCall(() => Nom.PrepareWithdrawQsr())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -83,7 +83,7 @@ watch(
 </script>
 
 <template>
-  <section class="space-y-4 rounded-lg border border-border bg-card p-4">
+  <section class="space-y-4 panel-card">
     <StepHeader :current="currentStep" />
 
     <!-- Clearing (transient): waiting for the contract to credit/activate. -->

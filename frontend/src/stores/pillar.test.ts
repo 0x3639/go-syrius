@@ -1,3 +1,4 @@
+import { useNodeStore } from './node'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { usePillarStore, PILLAR_PLASMA_REQUIRED } from './pillar'
@@ -9,7 +10,7 @@ vi.mock('../../wailsjs/go/app/NomService', () => ({
   GetPillarList: vi.fn(), GetDelegation: vi.fn(),
 }))
 
-beforeEach(() => setActivePinia(createPinia()))
+beforeEach(() => { setActivePinia(createPinia()); useNodeStore().connected = true })
 
 describe('pillar store plasmaCleared', () => {
   it('clears on sufficient current plasma', () => {
@@ -71,4 +72,22 @@ describe('pillar store registration pending/poll', () => {
     expect(s.pendingStep).toBe(null)
     expect(s.pollCount).toBe(0)
   })
+})
+
+it('pauses settlement polling offline and resumes without losing the pending step', async () => {
+  vi.useFakeTimers()
+  const s = usePillarStore()
+  const refresh = vi.spyOn(s, 'refreshRegistration').mockResolvedValue()
+  try {
+    s.beginPending('deposit')
+    useNodeStore().connected = false
+    await vi.advanceTimersByTimeAsync(21000)
+    expect(refresh).not.toHaveBeenCalled()
+    expect(s.pollCount).toBe(0)
+    expect(s.pendingStep).toBe('deposit')
+    useNodeStore().connected = true
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(s.pollCount).toBe(1)
+  } finally { s.stopPolling(); vi.useRealTimers() }
 })

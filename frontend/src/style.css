@@ -2,3 +2,10 @@
 @import "nom-ui/style.css";
 /* Generate the utility classes nom-ui's component source uses: */
 @source "../node_modules/nom-ui/src";
+
+/* Shared page rhythm for wallet and network screens. */
+@layer components {
+  .page-content { @apply mx-auto w-full max-w-[48rem] space-y-5; }
+  .panel-card { @apply rounded-xl border border-border bg-card p-5; }
+  .disclosure-title { @apply cursor-pointer text-sm font-medium text-foreground; }
+}

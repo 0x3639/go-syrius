@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from 'vue'
+import { useNodeRefresh } from '../../lib/useNodeRefresh'
+import { onUnmounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useSentinelStore } from '../../stores/sentinel'
 import { useWalletStore } from '../../stores/wallet'
@@ -12,7 +13,7 @@ const sentinelStore = useSentinelStore()
 const wallet = useWalletStore()
 const { active } = storeToRefs(sentinelStore)
 
-onMounted(() => sentinelStore.refresh())
+useNodeRefresh(() => sentinelStore.refresh())
 onUnmounted(() => sentinelStore.stopPolling())
 
 // A sentinel is owned per-address — re-fetch (and cancel any poll) on account
@@ -27,7 +28,7 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-4 p-4">
+  <div class="space-y-5">
     <SentinelActive v-if="active" />
     <SentinelLaunch v-else />
   </div>

@@ -26,7 +26,6 @@ const routes: RouteRecordRaw[] = [
       { path: 'network/sentinels', name: 'net-sentinels', meta: { title: 'Sentinels', panel: 'sentinels' }, component: () => import('../views/NetworkPage.vue') },
       { path: 'network/accelerator', name: 'net-accelerator', meta: { title: 'Accelerator', panel: 'accelerator' }, component: () => import('../views/NetworkPage.vue') },
       { path: 'network/rewards', name: 'net-rewards', meta: { title: 'Rewards', panel: 'rewards' }, component: () => import('../views/NetworkPage.vue') },
-      { path: 'network/governance', name: 'net-governance', meta: { title: 'Governance', panel: 'governance' }, component: () => import('../views/NetworkPage.vue') },
       { path: 'settings', name: 'settings', meta: { title: 'Settings' }, component: () => import('../views/Settings.vue') },
       { path: 'walletconnect', name: 'walletconnect', meta: { title: 'WalletConnect' }, component: () => import('../views/WalletConnect.vue') },
       { path: 'address-book', name: 'address-book', meta: { title: 'Address book' }, component: () => import('../views/AddressBook.vue') },

@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { useNodeRefresh } from '../../lib/useNodeRefresh'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Input, Button } from 'nom-ui'
 import * as Nom from '../../../wailsjs/go/app/NomService'
 import { usePlasmaStore } from '../../stores/plasma'
 import { useTxStore } from '../../stores/tx'
-import { formatAmount, toBase } from '../../lib/format'
+import { formatAmount, formatAmountExact, shortAddress, toBase } from '../../lib/format'
+import { useBalancesStore } from '../../stores/balances'
 import Field from '../Field.vue'
+import AmountInput from '../AmountInput.vue'
 
 const plasma = usePlasmaStore()
 const tx = useTxStore()
@@ -17,8 +20,24 @@ const beneficiary = ref('')
 const amount = ref('')
 const estimate = ref(0)
 const error = ref('')
+const balances = useBalancesStore()
+const available = computed(() => balances.items.find(b => b.symbol === 'QSR')?.amount ?? '0')
+const availableLabel = computed(() => balances.available ? `${formatAmountExact(available.value, 8)} QSR available` : 'Balance unavailable')
+const maxFusion = computed(() => {
+  const whole = BigInt(available.value) / 100000000n
+  return balances.available && whole >= 10n ? whole.toString() : ''
+})
+const canFuse = computed(() => {
+  try {
+    const base = BigInt(toBase(amount.value, 8))
+    const address = beneficiary.value
+    const uniformCase = address === address.toLowerCase() || address === address.toUpperCase()
+    return balances.available && uniformCase && /^z1[0-9a-z]{38}$/i.test(address)
+      && base >= 1000000000n && base % 100000000n === 0n && base <= BigInt(available.value)
+  } catch { return false }
+})
 
-onMounted(() => plasma.refresh())
+useNodeRefresh(() => plasma.refresh())
 
 // Live plasma estimate: mirrors the Svelte `$: if (amount) estimate(...)`. Only
 // the whole-QSR part drives the estimate, matching the original.
@@ -31,12 +50,12 @@ watch(amount, async (a) => {
 })
 
 async function fuse() {
+  if (!canFuse.value) return
   // NoM-confirm pattern: prepare the call, hand the preview to the global
   // NomConfirm dialog via tx.awaitConfirm. The panel renders no modal itself.
   error.value = ''
   try {
-    const preview = await Nom.PrepareFuse(beneficiary.value, toBase(amount.value, 8))
-    tx.awaitConfirm(preview)
+    await tx.prepareCall(() => Nom.PrepareFuse(beneficiary.value, toBase(amount.value, 8)))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -45,8 +64,7 @@ async function fuse() {
 async function cancel(id: string) {
   error.value = ''
   try {
-    const preview = await Nom.PrepareCancelFuse(id)
-    tx.awaitConfirm(preview)
+    await tx.prepareCall(() => Nom.PrepareCancelFuse(id))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -62,42 +80,43 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-4 p-4">
+  <div class="space-y-5">
     <p v-if="info" class="text-sm text-muted-foreground">
-      Current plasma {{ info.currentPlasma }} / {{ info.maxPlasma }} · QSR fused
+      Current plasma {{ info.currentPlasma.toLocaleString('en-US') }} / {{ info.maxPlasma.toLocaleString('en-US') }} · QSR fused
       {{ formatAmount(info.qsrFused, 8) }} QSR
     </p>
 
-    <section class="space-y-3 rounded-lg border border-border bg-card p-4">
+    <section class="space-y-3 panel-card">
       <h2 class="text-sm font-medium text-foreground">Fuse Plasma</h2>
       <Field label="Beneficiary Address">
         <Input v-model="beneficiary" placeholder="z1…" aria-label="beneficiary" />
       </Field>
-      <Field
-        label="Amount (QSR)"
-        :hint="estimate > 0 ? `≈ ${estimate} plasma` : 'Available / Minimum'"
-      >
-        <Input v-model="amount" placeholder="QSR amount" aria-label="qsr amount" />
-      </Field>
-      <Button class="w-full" @click="fuse">Fuse Plasma</Button>
+      <div class="space-y-1">
+        <AmountInput v-model="amount" label="Amount (QSR)" :max="maxFusion" />
+        <p class="text-xs text-muted-foreground">{{ availableLabel }}</p>
+        <p class="text-xs text-muted-foreground">Minimum 10 QSR, in whole QSR increments.</p>
+      </div>
+      <p v-if="estimate > 0" class="text-xs text-muted-foreground">≈ {{ estimate.toLocaleString('en-US') }} plasma</p>
+      <Button class="w-full" :disabled="!canFuse" @click="fuse">Fuse Plasma</Button>
     </section>
 
-    <section class="space-y-2 rounded-lg border border-border bg-card p-4">
+    <section class="space-y-2 panel-card">
       <h2 class="text-sm font-medium text-foreground">Fusion entries</h2>
       <div
         v-for="e in fusionEntries"
         :key="e.id"
         class="flex items-center justify-between text-sm"
       >
-        <span class="font-mono">
-          {{ formatAmount(e.qsrAmount, 8) }} QSR → {{ e.beneficiary.slice(0, 10) }}…
+        <span class="font-mono" :title="e.beneficiary">
+          {{ formatAmount(e.qsrAmount, 8) }} QSR → {{ shortAddress(e.beneficiary) }}
+          <span v-if="!e.isRevocable" class="block text-xs text-muted-foreground">Locked until momentum {{ e.expirationHeight.toLocaleString('en-US') }}</span>
         </span>
         <Button
           variant="outline"
           :disabled="!e.isRevocable"
-          aria-label="cancel fusion"
+          aria-label="unfuse QSR"
           @click="cancel(e.id)"
-        >Cancel</Button>
+        >Unfuse</Button>
       </div>
       <p v-if="fusionEntries.length === 0" class="text-xs text-muted-foreground">
         No fusion entries.
@@ -107,7 +126,7 @@ watch(
     <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>
 
     <p v-if="tx.status === 'preparing'" class="text-muted-foreground">
-      Preparing… (PoW if required)
+      Preparing transaction…
     </p>
     <p v-if="tx.status === 'error'" class="text-destructive" role="alert">{{ tx.error }}</p>
   </div>

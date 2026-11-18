@@ -20,7 +20,7 @@ const rewardZero = computed(
 async function collect() {
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareCollectSentinelReward())
+    await tx.prepareCall(() => Nom.PrepareCollectSentinelReward())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -28,7 +28,7 @@ async function collect() {
 async function revoke() {
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareRevokeSentinel())
+    await tx.prepareCall(() => Nom.PrepareRevokeSentinel())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -44,7 +44,7 @@ watch(
 </script>
 
 <template>
-  <section v-if="sentinel" class="space-y-3 rounded-lg border border-border bg-card p-4">
+  <section v-if="sentinel" class="space-y-3 panel-card">
     <div class="flex items-center gap-2">
       <CircleCheckIcon class="text-primary" :size="18" />
       <h2 class="text-sm font-medium text-foreground">Your Sentinel</h2>

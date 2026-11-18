@@ -1,3 +1,4 @@
+import { useNodeStore } from '../../stores/node'
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -15,7 +16,7 @@ import { useSentinelStore } from '../../stores/sentinel'
 import { useTxStore } from '../../stores/tx'
 
 function setup(reward: unknown, sentinel: unknown) {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true
   const s = useSentinelStore()
   const tx = useTxStore()
   vi.spyOn(s, 'refresh').mockResolvedValue()

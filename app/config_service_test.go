@@ -155,14 +155,14 @@ func TestSettingsJSONDropsLegacyLocalKey(t *testing.T) {
 	}
 }
 
-// Spec §3: saving drops the legacy key. The in-memory marshal test above cannot
+// Saving drops legacy settings keys. The in-memory marshal test above cannot
 // prove this — the real path is read a legacy settings.json → persist → the key
 // is gone from the FILE and the removed "local" mode has become "remote".
-func TestSavingDropsLegacyLocalKeyOnDisk(t *testing.T) {
+func TestSavingDropsLegacyKeysOnDisk(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GO_SYRIUS_DATA_DIR", dir)
 	path := filepath.Join(dir, "settings.json")
-	raw := []byte(`{"nodeMode":"local","remoteNodeUrl":"wss://r","localNodeUrl":"ws://x","theme":"dark"}`)
+	raw := []byte(`{"nodeMode":"local","remoteNodeUrl":"wss://r","localNodeUrl":"ws://x","theme":"dark","showGovernance":true}`)
 	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatalf("seed settings.json: %v", err)
 	}
@@ -184,8 +184,8 @@ func TestSavingDropsLegacyLocalKeyOnDisk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read back settings.json: %v", err)
 	}
-	if strings.Contains(string(out), "localNodeUrl") {
-		t.Fatalf("legacy localNodeUrl key survived a save: %s", out)
+	if strings.Contains(string(out), "localNodeUrl") || strings.Contains(string(out), "showGovernance") {
+		t.Fatalf("legacy settings key survived a save: %s", out)
 	}
 	if !strings.Contains(string(out), `"nodeMode": "remote"`) {
 		t.Fatalf("persisted mode should be remote: %s", out)
@@ -244,14 +244,11 @@ func TestTargetedSettersPersist(t *testing.T) {
 	if err := c.SetAllowMainnetSend(true); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.SetShowGovernance(true); err != nil {
-		t.Fatal(err)
-	}
 	s, err := c.GetSettings()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.ChainID != 3 || !s.AutoReceive || !s.AllowMainnetSend || !s.ShowGovernance {
+	if s.ChainID != 3 || !s.AutoReceive || !s.AllowMainnetSend {
 		t.Fatalf("targeted setters did not persist: %+v", s)
 	}
 	// The atomic write path must not leave temp files behind.

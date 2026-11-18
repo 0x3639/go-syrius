@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { vi } from 'vitest'
 import SendForm from './SendForm.vue'
+import { useNodeStore } from '../stores/node'
 import { useBalancesStore, type TokenBalance } from '../stores/balances'
 
 // Stub nom-ui Input/Button + AmountInput to trivial controlled elements so the
@@ -33,10 +34,31 @@ vi.mock('./AmountInput.vue', () => ({
 const znn: TokenBalance = { zts: 'zts1znn', symbol: 'ZNN', decimals: 8, amount: '150000000' }
 
 beforeEach(() => {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true; useBalancesStore().status = 'ready'
 })
 
 describe('SendForm', () => {
+  it('rejects nonzero digits beyond token precision without rejecting trailing zeroes', async () => {
+    useBalancesStore().items = [znn]
+    const w = mount(SendForm)
+    await w.get('[aria-label="recipient"]').setValue('z1' + 'q'.repeat(38))
+    await w.get('[aria-label="Amount"]').setValue('1.500000009')
+    expect(w.get('[aria-label="Send"]').attributes('disabled')).toBeDefined()
+    await w.get('[aria-label="Amount"]').setValue('1.500000000')
+    expect(w.get('[aria-label="Send"]').attributes('disabled')).toBeUndefined()
+  })
+  it('prevents amounts above the balance and sending while disconnected', async () => {
+    useBalancesStore().items = [znn]
+    const w = mount(SendForm)
+    await w.get('[aria-label="recipient"]').setValue('z1' + 'q'.repeat(38))
+    await w.get('[aria-label="Amount"]').setValue('2')
+    expect(w.get('[aria-label="Send"]').attributes('disabled')).toBeDefined()
+    await w.get('[aria-label="Amount"]').setValue('1')
+    expect(w.get('[aria-label="Send"]').attributes('disabled')).toBeUndefined()
+    useNodeStore().connected = false
+    await w.vm.$nextTick()
+    expect(w.get('[aria-label="Send"]').attributes('disabled')).toBeDefined()
+  })
   it('enables Send for a valid address + amount and emits the intent on click', async () => {
     useBalancesStore().items = [znn]
     const w = mount(SendForm)

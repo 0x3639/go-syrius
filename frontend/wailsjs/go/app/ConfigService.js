@@ -18,10 +18,6 @@ export function GetSettings() {
   return window['go']['app']['ConfigService']['GetSettings']();
 }
 
-export function IsGovernanceFeatureEnabled() {
-  return window['go']['app']['ConfigService']['IsGovernanceFeatureEnabled']();
-}
-
 export function ListContacts() {
   return window['go']['app']['ConfigService']['ListContacts']();
 }
@@ -36,8 +32,4 @@ export function SetAutoReceive(arg1) {
 
 export function SetChainID(arg1) {
   return window['go']['app']['ConfigService']['SetChainID'](arg1);
-}
-
-export function SetShowGovernance(arg1) {
-  return window['go']['app']['ConfigService']['SetShowGovernance'](arg1);
 }

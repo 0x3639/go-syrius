@@ -33,7 +33,6 @@ var contractABIs = map[types.Address]struct {
 	types.AcceleratorContract: {"Accelerator", &definition.ABIAccelerator},
 	types.HtlcContract:        {"Htlc", &definition.ABIHtlc},
 	types.BridgeContract:      {"Bridge", &definition.ABIBridge},
-	types.GovernanceContract:  {"Governance", &definition.ABIGovernance},
 }
 
 // decodeContractCall decodes ABI call data against the destination contract's
@@ -73,51 +72,6 @@ func decodeContractCall(destination types.Address, data []byte) (*TransactionEff
 		fields = append(fields, EffectField{Label: label, Value: renderAbiValue(v)})
 	}
 	return &TransactionEffect{Contract: entry.name, Method: method.Name, Fields: fields}, nil
-}
-
-// proposeEnvelope is the decoded outer Governance.ProposeAction call: the
-// proposal metadata plus the wrapped destination/data, all read back from the
-// exact held template bytes.
-type proposeEnvelope struct {
-	Name        string
-	Description string
-	Url         string
-	Destination types.Address
-	Data        string // standard base64, as the ABI carries it
-}
-
-// decodeProposeEnvelope unpacks a held Governance.ProposeAction template so the
-// confirmation renders metadata from the EXACT block being signed, not from
-// the variables it was built from. Fails closed on anything that is not a
-// byte-exact ProposeAction call.
-func decodeProposeEnvelope(data []byte) (proposeEnvelope, error) {
-	if len(data) < 4 {
-		return proposeEnvelope{}, errors.New("call data is too short to contain a method selector")
-	}
-	method, err := definition.ABIGovernance.MethodById(data[:4])
-	if err != nil || method.Name != definition.ProposeActionMethodName {
-		return proposeEnvelope{}, errors.New("held block is not a Governance.ProposeAction call")
-	}
-	values, err := method.Inputs.UnpackValues(data[4:])
-	if err != nil {
-		return proposeEnvelope{}, fmt.Errorf("cannot decode the ProposeAction arguments: %w", err)
-	}
-	repacked, err := definition.ABIGovernance.PackMethod(method.Name, values...)
-	if err != nil || !bytes.Equal(repacked, data) {
-		return proposeEnvelope{}, errors.New("decoded ProposeAction does not round-trip to the exact call data; refusing")
-	}
-	if len(values) != 5 {
-		return proposeEnvelope{}, fmt.Errorf("ProposeAction has %d arguments, want 5", len(values))
-	}
-	name, ok1 := values[0].(string)
-	description, ok2 := values[1].(string)
-	url, ok3 := values[2].(string)
-	destination, ok4 := values[3].(types.Address)
-	payload, ok5 := values[4].(string)
-	if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
-		return proposeEnvelope{}, errors.New("ProposeAction arguments have unexpected types")
-	}
-	return proposeEnvelope{Name: name, Description: description, Url: url, Destination: destination, Data: payload}, nil
 }
 
 // renderAbiValue renders one decoded ABI value exactly and unambiguously:

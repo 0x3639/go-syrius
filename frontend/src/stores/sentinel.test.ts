@@ -1,3 +1,4 @@
+import { useNodeStore } from './node'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useSentinelStore } from './sentinel'
@@ -7,7 +8,7 @@ vi.mock('../../wailsjs/go/app/NomService', () => ({
   GetSentinel: vi.fn(), GetDepositedQsr: vi.fn(), GetSentinelReward: vi.fn(),
 }))
 
-beforeEach(() => setActivePinia(createPinia()))
+beforeEach(() => { setActivePinia(createPinia()); useNodeStore().connected = true })
 
 describe('sentinel store pending/poll', () => {
   it('beginPending(deposit) clears once deposited reaches 50,000 QSR', async () => {
@@ -53,4 +54,22 @@ describe('sentinel store pending/poll', () => {
     expect(s.pendingStep).toBe(null)
     expect(s.pollCount).toBe(0)
   })
+})
+
+it('pauses settlement polling offline and resumes without losing the pending step', async () => {
+  vi.useFakeTimers()
+  const s = useSentinelStore()
+  const refresh = vi.spyOn(s, 'refresh').mockResolvedValue()
+  try {
+    s.beginPending('deposit')
+    useNodeStore().connected = false
+    await vi.advanceTimersByTimeAsync(21000)
+    expect(refresh).not.toHaveBeenCalled()
+    expect(s.pollCount).toBe(0)
+    expect(s.pendingStep).toBe('deposit')
+    useNodeStore().connected = true
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(s.pollCount).toBe(1)
+  } finally { s.stopPolling(); vi.useRealTimers() }
 })

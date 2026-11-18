@@ -30,20 +30,20 @@ onMounted(() => { if (configured.value) wc.ensureClient().catch((error) => { loc
 </script>
 
 <template>
-  <div class="mx-auto max-w-[48rem] space-y-6">
-    <section class="rounded-xl border border-border bg-card p-5 space-y-4">
+  <div class="page-content">
+    <section class="panel-card space-y-4">
       <div class="flex items-start gap-3">
         <div class="rounded-lg bg-primary/10 p-2 text-primary"><LinkIcon :size="20" /></div>
         <div>
           <h2 class="font-semibold text-foreground">Connect a bridge</h2>
           <p class="text-sm text-muted-foreground">
-            Pair with the current Zenon Bridge or the new NoM Bridge using the same zenon:1 WalletConnect session.
+            Connect to a supported Zenon bridge to review and approve its transaction requests.
           </p>
         </div>
       </div>
 
       <div v-if="!configured" class="rounded border border-warning/40 bg-warning/5 p-3 text-sm text-warning" role="alert">
-        WalletConnect is not configured in this build. Set <span class="font-mono">VITE_WALLETCONNECT_PROJECT_ID</span> and rebuild.
+        WalletConnect is unavailable in this version of the app. You can still send and receive directly from your wallet.
       </div>
       <template v-else>
         <Input v-model="uri" aria-label="WalletConnect URI" placeholder="wc:…" class="font-mono" />
@@ -51,7 +51,7 @@ onMounted(() => { if (configured.value) wc.ensureClient().catch((error) => { loc
           {{ wc.pairing ? 'Pairing…' : 'Pair' }}
         </Button>
         <p class="text-xs text-muted-foreground">
-          In the bridge, choose WalletConnect, copy the pairing URI, then paste it here. Only zenon:1 sessions are accepted.
+          In the bridge, choose WalletConnect, copy the connection link, then paste it here. Supports Zenon mainnet.
         </p>
       </template>
       <p v-if="localError || wc.error" class="text-sm text-destructive" role="alert">{{ localError || wc.error }}</p>
@@ -88,7 +88,7 @@ onMounted(() => { if (configured.value) wc.ensureClient().catch((error) => { loc
       </div>
     </section>
 
-    <section class="rounded-xl border border-border bg-card p-5 space-y-3">
+    <section class="panel-card space-y-3">
       <div class="flex items-center gap-2">
         <ShieldCheckIcon :size="18" class="text-success" />
         <h2 class="font-semibold">Connected dapps</h2>
@@ -107,10 +107,10 @@ onMounted(() => { if (configured.value) wc.ensureClient().catch((error) => { loc
       </div>
     </section>
 
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
-      <h2 class="text-sm font-medium">Security boundary</h2>
+    <section class="panel-card space-y-2">
+      <h2 class="text-sm font-medium">You stay in control</h2>
       <p class="text-xs text-muted-foreground">
-        Pairing exposes only your active address. Bridge transactions are reconstructed and decoded in Go, and every request requires confirmation before PoW, signing, and publication. Arbitrary message signing is disabled.
+        Connecting shares your active address, never your recovery phrase. Review each transaction before approving it. You can disconnect a bridge at any time.
       </p>
     </section>
   </div>

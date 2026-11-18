@@ -51,9 +51,6 @@ type Settings struct {
 	// A pointer so an absent field (pre-feature settings.json) is distinguishable
 	// from an explicit Never — migration defaults absent to defaultAutoLockMinutes.
 	AutoLockMinutes *int `json:"autoLockMinutes"`
-	// ShowGovernance reveals the (experimental, testnet-only) Governance tab in
-	// the navigation. Off by default.
-	ShowGovernance bool `json:"showGovernance"`
 	// AccountLabels maps "<wallet>:<index>" to a human label for an account.
 	AccountLabels map[string]string `json:"accountLabels"`
 	// AccountCounts maps a wallet id to how many accounts (derivation indices)
@@ -205,7 +202,7 @@ type CallPreview struct {
 	Hash        string `json:"hash"`
 	Summary     string `json:"summary"`
 	// Effect carries the decoded parameters of the call when the flow decodes
-	// them (governance proposals/executions, accelerator writes).
+	// them (for example, accelerator writes).
 	Effect     *TransactionEffect `json:"effect,omitempty"`
 	UsedPlasma uint64             `json:"usedPlasma"`
 	Difficulty uint64             `json:"difficulty"`
@@ -402,60 +399,6 @@ type ProjectDTO struct {
 type ProjectListDTO struct {
 	Count int          `json:"count"`
 	List  []ProjectDTO `json:"list"`
-}
-
-// ActionDTO is one governance action with its current-round vote tally and the
-// per-round thresholds the node computed for it. Reuses VoteBreakdownDTO.
-type ActionDTO struct {
-	Id          string `json:"id"`
-	Owner       string `json:"owner"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Url         string `json:"url"`
-	Destination string `json:"destination"`
-	Data        string `json:"data"` // base64 ABI call data
-	Type        int    `json:"type"` // 1 Spork, 2 Normal
-	Round       int    `json:"round"`
-	// CurrentVoteId is the votable hash for the action's CURRENT round — the id a
-	// vote must target (it equals Id only in round 0, then ratchets per round).
-	CurrentVoteId         string           `json:"currentVoteId"`
-	Status                int              `json:"status"` // 0 Voting,1 Approved,2 Rejected,3 NoDecision
-	Executed              bool             `json:"executed"`
-	Expired               bool             `json:"expired"`
-	CreationTimestamp     int64            `json:"creationTimestamp"`
-	RoundStartTimestamp   int64            `json:"roundStartTimestamp"`
-	ActivePillarThreshold uint32           `json:"activePillarThreshold"`
-	DirectionalThreshold  uint32           `json:"directionalThreshold"`
-	VotingPeriod          int64            `json:"votingPeriod"`
-	Votes                 VoteBreakdownDTO `json:"votes"`
-}
-
-// ActionListDTO is one page of governance actions.
-type ActionListDTO struct {
-	Count int         `json:"count"`
-	List  []ActionDTO `json:"list"`
-}
-
-// ProposeFieldDTO is one input field the Propose form renders for an action kind.
-type ProposeFieldDTO struct {
-	Key         string `json:"key"`
-	Label       string `json:"label"`
-	Type        string `json:"type"` // text|number|bool|address|hash|amount|base64|list
-	Placeholder string `json:"placeholder"`
-	Required    bool   `json:"required"`
-	// Min/Max are byte-length bounds (0 = unbounded), matching the on-chain
-	// length checks. Drive the form's inline hint + maxlength and the
-	// server-side validateFieldLengths guard.
-	Min int `json:"min"`
-	Max int `json:"max"`
-}
-
-// ProposeKindDTO is one proposable governance action kind + its input schema.
-type ProposeKindDTO struct {
-	Kind   string            `json:"kind"` // stable id, e.g. "spork.create"
-	Label  string            `json:"label"`
-	Group  string            `json:"group"` // Spork|Bridge|Liquidity|Custom
-	Fields []ProposeFieldDTO `json:"fields"`
 }
 
 // PillarVoteState is one owned pillar's vote on a votable item; Vote == -1 means

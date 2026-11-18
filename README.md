@@ -4,7 +4,9 @@ A reimplementation of the Zenon **syrius** wallet as a **Go + [Wails v2](https:/
 
 **Working today:** send/receive, wallet lifecycle (create / import / manage / auto-lock), both node modes (remote / embedded full node), the full Network-of-Momentum feature set (plasma, staking, pillars, sentinels, tokens, accelerator), and **WalletConnect v2** for bridge dApps. Mainnet-capable since `v0.3.0`.
 
-> The experimental **Governance** module is **temporarily disabled** pending an SDK update; it will return in a future release.
+> The former experimental **Governance** module has been removed ahead of its redesign. The embedded node uses **go-zenon v0.0.10** (`v0.0.10-alphanet`).
+
+Embedded users with an old or divergent chain database can follow the [embedded-node recovery guidance](docs/embedded-node-upgrade.md). Upgrading the application preserves existing node data; it does not automatically resync it.
 
 ---
 

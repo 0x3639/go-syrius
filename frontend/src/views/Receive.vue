@@ -9,11 +9,11 @@ const address = computed(() => wallet.activeAddress())
 </script>
 
 <template>
-  <div class="mx-auto max-w-[34rem] space-y-5">
-    <div class="rounded-xl border border-border bg-card p-6">
+  <div class="page-content">
+    <div class="panel-card">
       <AddressDisplay :address="address" />
     </div>
-    <div class="rounded-xl border border-border bg-card p-6">
+    <div class="panel-card">
       <UnreceivedPanel />
     </div>
   </div>

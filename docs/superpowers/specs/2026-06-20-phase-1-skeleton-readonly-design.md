@@ -85,7 +85,7 @@ Each `app/*_service.go` has one responsibility and a small, well-defined method 
 - `Disconnect() error` · `NodeStatus() NodeStatus`.
 - On momentum subscription tick: emit `momentum:tick{height}` and an updated `node:status`.
 - Reads (active address, from WalletService): `GetBalances() ([]TokenBalance, error)` (`GetAccountInfoByAddress` → BalanceInfoMap), `GetTransactions(page, count int) ([]TxRecord, error)` (`GetAccountBlocksByPage`).
-- Connection drops surface as `node:status{Connected:false}` (the SDK client auto-reconnects).
+- Connection drops surface as `node:status{Connected:false}`. As of the November 2026 node update, recovery is explicit: Reconnect/Retry opens a new client and restores both reads and the momentum subscription on the configured endpoint.
 
 ### DTOs (secret-free)
 
@@ -114,7 +114,7 @@ Each `app/*_service.go` has one responsibility and a small, well-defined method 
 - Wrong password → clear inline error on the unlock screen; no stack/secret leakage.
 - No wallet present → empty state with an Import CTA.
 - Invalid keystore import → validation error naming the problem (bad version/cipher/kdf or unreadable).
-- Node unreachable / dropped → StatusBar shows disconnected; reads return a surfaced error; auto-reconnect continues in the background.
+- Node unreachable / dropped → StatusBar shows disconnected; reads return a surfaced error; use Reconnect/Retry to restore reads and the momentum subscription; no unattended reconnect is promised.
 
 ## Testing
 

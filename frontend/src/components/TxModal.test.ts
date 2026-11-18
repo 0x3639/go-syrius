@@ -1,3 +1,4 @@
+import { useNodeStore } from '../stores/node'
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -26,7 +27,7 @@ import TxModal from './TxModal.vue'
 import { useTxStore } from '../stores/tx'
 
 beforeEach(() => {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true
   ConfirmPublish.mockClear()
 })
 
@@ -186,7 +187,7 @@ describe('TxModal (confirm-what-you-sign)', () => {
   })
 })
 
-describe('TxModal decoded effect (governance/accelerator)', () => {
+describe('TxModal decoded effect (accelerator)', () => {
   it('renders every decoded effect field with FULL untruncated values', () => {
     const tx = useTxStore()
     const admin = 'z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz'

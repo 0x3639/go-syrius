@@ -10,8 +10,6 @@ export function GetBuildInfo():Promise<app.BuildInfo>;
 
 export function GetSettings():Promise<app.Settings>;
 
-export function IsGovernanceFeatureEnabled():Promise<boolean>;
-
 export function ListContacts():Promise<Array<app.Contact>>;
 
 export function SetAllowMainnetSend(arg1:boolean):Promise<void>;
@@ -19,5 +17,3 @@ export function SetAllowMainnetSend(arg1:boolean):Promise<void>;
 export function SetAutoReceive(arg1:boolean):Promise<void>;
 
 export function SetChainID(arg1:number):Promise<void>;
-
-export function SetShowGovernance(arg1:boolean):Promise<void>;

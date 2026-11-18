@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import * as N from '../../wailsjs/go/app/NodeService'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
+import { bumpRequestEpoch } from '../lib/requestEpoch'
 
 export type TokenBalance = { zts: string; symbol: string; decimals: number; amount: string }
 
@@ -19,6 +20,7 @@ export const useNodeStore = defineStore('node', {
   // _eventsInit is a non-reactive guard so initEvents registers listeners once.
   state: () => ({
     connected: false,
+    connectionError: '',
     height: 0,
     syncing: false,
     mode: 'remote',
@@ -30,10 +32,23 @@ export const useNodeStore = defineStore('node', {
     // Bumped on every node:status push; lets the refreshStatus pull detect
     // that a fresher push landed while its RPC was in flight.
     _statusSeq: 0,
+    _connectAttempt: 0,
   }),
   actions: {
     async connect() {
-      try { await N.Connect(); this.connected = true } catch { this.connected = false }
+      this.connectionError = ''
+      const attempt = ++this._connectAttempt
+      const mode = this.mode
+      const seq = this._statusSeq
+      try {
+        await N.Connect()
+        if (attempt === this._connectAttempt && seq === this._statusSeq) this.applyStatus({ connected: true })
+      } catch (e: unknown) {
+        if (attempt === this._connectAttempt && seq === this._statusSeq) this.applyStatus({ connected: false })
+        if (attempt === this._connectAttempt && mode === this.mode && !this.connected) {
+          this.connectionError = e instanceof Error ? e.message : String(e)
+        }
+      }
     },
     async loadBalances() {
       try { this.balances = (await N.GetBalances()) as unknown as TokenBalance[] } catch { this.balances = [] }
@@ -42,9 +57,13 @@ export const useNodeStore = defineStore('node', {
       return (await N.GetNodeConfig()) as unknown as NodeConfig
     },
     async setMode(mode: string) {
+      this._connectAttempt++
+      this.connectionError = ''
       await N.SetNodeMode(mode)
     },
     async setUrl(mode: string, url: string) {
+      this._connectAttempt++
+      this.connectionError = ''
       await N.SetNodeURL(mode, url)
     },
     async getEmbeddedInfo() {
@@ -55,17 +74,17 @@ export const useNodeStore = defineStore('node', {
     },
     // Single field-mapping for a node status payload, shared by the push
     // handler and the pull so the two can never drift. `syncing`/`sync` are
-    // owned by the node:sync event (the status DTO carries no meaningful
-    // syncing value) — with one exception: LEAVING embedded mode clears them,
-    // because only the embedded node runs the sync poller and stale mid-sync
-    // progress would otherwise show "Syncing…" for the rest of the session.
-    // (Catching up TO embedded must not clear: a live node:sync push may
-    // already have landed before this pull resolved.)
+    // owned by node:sync. Clear them at connection boundaries, but preserve a
+    // current sample when a status pull catches up within the same connection.
     applyStatus(s: { connected?: boolean; height?: number; mode?: string; chainId?: number } | null | undefined) {
-      this.connected = !!s?.connected
+      const connected = !!s?.connected
+      if (connected !== this.connected) bumpRequestEpoch()
+      this.connected = connected
+      if (connected) this.connectionError = ''
       this.height = s?.height ?? this.height
       const mode = s?.mode ?? this.mode
-      if (this.mode === 'embedded' && mode !== 'embedded') {
+      if (mode !== this.mode) this.connectionError = ''
+      if (!connected || mode !== this.mode) {
         this.syncing = false
         this.sync = null
       }
@@ -82,7 +101,7 @@ export const useNodeStore = defineStore('node', {
         const s = await N.NodeStatus()
         // A push that arrived while the RPC was in flight is fresher than this
         // snapshot — never let the stale pull overwrite it (it could briefly
-        // re-open the fail-closed governance gate with an old testnet chainId).
+        // restore an old testnet chainId).
         if (seq !== this._statusSeq) return
         this.applyStatus(s)
       } catch { /* not connected; events will hydrate later */ }
@@ -105,7 +124,7 @@ export const useNodeStore = defineStore('node', {
         // Only the embedded node emits sync progress. Drop stragglers from a
         // dying embedded poller after a mode switch — they would re-stick
         // "Syncing…" right after applyStatus cleared it.
-        if (this.mode !== 'embedded') return
+        if (!this.connected || this.mode !== 'embedded') return
         this.sync = s
         this.syncing = s?.state !== 'synced'
       })

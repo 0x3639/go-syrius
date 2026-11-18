@@ -2,25 +2,21 @@
 import { computed, onMounted, ref } from 'vue'
 import {
   LayoutDashboardIcon, SendIcon, DownloadIcon, CoinsIcon, ZapIcon, LayersIcon,
-  Building2Icon, ShieldCheckIcon, RocketIcon, GiftIcon, VoteIcon, SettingsIcon,
+  Building2Icon, ShieldCheckIcon, RocketIcon, GiftIcon, SettingsIcon,
   BookUserIcon, ShieldIcon, LinkIcon,
 } from '@lucide/vue'
 import { useNodeStore } from '../stores/node'
-import { useUiStore } from '../stores/ui'
 import SidebarLink from './SidebarLink.vue'
 import { GetBuildInfo } from '../../wailsjs/go/app/ConfigService'
 
 const node = useNodeStore()
-const ui = useUiStore()
-
-const showGovernance = computed(() => ui.governanceAllowed)
 
 const topNav = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboardIcon },
   { to: '/transfer', label: 'Transfer', icon: SendIcon },
   { to: '/receive', label: 'Receive', icon: DownloadIcon },
 ]
-const networkNav = computed(() => [
+const networkNav = [
   { to: '/tokens', label: 'Tokens', icon: CoinsIcon },
   { to: '/network/plasma', label: 'Plasma', icon: ZapIcon },
   { to: '/network/staking', label: 'Staking', icon: LayersIcon },
@@ -28,8 +24,7 @@ const networkNav = computed(() => [
   { to: '/network/sentinels', label: 'Sentinels', icon: ShieldCheckIcon },
   { to: '/network/accelerator', label: 'Accelerator', icon: RocketIcon },
   { to: '/network/rewards', label: 'Rewards', icon: GiftIcon },
-  ...(showGovernance.value ? [{ to: '/network/governance', label: 'Governance', icon: VoteIcon }] : []),
-])
+]
 const bottomNav = [
   { to: '/walletconnect', label: 'WalletConnect', icon: LinkIcon },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
@@ -37,7 +32,9 @@ const bottomNav = [
 ]
 
 const heightLabel = computed(() => node.height.toLocaleString('en-US'))
-const synced = computed(() => node.connected && !node.syncing)
+const checkingSync = computed(() => node.mode === 'embedded' && !node.sync)
+const synced = computed(() => node.connected && !node.syncing && !checkingSync.value)
+const statusLabel = computed(() => !node.connected ? 'Disconnected' : checkingSync.value ? 'Checking sync…' : node.sync?.state === 'stalled' ? 'Sync stalled' : node.syncing ? 'Syncing…' : 'Synced')
 
 const appVersion = ref('')
 onMounted(async () => {
@@ -50,7 +47,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <aside class="flex w-58 flex-none flex-col border-r border-sidebar-border bg-sidebar px-3.5 py-5">
+  <aside class="flex min-h-0 w-52 flex-none flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar px-3.5 py-5 lg:w-58" aria-label="Main navigation">
     <!-- Wordmark -->
     <div class="flex items-center gap-2.5 px-2 pb-5">
       <img src="../assets/images/syrius-logo.png" alt="" class="h-7 w-7 rounded-md" />
@@ -76,8 +73,8 @@ onMounted(async () => {
       <SidebarLink v-for="item in bottomNav" :key="item.to" v-bind="item" />
       <div class="mt-1.5 flex items-center gap-2 rounded-md bg-sidebar-accent px-3 py-2.5">
         <ShieldIcon :size="16" :class="synced ? 'text-success' : 'text-warning'" />
-        <span class="text-xs text-muted-foreground">{{ synced ? 'Synced' : 'Syncing…' }}</span>
-        <span class="ml-auto font-mono text-xs" :class="synced ? 'text-success' : 'text-warning'">#{{ heightLabel }}</span>
+        <span class="text-xs text-muted-foreground">{{ statusLabel }}</span>
+        <span v-if="node.connected" class="ml-auto font-mono text-xs" :class="synced ? 'text-success' : 'text-warning'">#{{ heightLabel }}</span>
       </div>
       <p v-if="appVersion" class="px-3 pt-1.5 text-center font-mono text-[11px] text-muted-foreground">{{ appVersion }}</p>
     </div>

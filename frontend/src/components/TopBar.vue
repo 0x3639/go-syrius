@@ -13,6 +13,7 @@ import { useAcceleratorStore } from '../stores/accelerator'
 import { useAutoReceiveStore } from '../stores/autoReceive'
 import { useUnreceivedStore } from '../stores/unreceived'
 import { useUiStore } from '../stores/ui'
+import { useNodeStore } from '../stores/node'
 import { useWalletConnectStore } from '../stores/walletconnect'
 import { plasmaLevel, plasmaColorClass } from '../lib/plasma'
 import AccountSlotPicker from './AccountSlotPicker.vue'
@@ -29,10 +30,12 @@ const accelerator = useAcceleratorStore()
 const autoReceive = useAutoReceiveStore()
 const unreceived = useUnreceivedStore()
 const ui = useUiStore()
+const node = useNodeStore()
 const walletConnect = useWalletConnectStore()
 
 const plasmaLvl = computed(() => plasmaLevel(plasma.info?.currentPlasma ?? 0))
-const plasmaColor = computed(() => plasmaColorClass(plasmaLvl.value))
+const plasmaAvailable = computed(() => node.connected && plasma.info !== null)
+const plasmaColor = computed(() => plasmaAvailable.value ? plasmaColorClass(plasmaLvl.value) : 'text-muted-foreground')
 
 function gotoVotes() {
   router.push({ path: '/network/accelerator', query: { sub: 'Vote' } })
@@ -57,12 +60,12 @@ async function lockWallet() {
 </script>
 
 <template>
-  <header class="flex h-15 flex-none items-center gap-4 border-b border-border px-7">
+  <header class="flex min-h-15 flex-none flex-wrap items-center gap-3 border-b border-border px-4 py-3 lg:px-6">
     <h1 class="text-lg font-semibold tracking-tight text-foreground">
       {{ title }}<template v-if="route.name === 'net-pillars' && pillar.ownsPillar"> — <span class="text-success">{{ pillar.myPillar?.name }}</span></template>
     </h1>
 
-    <div class="ml-auto flex items-center gap-2">
+    <div class="ml-auto flex flex-wrap items-center gap-2">
       <!-- Account/address pill: opens the account picker dropdown -->
       <AccountSlotPicker variant="pill" />
 
@@ -73,7 +76,7 @@ async function lockWallet() {
       </button>
 
       <button type="button" aria-label="Plasma"
-        :title="`Plasma: ${plasmaLvl}`"
+        :title="plasmaAvailable ? `Plasma: ${plasmaLvl}` : 'Plasma: unavailable'"
         class="grid h-8.5 w-8.5 place-items-center rounded-md transition-colors"
         :class="`hover:bg-foreground/[0.06] ${plasmaColor}`"
         @click="router.push('/network/plasma')">

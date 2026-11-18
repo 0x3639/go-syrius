@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { useNodeRefresh } from '../../lib/useNodeRefresh'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { Input, Button } from 'nom-ui'
+import { Button } from 'nom-ui'
 import Field from '../Field.vue'
 import * as Nom from '../../../wailsjs/go/app/NomService'
 import { useStakeStore } from '../../stores/stake'
 import { useTxStore } from '../../stores/tx'
-import { formatAmount, toBase } from '../../lib/format'
+import { formatAmount, formatAmountExact, toBase } from '../../lib/format'
+import { useBalancesStore } from '../../stores/balances'
+import TokenAmount from '../TokenAmount.vue'
+import AmountInput from '../AmountInput.vue'
 
 const stake = useStakeStore()
 const tx = useTxStore()
@@ -16,43 +20,58 @@ const { stakeInfo, reward } = storeToRefs(stake)
 const amount = ref('')
 const months = ref('1')
 const error = ref('')
+const balances = useBalancesStore()
+const available = computed(() => balances.items.find(b => b.symbol === 'ZNN')?.amount ?? '0')
+const availableLabel = computed(() => `${balances.available ? formatAmountExact(available.value, 8) + ' ZNN available' : 'Balance unavailable'} · Minimum 1 ZNN`)
+const canStake = computed(() => {
+  try {
+    const base = BigInt(toBase(amount.value, 8))
+    return balances.available && base >= 100000000n && base <= BigInt(available.value)
+  } catch { return false }
+})
+function unlockDate(timestamp: number) {
+  return new Date(timestamp * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
 
 // The Stake contract rewards QSR only. RewardInfo is shared with pillar and
 // sentinel APIs (which can return both assets), so this panel intentionally
 // ignores its always-zero ZNN field.
-const rewardZero = computed(() => !reward.value || reward.value.qsr === '0')
-const entries = computed(() => stakeInfo.value?.entries ?? [])
+const rewardZero = computed(() => !stake.available || !reward.value || reward.value.qsr === '0')
+const entries = computed(() => stake.available ? stakeInfo.value?.entries ?? [] : [])
 
 // NoM-confirm pattern: prepare the call, then hand the preview to the global
 // NomConfirm dialog via tx.awaitConfirm. The panel renders no modal itself.
 // ZNN has 8 decimals; amount is converted to base units, duration is a plain
 // month string — matching the Svelte original's PrepareStake(toBase(amount), months).
 async function doStake() {
+  if (!canStake.value) return
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareStake(toBase(amount.value, 8), months.value))
+    await tx.prepareCall(() => Nom.PrepareStake(toBase(amount.value, 8), months.value))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
 }
 async function cancel(id: string) {
+  if (!stake.available || !entries.value.some(e => e.id === id && e.isMatured)) return
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareCancelStake(id))
+    await tx.prepareCall(() => Nom.PrepareCancelStake(id))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
 }
 async function collect() {
+  if (rewardZero.value) return
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareCollectReward())
+    await tx.prepareCall(() => Nom.PrepareCollectReward())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
 }
 
-onMounted(() => stake.refresh())
+useNodeRefresh(() => stake.refresh())
 watch(
   () => tx.status,
   (s) => {
@@ -62,16 +81,20 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-4 p-4">
+  <div class="space-y-5">
+    <p v-if="stake.status === 'error'" class="text-sm text-destructive" role="alert">
+      Staking data could not be loaded. <button class="underline" @click="stake.refresh()">Retry</button>
+    </p>
+    <p v-else-if="!stake.available" class="text-sm text-muted-foreground">Loading staking data…</p>
     <p v-if="stakeInfo" class="text-sm text-muted-foreground">
       Total staked {{ formatAmount(stakeInfo.totalAmount, 8) }} ZNN
     </p>
 
-    <section class="space-y-3 rounded-lg border border-border bg-card p-4">
+    <section class="space-y-3 panel-card">
       <div class="flex items-center justify-between">
         <h2 class="text-sm font-medium text-foreground">Uncollected reward</h2>
         <span v-if="reward" class="font-mono text-sm text-muted-foreground">
-          {{ formatAmount(reward.qsr, 8) }} QSR
+          <TokenAmount :amount="reward.qsr" symbol="QSR" />
         </span>
       </div>
       <Button variant="outline" class="w-full" :disabled="rewardZero" @click="collect"
@@ -79,11 +102,12 @@ watch(
       >
     </section>
 
-    <section class="space-y-3 rounded-lg border border-border bg-card p-4">
+    <section class="space-y-3 panel-card">
       <h2 class="text-sm font-medium text-foreground">Stake ZNN</h2>
-      <Field label="Amount (ZNN)" hint="Available / Minimum">
-        <Input v-model="amount" placeholder="ZNN amount (min 1)" aria-label="znn amount" />
-      </Field>
+      <div class="space-y-1">
+        <AmountInput v-model="amount" label="Amount (ZNN)" :max="balances.available ? formatAmountExact(available, 8) : ''" />
+        <p class="text-xs text-muted-foreground">{{ availableLabel }}</p>
+      </div>
       <Field label="Stake Duration">
         <select
           v-model="months"
@@ -98,23 +122,25 @@ watch(
       <p class="text-xs text-muted-foreground">
         Your ZNN will be locked for the selected duration and earn rewards until it matures.
       </p>
-      <Button class="w-full" @click="doStake">Stake ZNN</Button>
+      <Button class="w-full" :disabled="!canStake" @click="doStake">Stake ZNN</Button>
     </section>
 
-    <section class="space-y-2 rounded-lg border border-border bg-card p-4">
+    <section class="space-y-2 panel-card">
       <h2 class="text-sm font-medium text-foreground">Your stakes</h2>
       <div v-for="e in entries" :key="e.id" class="flex items-center justify-between text-sm">
-        <span class="font-mono">{{ formatAmount(e.amount, 8) }} ZNN · {{ e.durationMonths }}mo</span>
-        <Button variant="outline" :disabled="!e.isMatured" aria-label="cancel stake" @click="cancel(e.id)"
-          >Cancel</Button
+        <div><TokenAmount :amount="e.amount" symbol="ZNN" /> · {{ e.durationMonths }} month{{ e.durationMonths === 1 ? '' : 's' }}
+          <p class="text-xs text-muted-foreground">{{ e.isMatured ? 'Ready to withdraw' : `Unlocks ${unlockDate(e.expirationTimestamp)}` }}</p>
+        </div>
+        <Button variant="outline" :disabled="!e.isMatured" aria-label="withdraw stake" @click="cancel(e.id)"
+          >Withdraw</Button
         >
       </div>
-      <p v-if="entries.length === 0" class="text-xs text-muted-foreground">No active stakes.</p>
+      <p v-if="stake.available && entries.length === 0" class="text-xs text-muted-foreground">No active stakes.</p>
     </section>
 
     <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>
 
-    <p v-if="tx.status === 'preparing'" class="text-muted-foreground">Preparing… (PoW if required)</p>
+    <p v-if="tx.status === 'preparing'" class="text-muted-foreground">Preparing transaction…</p>
     <p v-if="tx.status === 'error'" class="text-destructive" role="alert">{{ tx.error }}</p>
   </div>
 </template>

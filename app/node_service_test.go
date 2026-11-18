@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0x3639/go-syrius/internal/governance"
 	"github.com/0x3639/znn-sdk-go/rpc_client"
 	"github.com/zenon-network/go-zenon/chain/nom"
 	"github.com/zenon-network/go-zenon/common/types"
@@ -569,6 +568,10 @@ func TestConnectStartsEmbeddedWhenModePersisted(t *testing.T) {
 func TestDeleteEmbeddedData(t *testing.T) {
 	n := newTestNode(t)
 	dir, _ := n.config.dataDir()
+	walletFile := filepath.Join(dir, "wallet.dat")
+	if err := os.WriteFile(walletFile, []byte("wallet sentinel"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	emb := filepath.Join(dir, "embedded")
 	if err := os.MkdirAll(emb, 0o700); err != nil {
 		t.Fatal(err)
@@ -581,6 +584,9 @@ func TestDeleteEmbeddedData(t *testing.T) {
 	}
 	if _, err := os.Stat(emb); !os.IsNotExist(err) {
 		t.Fatal("embedded dir should be gone")
+	}
+	if data, err := os.ReadFile(walletFile); err != nil || string(data) != "wallet sentinel" {
+		t.Fatalf("deleting embedded data touched an unrelated wallet file: %q, %v", data, err)
 	}
 	// absent dir is fine
 	if err := n.DeleteEmbeddedData(); err != nil {
@@ -645,7 +651,7 @@ func TestSupersededDialDoesNotInstall(t *testing.T) {
 	cur := n.connGen
 	n.mu.Unlock()
 
-	if n.installConnection(&rpc_client.RpcClient{}, nil, nil, "ws://stale", 1, 3, gen) {
+	if n.installConnection(&rpc_client.RpcClient{}, "ws://stale", 1, 3, gen, nil) {
 		t.Fatal("a superseded dial must not install its client over the newer one")
 	}
 	if n.currentClient() != nil {
@@ -654,8 +660,7 @@ func TestSupersededDialDoesNotInstall(t *testing.T) {
 
 	// The latest intent still installs normally.
 	fresh := &rpc_client.RpcClient{}
-	governanceAPI := governance.NewAPI(nil)
-	if !n.installConnection(fresh, nil, governanceAPI, "ws://fresh", 9, 3, cur) {
+	if !n.installConnection(fresh, "ws://fresh", 9, 3, cur, nil) {
 		t.Fatal("the current dial must install")
 	}
 	if n.currentClient() != fresh {
@@ -663,9 +668,6 @@ func TestSupersededDialDoesNotInstall(t *testing.T) {
 	}
 	if n.currentChainID() != 3 {
 		t.Fatalf("chainID not installed, got %d", n.currentChainID())
-	}
-	if n.currentGovernance() != governanceAPI {
-		t.Fatal("expected the matching governance adapter to be installed")
 	}
 }
 
@@ -679,25 +681,20 @@ func TestDisconnectInvalidatesInFlightDial(t *testing.T) {
 	if err := n.Disconnect(); err != nil {
 		t.Fatalf("Disconnect: %v", err)
 	}
-	if n.installConnection(&rpc_client.RpcClient{}, nil, nil, "ws://late", 1, 3, gen) {
+	if n.installConnection(&rpc_client.RpcClient{}, "ws://late", 1, 3, gen, nil) {
 		t.Fatal("a dial that loses to an explicit Disconnect must not install")
 	}
 }
 
-func TestStartMomentumLoopSupersededIsNoop(t *testing.T) {
+func TestSupersededConnectionDoesNotInstallSubscription(t *testing.T) {
 	n := newTestNode(t)
-	n.mu.Lock()
-	n.disconnectLocked()
-	gen := n.connGen
-	n.disconnectLocked() // superseded before the loop starts
-	n.mu.Unlock()
-	if err := n.startMomentumLoop(gen); err != nil {
-		t.Fatalf("a superseded loop start must be a silent no-op, got %v", err)
+	n.connGen = 2
+	stop := make(chan struct{})
+	if n.installConnection(&rpc_client.RpcClient{}, "ws://old", 42, 1, 1, stop) {
+		t.Fatal("superseded candidate was installed")
 	}
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	if n.stop != nil {
-		t.Fatal("a superseded loop must not install a stop channel")
+	if n.stop != nil || n.NodeStatus().Connected {
+		t.Fatal("superseded candidate left a live subscription")
 	}
 }
 
@@ -709,7 +706,7 @@ func TestDegradeConnectionTearsDownCurrentGen(t *testing.T) {
 	n.disconnectLocked()
 	gen := n.connGen
 	n.mu.Unlock()
-	if !n.installConnection(&rpc_client.RpcClient{}, nil, governance.NewAPI(nil), "ws://x", 42, 3, gen) {
+	if !n.installConnection(&rpc_client.RpcClient{}, "ws://x", 42, 3, gen, nil) {
 		t.Fatal("install should succeed")
 	}
 	if !n.degradeConnection(gen) {
@@ -721,9 +718,6 @@ func TestDegradeConnectionTearsDownCurrentGen(t *testing.T) {
 	}
 	if n.currentClient() != nil {
 		t.Fatal("no client may remain installed")
-	}
-	if n.currentGovernance() != nil {
-		t.Fatal("no governance adapter may remain installed")
 	}
 	// Repeated closure/degradation of the same (now superseded) gen is a no-op —
 	// no double-close, no second teardown.
@@ -745,7 +739,7 @@ func TestDegradeConnectionStaleGenLeavesNewerConnection(t *testing.T) {
 	newGen := n.connGen
 	n.mu.Unlock()
 	fresh := &rpc_client.RpcClient{}
-	if !n.installConnection(fresh, nil, nil, "ws://fresh", 99, 3, newGen) {
+	if !n.installConnection(fresh, "ws://fresh", 99, 3, newGen, nil) {
 		t.Fatal("newer install should succeed")
 	}
 
@@ -863,23 +857,43 @@ func TestSupersededEmbeddedStartCannotInstall(t *testing.T) {
 // height: during bulk sync the momentum subscription delivers only every few
 // minutes, so without this bump the UI height pill lags the real sync progress
 // by whole epochs (observed live: status height 408k vs sync height 538k).
-func TestNoteSyncHeight_BumpsStatusMonotonically(t *testing.T) {
+func TestPublishSync_BumpsStatusMonotonically(t *testing.T) {
 	n := newTestNode(t)
 	n.mu.Lock()
 	n.height = 100
+	n.client = &rpc_client.RpcClient{}
+	n.syncStop = make(chan struct{})
 	n.mu.Unlock()
 
-	n.noteSyncHeight(150)
+	n.publishSync(0, n.syncStop, SyncStatus{CurrentHeight: 150})
 	if got := n.NodeStatus().Height; got != 150 {
 		t.Fatalf("sync sample must raise status height: got %d want 150", got)
 	}
-	n.noteSyncHeight(120) // a lower/stale sample must never regress the height
+	n.publishSync(0, n.syncStop, SyncStatus{CurrentHeight: 120}) // never regress
 	if got := n.NodeStatus().Height; got != 150 {
 		t.Fatalf("height must be monotonic: got %d want 150", got)
 	}
-	n.noteSyncHeight(0) // a not-ready sample is ignored
+	n.publishSync(0, n.syncStop, SyncStatus{}) // a not-ready sample is ignored
 	if got := n.NodeStatus().Height; got != 150 {
 		t.Fatalf("zero sample must be ignored: got %d want 150", got)
+	}
+}
+
+func TestPublishSyncRejectsSupersededPoller(t *testing.T) {
+	n := newTestNode(t)
+	n.client = &rpc_client.RpcClient{}
+	n.connGen = 2
+	n.syncStop = make(chan struct{})
+	n.height = 42
+	oldStop := make(chan struct{})
+	if n.publishSync(1, n.syncStop, SyncStatus{State: "stalled", CurrentHeight: 999}) {
+		t.Fatal("an old connection's sync sample was accepted")
+	}
+	if n.publishSync(2, oldStop, SyncStatus{State: "stalled", CurrentHeight: 999}) {
+		t.Fatal("a replaced poller's sync sample was accepted")
+	}
+	if n.NodeStatus().Height != 42 {
+		t.Fatal("stale sync sample changed the new connection's height")
 	}
 }
 

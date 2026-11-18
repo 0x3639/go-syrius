@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { useNodeRefresh } from '../../lib/useNodeRefresh'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Input, Button } from 'nom-ui'
 import * as Nom from '../../../wailsjs/go/app/NomService'
@@ -12,7 +13,7 @@ const tx = useTxStore()
 const { myProjects } = storeToRefs(acc)
 const error = ref('')
 
-onMounted(() => acc.loadMyProjects())
+useNodeRefresh(() => acc.loadMyProjects())
 
 // create project
 const cName = ref('')
@@ -27,6 +28,10 @@ const phDesc = ref('')
 const phUrl = ref('')
 const phZnn = ref('')
 const phQsr = ref('')
+const selectedProject = computed(() => myProjects.value.some(p => p.id === phProjectId.value))
+watch(myProjects, (projects) => {
+  if (!projects.some(p => p.id === phProjectId.value)) phProjectId.value = ''
+}, { flush: 'sync' })
 
 function fail(e: unknown) {
   error.value = e instanceof Error ? e.message : String(e)
@@ -34,23 +39,25 @@ function fail(e: unknown) {
 async function createProject() {
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareCreateProject(cName.value, cDesc.value, cUrl.value, cZnn.value, cQsr.value))
+    await tx.prepareCall(() => Nom.PrepareCreateProject(cName.value, cDesc.value, cUrl.value, cZnn.value, cQsr.value))
   } catch (e) {
     fail(e)
   }
 }
 async function addPhase() {
+  if (!selectedProject.value) return
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareAddPhase(phProjectId.value, phName.value, phDesc.value, phUrl.value, phZnn.value, phQsr.value))
+    await tx.prepareCall(() => Nom.PrepareAddPhase(phProjectId.value, phName.value, phDesc.value, phUrl.value, phZnn.value, phQsr.value))
   } catch (e) {
     fail(e)
   }
 }
 async function updatePhase() {
+  if (!selectedProject.value) return
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareUpdatePhase(phProjectId.value, phName.value, phDesc.value, phUrl.value, phZnn.value, phQsr.value))
+    await tx.prepareCall(() => Nom.PrepareUpdatePhase(phProjectId.value, phName.value, phDesc.value, phUrl.value, phZnn.value, phQsr.value))
   } catch (e) {
     fail(e)
   }
@@ -68,7 +75,7 @@ watch(
 
 <template>
   <div class="space-y-5 p-4">
-    <section class="space-y-2 rounded-lg border border-border bg-card p-4">
+    <section class="space-y-2 panel-card">
       <h3 class="text-sm font-medium text-foreground">Post an AZ (create project · 1 ZNN fee)</h3>
       <div class="grid grid-cols-2 gap-2">
         <Field label="Name"><Input v-model="cName" placeholder="name" aria-label="create name" /></Field>
@@ -80,7 +87,7 @@ watch(
       <Button aria-label="create project" @click="createProject">Create project</Button>
     </section>
 
-    <section class="space-y-2 rounded-lg border border-border bg-card p-4">
+    <section class="space-y-2 panel-card">
       <h3 class="text-sm font-medium text-foreground">Request a phase payout</h3>
       <p class="text-xs text-muted-foreground">
         Pick one of your approved projects and submit a phase requesting its payout — pillars vote and
@@ -109,8 +116,8 @@ watch(
       </div>
       <Field label="Description"><Input v-model="phDesc" placeholder="what this phase delivers" aria-label="phase description" /></Field>
       <div class="flex gap-2">
-        <Button aria-label="add phase" @click="addPhase">Request phase payout</Button>
-        <Button variant="outline" aria-label="update phase" @click="updatePhase">Update phase</Button>
+        <Button aria-label="add phase" :disabled="!selectedProject" @click="addPhase">Request phase payout</Button>
+        <Button variant="outline" aria-label="update phase" :disabled="!selectedProject" @click="updatePhase">Update phase</Button>
       </div>
     </section>
 

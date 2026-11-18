@@ -115,7 +115,7 @@ async function fuse() {
   error.value = ''
   lastAction = 'plasma'
   try {
-    tx.awaitConfirm(await Nom.PrepareFuse(wallet.activeAddress(), toBase(FUSE_RECOMMENDED_QSR, 8)))
+    await tx.prepareCall(() => Nom.PrepareFuse(wallet.activeAddress(), toBase(FUSE_RECOMMENDED_QSR, 8)))
   } catch (e: unknown) {
     lastAction = null
     error.value = e instanceof Error ? e.message : String(e)
@@ -125,7 +125,7 @@ async function deposit() {
   error.value = ''
   lastAction = 'deposit'
   try {
-    tx.awaitConfirm(await Nom.PreparePillarDepositQsr(shortfall.value.toString()))
+    await tx.prepareCall(() => Nom.PreparePillarDepositQsr(shortfall.value.toString()))
   } catch (e: unknown) {
     lastAction = null
     error.value = e instanceof Error ? e.message : String(e)
@@ -136,7 +136,7 @@ async function withdraw() {
   error.value = ''
   lastAction = null
   try {
-    tx.awaitConfirm(await Nom.PreparePillarWithdrawQsr())
+    await tx.prepareCall(() => Nom.PreparePillarWithdrawQsr())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -145,8 +145,7 @@ async function register() {
   error.value = ''
   lastAction = 'register'
   try {
-    tx.awaitConfirm(
-      await Nom.PrepareRegisterPillar(
+    await tx.prepareCall(() => Nom.PrepareRegisterPillar(
         name.value.trim(),
         producer.value.trim(),
         reward.value.trim(),
@@ -180,7 +179,7 @@ watch(
 </script>
 
 <template>
-  <section class="space-y-4 rounded-lg border border-border bg-card p-4">
+  <section class="space-y-4 panel-card">
     <StepHeader
       :steps="PILLAR_STEPS"
       :current="displayStep"

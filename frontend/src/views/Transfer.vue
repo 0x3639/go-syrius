@@ -5,9 +5,11 @@ import { watch } from 'vue'
 import { useBalancesStore } from '../stores/balances'
 import { useTxStore } from '../stores/tx'
 import { toBase } from '../lib/format'
+import { currentRequestEpoch } from '../lib/requestEpoch'
 import SendForm from '../components/SendForm.vue'
 import TxModal from '../components/TxModal.vue'
 import TxResult from '../components/TxResult.vue'
+import BalanceNotice from '../components/BalanceNotice.vue'
 
 const balances = useBalancesStore()
 const { items } = storeToRefs(balances)
@@ -18,18 +20,22 @@ let toast: ReturnType<typeof useToast> | undefined
 try { toast = useToast() } catch { toast = undefined }
 
 async function onSend(intent: { recipient: string; zts: string; amountDecimal: string }) {
+  const epoch = currentRequestEpoch()
   // A retryable confirm failure may still own its backend hold. The transfer
   // page renders a new form in error state, so release that exact old hold and
   // await the local binding before preparing the replacement transaction.
   if (tx.status === 'error') await tx.discard()
   const tok = items.value.find((b) => b.zts === intent.zts)
-  // toBase is now strict (GS-12) and throws on malformed input. SendForm's
-  // canSend blocks most bad values, but regex-rejected forms like '1e3'/'Infinity'
-  // still pass its Number(x) > 0 check — catch here so the throw surfaces as a
-  // handled error toast instead of an unhandled rejection in the event handler.
+  // Recheck the amount at the view boundary and surface conversion failures.
   let amount: string
   try {
-    amount = toBase(intent.amountDecimal, tok?.decimals ?? 8)
+    if (epoch !== currentRequestEpoch() || !balances.available || !tok) {
+      throw new Error('Balances changed. Review the amount and try again.')
+    }
+    amount = toBase(intent.amountDecimal, tok.decimals)
+    if (BigInt(amount) <= 0n || BigInt(amount) > BigInt(tok.amount)) {
+      throw new Error('Amount must be positive and no greater than the available balance.')
+    }
   } catch (e: unknown) {
     toast?.show(e instanceof Error ? e.message : String(e), 'error')
     return
@@ -41,10 +47,11 @@ watch(status, (s) => { if (s === 'done') toast?.show('Transaction published', 's
 </script>
 
 <template>
-  <div class="mx-auto max-w-[34rem]">
-    <div class="rounded-xl border border-border bg-card p-6">
+  <div class="page-content">
+    <BalanceNotice />
+    <div class="panel-card">
       <SendForm v-if="status === 'idle' || status === 'error'" @send="onSend" />
-      <p v-if="status === 'preparing'" class="text-sm text-muted-foreground">Preparing… (PoW if required)</p>
+      <p v-if="status === 'preparing'" class="text-sm text-muted-foreground">Preparing transaction…</p>
       <p v-if="status === 'error'" class="text-sm text-destructive" role="alert">{{ error }}</p>
       <TxModal v-if="status === 'awaiting' || status === 'publishing'" />
       <TxResult v-if="status === 'done'" @close="tx.reset()" />

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import Dashboard from './Dashboard.vue'
+import { useNodeStore } from '../stores/node'
 import { useBalancesStore } from '../stores/balances'
 import { usePriceStore } from '../stores/price'
 
@@ -18,7 +19,17 @@ function setup() {
 }
 
 describe('Dashboard', () => {
-  beforeEach(() => setActivePinia(createPinia()))
+  beforeEach(() => { setActivePinia(createPinia()); useNodeStore().connected = true; useBalancesStore().status = 'ready' })
+
+  it('does not display zero funds or a fiat total when disconnected', () => {
+    useNodeStore().connected = false
+    usePriceStore().available = true
+    const w = setup()
+    expect(w.text()).toContain('Disconnected')
+    expect(w.text()).toContain('BALANCE UNAVAILABLE')
+    expect(w.text()).not.toContain('$0.00')
+    expect(w.get('[aria-label="ZNN balance"]').text()).toBe('—')
+  })
 
   it('shows a USD portfolio total when price is available', async () => {
     const price = usePriceStore()

@@ -1,3 +1,4 @@
+import { useNodeStore } from '../../stores/node'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -33,7 +34,7 @@ const DUAL_REWARD = { znn: '100000000', qsr: '200000000' }
 const STAKE_REWARD = { znn: '0', qsr: '16000000000000' }
 
 function setup() {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true
   const stake = useStakeStore()
   const pillar = usePillarStore()
   const sentinel = useSentinelStore()

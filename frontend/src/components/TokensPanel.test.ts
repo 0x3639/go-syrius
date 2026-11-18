@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import TokensPanel from './TokensPanel.vue'
+import { useNodeStore } from '../stores/node'
 import { useBalancesStore, type TokenBalance } from '../stores/balances'
 
 // Stub nom-ui Input/TokenIcon to trivial templates: Input is a controlled
@@ -14,11 +15,12 @@ vi.mock('nom-ui', () => ({
     template:
       '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
   },
+  Button: { template: '<button><slot /></button>' },
   TokenIcon: { props: ['symbol'], template: '<span>{{ symbol }}</span>' },
 }))
 
 beforeEach(() => {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true; useBalancesStore().status = 'ready'
 })
 
 const znn: TokenBalance = { zts: 'zts1znn', symbol: 'ZNN', decimals: 8, amount: '150000000' }
@@ -49,6 +51,6 @@ describe('TokensPanel', () => {
 
   it('shows the empty state when there are no tokens', () => {
     const w = mount(TokensPanel)
-    expect(w.text()).toContain('No tokens.')
+    expect(w.text()).toContain('No tokens held.')
   })
 })

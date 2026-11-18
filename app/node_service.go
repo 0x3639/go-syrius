@@ -14,12 +14,12 @@ import (
 
 	"github.com/0x3639/go-syrius/internal/appnap"
 	"github.com/0x3639/go-syrius/internal/embeddednode"
-	"github.com/0x3639/go-syrius/internal/governance"
 	"github.com/0x3639/znn-sdk-go/rpc_client"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zenon-network/go-zenon/chain/nom"
 	"github.com/zenon-network/go-zenon/common/types"
 	api "github.com/zenon-network/go-zenon/rpc/api"
+	"github.com/zenon-network/go-zenon/rpc/api/subscribe"
 	"github.com/zenon-network/go-zenon/rpc/server"
 )
 
@@ -36,6 +36,9 @@ var embeddedStopTimeout = 10 * time.Second
 // Variable (not const) so tests can shorten it.
 var remoteVerifyTimeout = 15 * time.Second
 
+// Bound the subscription handshake separately from the long-lived stream.
+var momentumSubscribeTimeout = 15 * time.Second
+
 // embeddedHandle abstracts a running embedded node (real or test stub).
 type embeddedHandle interface {
 	WSURL() string
@@ -49,15 +52,13 @@ type NodeService struct {
 	config *ConfigService
 	wallet *WalletService
 
-	mu               sync.RWMutex
-	mode             string
-	client           *rpc_client.RpcClient
-	governance       *governance.API
-	governanceClient *server.Client
-	url              string
-	height           uint64
-	chainID          uint64
-	stop             chan struct{}
+	mu      sync.RWMutex
+	mode    string
+	client  *rpc_client.RpcClient
+	url     string
+	height  uint64
+	chainID uint64
+	stop    chan struct{}
 	// connGen identifies the latest connection intent. Every disconnect (and thus
 	// every SetNode/Connect/Disconnect) bumps it; a dial that finishes late must
 	// find its captured gen still current or it may not install — otherwise two
@@ -119,6 +120,7 @@ func newNodeService(c *ConfigService, w *WalletService) *NodeService {
 func (n *NodeService) setNode(url string) error {
 	n.mu.Lock()
 	n.disconnectLocked()
+	n.emitStatusLocked(false)
 	gen := n.connGen
 	n.mu.Unlock()
 
@@ -135,31 +137,27 @@ func (n *NodeService) setNode(url string) error {
 		n.emitDisconnectedIfCurrent(gen)
 		return fmt.Errorf("node unreachable: %s", redactURLUserinfo(err.Error(), url))
 	}
-	// Governance is not exposed by the stable SDK surface (still absent in v0.3.0).
-	// Keep the shipped testnet feature through the app-local adapter, using its
-	// own raw caller because RpcClient does not expose its underlying transport.
-	governanceClient, err := server.Dial(url)
+	n.mu.RLock()
+	subCtx := n.ctx
+	n.mu.RUnlock()
+	if subCtx == nil {
+		subCtx = context.Background()
+	}
+	setupCtx, cancel := context.WithTimeout(subCtx, momentumSubscribeTimeout)
+	sub, ch, err := client.SubscriberApi.ToMomentums(setupCtx)
+	cancel() // the context controls setup only, not the established stream
 	if err != nil {
 		client.Stop()
 		n.emitDisconnectedIfCurrent(gen)
-		return fmt.Errorf("connect governance transport: %s", redactURLUserinfo(err.Error(), url))
-	}
-	governanceAPI := governance.NewAPI(governanceClient)
-
-	if !n.installConnection(client, governanceClient, governanceAPI, url, m.Height, m.ChainIdentifier, gen) {
-		governanceClient.Close()
-		client.Stop()
-		return errors.New("connection attempt superseded by a newer request")
-	}
-
-	if err := n.startMomentumLoop(gen); err != nil {
-		// Subscription failed: the connection cannot deliver ticks, so it must
-		// not stay installed OR keep reporting connected. degradeConnection
-		// tears down and emits disconnected atomically iff gen still owns the
-		// connection — a stale failure never touches a newer connection's state.
-		n.degradeConnection(gen)
 		return fmt.Errorf("subscribe to momentums: %w", err)
 	}
+	stop := make(chan struct{})
+	if !n.installConnection(client, url, m.Height, m.ChainIdentifier, gen, stop) {
+		client.Stop()
+		sub.Unsubscribe()
+		return errors.New("connection attempt superseded by a newer request")
+	}
+	n.startMomentumLoop(gen, sub, ch, stop)
 	return nil
 }
 
@@ -178,21 +176,20 @@ func (n *NodeService) degradeConnection(gen uint64) bool {
 	return true
 }
 
-// installConnection publishes a successfully dialed client as the current
+// installConnection publishes a client with a ready subscription as the current
 // connection iff gen is still the latest connection intent, and emits the
 // connected status inside the same critical section (so a concurrent teardown
 // can never emit BETWEEN install and emit and be overridden by our stale
 // snapshot). Returns false when superseded — the caller must Stop the orphaned
 // client.
-func (n *NodeService) installConnection(client *rpc_client.RpcClient, governanceClient *server.Client, governanceAPI *governance.API, url string, height, chainID, gen uint64) bool {
+func (n *NodeService) installConnection(client *rpc_client.RpcClient, url string, height, chainID, gen uint64, stop chan struct{}) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.connGen != gen {
 		return false
 	}
 	n.client = client
-	n.governanceClient = governanceClient
-	n.governance = governanceAPI
+	n.stop = stop
 	n.url = url
 	n.height = height
 	n.chainID = chainID
@@ -251,44 +248,18 @@ func (n *NodeService) emitDisconnectedIfCurrent(gen uint64) {
 	n.emitStatusLocked(false)
 }
 
-// startMomentumLoop starts the subscription goroutine and returns an error if
-// the subscription cannot be established. gen must be the connection intent the
-// caller installed under; a superseded loop unsubscribes itself instead of
-// racing the newer connection's loop. The caller must NOT hold n.mu.
-func (n *NodeService) startMomentumLoop(gen uint64) error {
-	n.mu.RLock()
-	client := n.client
-	subCtx := n.ctx
-	current := n.connGen == gen
-	n.mu.RUnlock()
-
-	if !current || client == nil {
-		return nil // superseded; the newer connection owns the loop
-	}
-	if subCtx == nil {
-		subCtx = context.Background()
-	}
-
-	sub, ch, err := client.SubscriberApi.ToMomentums(subCtx)
-	if err != nil {
-		return err
-	}
-
-	n.mu.Lock()
-	if n.connGen != gen {
-		n.mu.Unlock()
-		sub.Unsubscribe()
-		return nil // superseded while subscribing
-	}
-	n.stop = make(chan struct{})
-	stop := n.stop
-	n.mu.Unlock()
-
+// startMomentumLoop consumes the subscription installed with the client. The
+// stop channel and generation fence all results if a newer connection wins.
+func (n *NodeService) startMomentumLoop(gen uint64, sub *server.ClientSubscription, ch <-chan []subscribe.Momentum, stop <-chan struct{}) {
 	go func() {
 		defer sub.Unsubscribe()
 		for {
 			select {
 			case <-stop:
+				return
+			case <-sub.Err():
+				// The RPC client signals transport loss here; it leaves ch open.
+				n.degradeConnection(gen)
 				return
 			case ms, ok := <-ch:
 				if !ok {
@@ -301,6 +272,10 @@ func (n *NodeService) startMomentumLoop(gen uint64) error {
 					return
 				}
 				n.mu.Lock()
+				if n.connGen != gen {
+					n.mu.Unlock()
+					return
+				}
 				for _, m := range ms {
 					if m.Height > n.height {
 						n.height = m.Height
@@ -308,16 +283,14 @@ func (n *NodeService) startMomentumLoop(gen uint64) error {
 				}
 				height := n.height
 				ctx := n.ctx
-				n.mu.Unlock()
-
 				if ctx != nil {
 					runtime.EventsEmit(ctx, EventMomentumTick, height)
 				}
-				n.emitStatus(true)
+				n.emitStatusLocked(true)
+				n.mu.Unlock()
 			}
 		}
 	}()
-	return nil
 }
 
 // disconnectLocked tears down client and stop channel.
@@ -344,11 +317,6 @@ func (n *NodeService) disconnectLocked() {
 		n.client.Stop()
 		n.client = nil
 	}
-	if n.governanceClient != nil {
-		n.governanceClient.Close()
-		n.governanceClient = nil
-	}
-	n.governance = nil
 	// Reset the cached chain identifier so a stale value (e.g. testnet) can't be
 	// read by currentChainID() after disconnect and bypass the mainnet guard.
 	n.chainID = 0
@@ -651,24 +619,25 @@ func (n *NodeService) stopEmbedded() {
 	n.appNapEnd()
 }
 
-// noteSyncHeight folds a sync-poller ledger-height sample into the status
-// height (monotonic, zero samples ignored). During embedded bulk sync the
-// momentum subscription delivers only sparsely, so without this the status
-// height — the sidebar pill — lags the live sync progress by whole epochs.
-// Emits node:status only when the height actually advances. The monotonic
-// guard also neutralizes a straggler sample from a dying poller after a mode
-// switch: it can never drag a fresher connection's height backwards.
-func (n *NodeService) noteSyncHeight(h uint64) {
-	if h == 0 {
-		return
-	}
+// publishSync emits only the current poller's sample and folds its ledger
+// height into node status. During bulk sync momentum notifications are sparse;
+// this keeps the sidebar height current without admitting old poller results.
+func (n *NodeService) publishSync(gen uint64, stop <-chan struct{}, st SyncStatus) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if h <= n.height {
-		return
+	// A completed RPC from the old poller must not restore its progress or
+	// stalled state after a reconnect, even if the new mode is also embedded.
+	if n.connGen != gen || n.syncStop != stop || n.client == nil {
+		return false
 	}
-	n.height = h
-	n.emitStatusLocked(true)
+	if n.ctx != nil {
+		runtime.EventsEmit(n.ctx, EventNodeSync, st)
+	}
+	if st.CurrentHeight > n.height {
+		n.height = st.CurrentHeight
+		n.emitStatusLocked(true)
+	}
+	return true
 }
 
 // startSyncPoller polls StatsApi sync info every 2s and emits node:sync.
@@ -681,6 +650,7 @@ func (n *NodeService) startSyncPoller() {
 	n.syncStop = stop
 	client := n.client
 	ctx := n.ctx
+	gen := n.connGen
 	n.mu.Unlock()
 	if client == nil || ctx == nil {
 		return
@@ -702,19 +672,14 @@ func (n *NodeService) startSyncPoller() {
 					// A dead node stops answering; after the stall window,
 					// say so instead of freezing the last good frame.
 					if tracker.observeError(now) {
-						// A superseded poller must not paint a stalled frame
-						// over a fresher connection's status.
-						select {
-						case <-stop:
-							return
-						default:
-						}
 						// Through computeSync, not a bare literal: the last
 						// known-good heights still carry a real percent, and
 						// collapsing the bar to 0.0% would misreport a node
 						// that stalled at 80% as one that never started.
 						st := computeSync(nil, tracker.lastHeight, lastTarget, lastPeers, "stalled")
-						runtime.EventsEmit(ctx, EventNodeSync, st)
+						if !n.publishSync(gen, stop, st) {
+							return
+						}
 					}
 					continue
 				}
@@ -735,8 +700,9 @@ func (n *NodeService) startSyncPoller() {
 					state = "stalled"
 				}
 				st := computeSync(samples, info.CurrentHeight, info.TargetHeight, peers, state)
-				runtime.EventsEmit(ctx, EventNodeSync, st)
-				n.noteSyncHeight(info.CurrentHeight)
+				if !n.publishSync(gen, stop, st) {
+					return
+				}
 			}
 		}
 	}()
@@ -886,14 +852,6 @@ func (n *NodeService) currentClient() *rpc_client.RpcClient {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
 	return n.client
-}
-
-// currentGovernance returns the app-local governance adapter installed for the
-// active connection. It is nil whenever the node is disconnected.
-func (n *NodeService) currentGovernance() *governance.API {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	return n.governance
 }
 
 // currentChainID returns the connected node's chain identifier (0 if unknown).

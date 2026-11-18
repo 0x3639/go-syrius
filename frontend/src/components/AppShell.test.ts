@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, RouterLinkStub, enableAutoUnmount } from '@vue/test-utils'
+import { mount, RouterLinkStub, enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 
 // Each mountShell() registers window activity listeners; without teardown they
@@ -22,6 +22,8 @@ vi.mock('vue-router', () => ({
 }))
 
 const NoteActivity = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const GetBalances = vi.hoisted(() => vi.fn())
+vi.mock('../../wailsjs/go/app/NodeService', () => ({ GetBalances }))
 vi.mock('../../wailsjs/go/app/WalletService', () => ({ NoteActivity }))
 
 import AppShell from './AppShell.vue'
@@ -52,6 +54,8 @@ function stubStores() {
   const ui = useUiStore()
   const autoReceive = useAutoReceiveStore()
   const wallet = useWalletStore()
+  wallet.locked = false
+  node.connected = true
   const tx = useTxStore()
   const walletConnect = useWalletConnectStore()
 
@@ -68,12 +72,13 @@ function stubStores() {
   vi.spyOn(unreceived, 'load').mockResolvedValue(undefined as any)
   vi.spyOn(ui, 'init').mockResolvedValue(undefined as any)
   vi.spyOn(autoReceive, 'init').mockResolvedValue(undefined as any)
+  vi.spyOn(autoReceive, 'start').mockResolvedValue(undefined)
   vi.spyOn(autoReceive, 'followAccount').mockResolvedValue(undefined as any)
   vi.spyOn(walletConnect, 'projectId').mockReturnValue('test-project-id')
   vi.spyOn(walletConnect, 'ensureClient').mockResolvedValue({} as any)
   vi.spyOn(walletConnect, 'updateAccount').mockResolvedValue(undefined as any)
 
-  return { node, balances, txs, autoReceive, wallet, walletConnect }
+  return { node, balances, txs, plasma, unreceived, autoReceive, wallet, walletConnect }
 }
 
 function mountShell() {
@@ -90,6 +95,63 @@ function mountShell() {
 
 describe('AppShell', () => {
   beforeEach(() => setActivePinia(createPinia()))
+
+  it('does not follow the reset account index when the wallet locks', () => {
+    const { wallet, autoReceive, walletConnect } = stubStores()
+    wallet.activeIndex = 2
+    mountShell()
+    wallet._applyLocked()
+    expect(autoReceive.followAccount).not.toHaveBeenCalled()
+    expect(walletConnect.updateAccount).not.toHaveBeenCalled()
+  })
+
+  it('loads the replacement connection without waiting for an obsolete RPC', async () => {
+    const { node, balances } = stubStores()
+    vi.mocked(balances.load).mockRestore()
+    let finish!: (r: unknown) => void
+    GetBalances.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    GetBalances.mockResolvedValueOnce([{ zts: 'new', amount: '2' }])
+    mountShell()
+    node.applyStatus({ connected: false })
+    node.applyStatus({ connected: true })
+    await flushPromises()
+    expect(balances.items[0]?.zts).toBe('new')
+    finish([{ zts: 'old', amount: '1' }])
+    await flushPromises()
+    expect(balances.items[0]?.zts).toBe('new')
+  })
+
+  it.each([
+    { enabled: true, locked: false, starts: 1 },
+    { enabled: false, locked: false, starts: 0 },
+    { enabled: true, locked: true, starts: 0 },
+  ])('restores auto-receive on reconnect only when enabled and unlocked: %j', ({ enabled, locked, starts }) => {
+    const { node, wallet, autoReceive } = stubStores()
+    autoReceive.enabled = enabled
+    autoReceive.account = wallet.activeIndex
+    mountShell()
+    node.applyStatus({ connected: false })
+    expect(autoReceive.start).not.toHaveBeenCalled()
+    wallet.locked = locked
+    node.applyStatus({ connected: true })
+    expect(autoReceive.start).toHaveBeenCalledTimes(starts)
+    if (starts) expect(autoReceive.start).toHaveBeenCalledWith(wallet.activeIndex)
+  })
+
+  it('invalidates all displayed wallet snapshots on a same-tick reconnect', () => {
+    const { node, balances, plasma, unreceived } = stubStores()
+    node.connected = true
+    mountShell()
+    balances.items = [{ amount: '1' } as any]
+    plasma.info = { currentPlasma: 100 } as any
+    unreceived.items = [{ fromHash: 'old' } as any]
+    // Successful endpoint replacement may deliver false/true before Vue renders.
+    node.applyStatus({ connected: false })
+    node.applyStatus({ connected: true })
+    expect(balances.items).toEqual([])
+    expect(plasma.info).toBeNull()
+    expect(unreceived.items).toEqual([])
+  })
 
   it('renders the sidebar, a topbar title from route meta, and a router-view outlet', () => {
     stubStores()

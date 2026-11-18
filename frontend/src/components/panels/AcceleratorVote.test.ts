@@ -1,3 +1,4 @@
+import { useNodeStore } from '../../stores/node'
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -16,7 +17,7 @@ import { usePillarStore } from '../../stores/pillar'
 import { useTxStore } from '../../stores/tx'
 
 function setup(opts: { ownsPillar?: boolean } = {}) {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true
   const acc = useAcceleratorStore()
   const pillar = usePillarStore()
   const tx = useTxStore()
@@ -51,7 +52,7 @@ describe('AcceleratorVote', () => {
   })
 
   it('scopes the list to the selected pillar, not any owned pillar', async () => {
-    setActivePinia(createPinia())
+    setActivePinia(createPinia()); useNodeStore().connected = true
     const acc = useAcceleratorStore()
     const pillar = usePillarStore()
     vi.spyOn(acc, 'refreshVotable').mockResolvedValue()

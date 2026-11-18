@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Button } from 'nom-ui'
 import { useTxStore } from '../stores/tx'
+import { useNodeStore } from '../stores/node'
 import { formatAmountExact } from '../lib/format'
 import { LoaderCircleIcon } from '@lucide/vue'
 
@@ -14,6 +15,7 @@ import { LoaderCircleIcon } from '@lucide/vue'
 // exact. Do not introduce any path where the confirmed amount differs from
 // preview.amount.
 const tx = useTxStore()
+const node = useNodeStore()
 const { preview: p, status } = storeToRefs(tx)
 
 // ZNN and QSR have protocol-fixed decimals (8). Any other token's decimals are
@@ -105,7 +107,7 @@ const isCustomToken = computed(() => !!p.value && p.value.zts !== ZNN_ZTS && p.v
       <span class="animate-pulse">{{ p.needsPoW && tx.powState !== 'Done' ? 'Generating Plasma…' : 'Publishing…' }}</span>
     </div>
     <div v-else class="flex gap-2 pt-2">
-      <Button class="flex-1" @click="tx.confirm()">Confirm</Button>
+      <Button class="flex-1" :disabled="!node.connected" @click="tx.confirm()">Confirm</Button>
       <Button class="flex-1" variant="outline" @click="tx.discard()">Cancel</Button>
     </div>
   </div>

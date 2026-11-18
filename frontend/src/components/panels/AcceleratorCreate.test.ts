@@ -1,3 +1,4 @@
+import { useNodeStore } from '../../stores/node'
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -22,10 +23,11 @@ vi.mock('../../../wailsjs/go/app/NomService', () => ({
 import AcceleratorCreate from './AcceleratorCreate.vue'
 import * as Nom from '../../../wailsjs/go/app/NomService'
 import { useTxStore } from '../../stores/tx'
+import { useAcceleratorStore } from '../../stores/accelerator'
 
 // Mount + let onMounted's loadMyProjects() resolve so the dropdown has options.
 async function mountReady() {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true
   const tx = useTxStore()
   vi.spyOn(tx, 'awaitConfirm').mockImplementation(() => {})
   const w = mount(AcceleratorCreate)
@@ -35,6 +37,20 @@ async function mountReady() {
 }
 
 describe('AcceleratorCreate', () => {
+  it('clears an unavailable project selection and refuses its payout actions', async () => {
+    const w = await mountReady()
+    await w.get('[aria-label="project id"]').setValue('0xabc')
+    vi.mocked(Nom.PrepareAddPhase).mockClear()
+    vi.mocked(Nom.PrepareUpdatePhase).mockClear()
+    useAcceleratorStore().myProjects = []
+    await w.vm.$nextTick()
+    expect((w.get('[aria-label="project id"]').element as HTMLSelectElement).value).toBe('')
+    await w.get('[aria-label="add phase"]').trigger('click')
+    await w.get('[aria-label="update phase"]').trigger('click')
+    expect(Nom.PrepareAddPhase).not.toHaveBeenCalled()
+    expect(Nom.PrepareUpdatePhase).not.toHaveBeenCalled()
+    w.unmount()
+  })
   it('lists the active address approved projects in the phase-payout picker', async () => {
     const w = await mountReady()
     const labels = w.find('select[aria-label="project id"]').findAll('option').map((o) => o.text())

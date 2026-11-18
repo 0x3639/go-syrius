@@ -67,7 +67,7 @@ onMounted(() => contacts.load())
 </script>
 
 <template>
-  <div class="mx-auto max-w-[48rem] space-y-6">
+  <div class="page-content">
         <!-- Add -->
         <div class="space-y-2 rounded-lg border border-border bg-background/40 p-3">
           <p class="text-xs font-medium text-muted-foreground">Add address</p>

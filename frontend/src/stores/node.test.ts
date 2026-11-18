@@ -13,8 +13,56 @@ vi.mock('../../wailsjs/runtime/runtime', () => ({
   EventsOn: vi.fn((evt: string, cb: (data?: any) => void) => { handlers[evt] = cb }),
 }))
 import { useNodeStore } from './node'
+import { Connect } from '../../wailsjs/go/app/NodeService'
 beforeEach(() => setActivePinia(createPinia()))
 describe('node store', () => {
+  it('does not let an older connect failure disconnect a newer success', async () => {
+    let reject!: (e: Error) => void
+    vi.mocked(Connect).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail }))
+    const s = useNodeStore()
+    const old = s.connect()
+    await s.connect()
+    reject(new Error('old failure'))
+    await old
+    expect(s.connected).toBe(true)
+    expect(s.connectionError).toBe('')
+  })
+  it('ignores a failed reconnect from a superseded mode', async () => {
+    let reject!: (e: Error) => void
+    vi.mocked(Connect).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail }))
+    const s = useNodeStore()
+    s.initEvents(vi.fn())
+    const connecting = s.connect()
+    handlers['node:status']({ connected: false, mode: 'embedded' })
+    reject(new Error('old remote failure'))
+    await connecting
+    expect(s.mode).toBe('embedded')
+    expect(s.connectionError).toBe('')
+  })
+  it('retains a restart-required error for reconnect UI', async () => {
+    vi.mocked(Connect).mockRejectedValueOnce(new Error('embedded node stop timed out; restart go-syrius'))
+    const s = useNodeStore()
+    await s.connect()
+    expect(s.connected).toBe(false)
+    expect(s.connectionError).toContain('restart go-syrius')
+    await s.connect()
+    expect(s.connected).toBe(true)
+    expect(s.connectionError).toBe('')
+  })
+
+  it('drops old sync samples on disconnect and ignores offline stragglers', async () => {
+    const s = useNodeStore()
+    s.initEvents(vi.fn())
+    handlers['node:status']({ connected: true, mode: 'embedded' })
+    handlers['node:sync']({ state: 'stalled' })
+    handlers['node:status']({ connected: false, mode: 'embedded' })
+    handlers['node:sync']({ state: 'stalled' })
+    expect(s.sync).toBeNull()
+    handlers['node:status']({ connected: true, mode: 'embedded' })
+    expect(s.sync).toBeNull()
+    handlers['node:sync']({ state: 'synced' })
+    expect(s.sync?.state).toBe('synced')
+  })
   it('connects and loads balances', async () => {
     const s = useNodeStore()
     await s.connect(); expect(s.connected).toBe(true)
@@ -50,7 +98,7 @@ describe('node store', () => {
     // …but a fresher push (mainnet) lands before the RPC resolves:
     handlers['node:status']?.({ connected: true, chainId: 1, height: 50, mode: 'remote' })
     await new Promise((r) => setTimeout(r))
-    expect(s.chainId).toBe(1) // stale pull must not re-open the governance gate
+    expect(s.chainId).toBe(1) // stale pull must not restore the old chain
     expect(s.height).toBe(50)
   })
 

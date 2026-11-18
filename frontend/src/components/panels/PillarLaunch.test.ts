@@ -1,3 +1,4 @@
+import { useNodeStore } from '../../stores/node'
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -24,7 +25,7 @@ const COST = '15000000000000' // arbitrary QSR cost for tests
 const ENOUGH_PLASMA = 105000
 
 function setup(opts: { plasma?: number; deposited?: string; cost?: string; pendingStep?: 'plasma' | 'deposit' | 'register' | null } = {}) {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true
   const s = usePillarStore()
   const tx = useTxStore()
   const wallet = useWalletStore()

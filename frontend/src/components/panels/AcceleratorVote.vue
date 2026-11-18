@@ -51,7 +51,7 @@ async function vote(id: string, choice: number) {
     return
   }
   try {
-    tx.awaitConfirm(await Nom.PrepareVote(id, selectedPillar.value, choice))
+    await tx.prepareCall(() => Nom.PrepareVote(id, selectedPillar.value, choice))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -66,7 +66,7 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-3 p-4">
+  <div class="space-y-5">
     <p v-if="!ownsPillar" class="text-sm text-muted-foreground">
       Voting on Accelerator-Z proposals is for pillar operators. Register or run a pillar to vote.
     </p>
@@ -100,7 +100,7 @@ watch(
       <div
         v-for="it in items"
         :key="it.id"
-        class="space-y-2 rounded-lg border border-border bg-card p-3"
+        class="space-y-2 panel-card"
       >
         <div class="flex flex-wrap items-center gap-2">
           <span class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">{{ it.kind }}</span>

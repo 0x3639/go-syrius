@@ -7,6 +7,8 @@ import { usePriceStore } from '../stores/price'
 import { formatAmount } from '../lib/format'
 import { formatFiat } from '../lib/fiat'
 import TxHistory from '../components/TxHistory.vue'
+import BalanceNotice from '../components/BalanceNotice.vue'
+import TokenAmount from '../components/TokenAmount.vue'
 
 const router = useRouter()
 const balances = useBalancesStore()
@@ -15,7 +17,7 @@ const price = usePriceStore()
 const znn = computed(() => balances.items.find((b) => b.symbol === 'ZNN'))
 const qsr = computed(() => balances.items.find((b) => b.symbol === 'QSR'))
 
-const totalUsd = computed(() => price.portfolioUsd(balances.items))
+const totalUsd = computed(() => balances.available ? price.portfolioUsd(balances.items) : null)
 
 const cards = computed(() =>
   [
@@ -31,14 +33,16 @@ const cards = computed(() =>
 <template>
   <!-- Cap the whole page on ultra-wide windows so the hero, balance cards and
        activity card stay aligned instead of only the table centering. -->
-  <div class="mx-auto flex w-full max-w-[90rem] flex-col gap-5">
+  <div class="page-content">
+    <BalanceNotice />
     <!-- Plasma hero -->
     <div class="overflow-hidden rounded-xl bg-plasma p-7 text-[#0c1f12] shadow-md">
       <!-- No price feed → the headline is just the ZNN balance; label it as
            such rather than claiming a (wrong) portfolio total. -->
-      <p class="text-ledger opacity-70">{{ totalUsd !== null ? 'TOTAL PORTFOLIO VALUE' : 'ZNN BALANCE' }}</p>
-      <div class="mb-4 mt-2 font-mono text-5xl font-bold tabular-nums tracking-tight">
-        <template v-if="totalUsd !== null">{{ formatFiat(totalUsd) }}</template>
+      <p class="text-ledger opacity-70">{{ !balances.available ? 'BALANCE UNAVAILABLE' : totalUsd !== null ? 'TOTAL PORTFOLIO VALUE' : 'ZNN BALANCE' }}</p>
+      <div class="mb-4 mt-2 break-words font-mono text-3xl font-bold tabular-nums tracking-tight lg:text-5xl">
+        <template v-if="!balances.available">—</template>
+        <template v-else-if="totalUsd !== null">{{ formatFiat(totalUsd) }}</template>
         <template v-else>{{ formatAmount(znn?.amount ?? '0', znn?.decimals ?? 8) }} <span class="text-2xl">ZNN</span></template>
       </div>
       <div class="flex gap-2.5">
@@ -52,7 +56,7 @@ const cards = computed(() =>
     </div>
 
     <!-- Token balances -->
-    <div class="grid grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <div v-for="c in cards" :key="c.symbol" class="flex items-center gap-3.5 rounded-xl border border-border bg-card p-5">
         <div>
           <div class="text-base font-semibold text-foreground">{{ c.name }}</div>
@@ -60,9 +64,10 @@ const cards = computed(() =>
         </div>
         <div class="ml-auto text-right">
           <div class="font-mono text-xl tabular-nums text-foreground" :aria-label="`${c.symbol} balance`">
-            {{ formatAmount(c.amount, c.decimals) }}
+            <TokenAmount v-if="balances.available" :amount="c.amount" :decimals="c.decimals" />
+            <span v-else>—</span>
           </div>
-          <div v-if="c.fiat" class="font-mono text-xs text-muted-foreground">
+          <div v-if="balances.available && c.fiat" class="font-mono text-xs text-muted-foreground">
             {{ c.fiat }}
           </div>
         </div>

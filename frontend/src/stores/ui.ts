@@ -1,30 +1,14 @@
 import { defineStore } from 'pinia'
-import * as Cfg from '../../wailsjs/go/app/ConfigService'
-import { useNodeStore } from './node'
 
-// UI preferences persisted in app settings. Currently just the opt-in for the
-// experimental, testnet-only Governance navigation tab (off by default).
+// UI preferences persisted locally.
 export const useUiStore = defineStore('ui', {
   state: () => ({
-    showGovernance: false,
-    // TEMPORARY kill switch mirror (ConfigService.IsGovernanceFeatureEnabled):
-    // governance is fully disabled pending an SDK update. Fails CLOSED.
-    governanceFeatureEnabled: false,
     theme: 'dark' as 'dark' | 'light',
     // Whether the logo intro animation plays on launch. On by default; users can
     // turn it off in Settings. Frontend-only preference, persisted to localStorage
     // (App.vue reads the key directly at startup, before any store init runs).
     splashEnabled: true,
   }),
-  getters: {
-    // SINGLE source of truth for the TESTNET-ONLY Governance gate, consumed by
-    // both the Sidebar (tab) and NetworkPage (panel) so the two can never
-    // drift. Fails CLOSED: chainId 0 = not known yet (pre-connect), 1 =
-    // mainnet; only a confirmed testnet (> 1) allows Governance.
-    governanceAllowed(): boolean {
-      return this.governanceFeatureEnabled && this.showGovernance && useNodeStore().chainId > 1
-    },
-  },
   actions: {
     // NOTE: this store owns the theme PREFERENCE (persisted as syrius.theme).
     // The DOM (dark class) is applied in exactly one place: App.vue watches
@@ -44,27 +28,9 @@ export const useUiStore = defineStore('ui', {
     initTheme() {
       try { const t = localStorage.getItem('syrius.theme'); if (t === 'light' || t === 'dark') this.theme = t } catch { /* ignore */ }
     },
-    async init() {
+    init() {
       this.initTheme()
       try { this.splashEnabled = localStorage.getItem('syrius.splash') !== '0' } catch { /* ignore */ }
-      try {
-        this.showGovernance = (await Cfg.GetSettings()).showGovernance ?? false
-      } catch {
-        /* offline/locked — keep the default */
-      }
-      try {
-        this.governanceFeatureEnabled = (await Cfg.IsGovernanceFeatureEnabled()) === true
-      } catch {
-        /* keep false — fail closed */
-      }
-    },
-    async setShowGovernance(v: boolean) {
-      this.showGovernance = v
-      try {
-        await Cfg.SetShowGovernance(v)
-      } catch {
-        /* best-effort persist; the in-memory flag still updates the nav */
-      }
     },
   },
 })

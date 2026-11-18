@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useNodeRefresh } from '../../lib/useNodeRefresh'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Input, Button } from 'nom-ui'
 import * as Nom from '../../../wailsjs/go/app/NomService'
@@ -28,6 +28,10 @@ const phDesc = ref('')
 const phUrl = ref('')
 const phZnn = ref('')
 const phQsr = ref('')
+const selectedProject = computed(() => myProjects.value.some(p => p.id === phProjectId.value))
+watch(myProjects, (projects) => {
+  if (!projects.some(p => p.id === phProjectId.value)) phProjectId.value = ''
+}, { flush: 'sync' })
 
 function fail(e: unknown) {
   error.value = e instanceof Error ? e.message : String(e)
@@ -35,23 +39,25 @@ function fail(e: unknown) {
 async function createProject() {
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareCreateProject(cName.value, cDesc.value, cUrl.value, cZnn.value, cQsr.value))
+    await tx.prepareCall(() => Nom.PrepareCreateProject(cName.value, cDesc.value, cUrl.value, cZnn.value, cQsr.value))
   } catch (e) {
     fail(e)
   }
 }
 async function addPhase() {
+  if (!selectedProject.value) return
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareAddPhase(phProjectId.value, phName.value, phDesc.value, phUrl.value, phZnn.value, phQsr.value))
+    await tx.prepareCall(() => Nom.PrepareAddPhase(phProjectId.value, phName.value, phDesc.value, phUrl.value, phZnn.value, phQsr.value))
   } catch (e) {
     fail(e)
   }
 }
 async function updatePhase() {
+  if (!selectedProject.value) return
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareUpdatePhase(phProjectId.value, phName.value, phDesc.value, phUrl.value, phZnn.value, phQsr.value))
+    await tx.prepareCall(() => Nom.PrepareUpdatePhase(phProjectId.value, phName.value, phDesc.value, phUrl.value, phZnn.value, phQsr.value))
   } catch (e) {
     fail(e)
   }
@@ -110,8 +116,8 @@ watch(
       </div>
       <Field label="Description"><Input v-model="phDesc" placeholder="what this phase delivers" aria-label="phase description" /></Field>
       <div class="flex gap-2">
-        <Button aria-label="add phase" @click="addPhase">Request phase payout</Button>
-        <Button variant="outline" aria-label="update phase" @click="updatePhase">Update phase</Button>
+        <Button aria-label="add phase" :disabled="!selectedProject" @click="addPhase">Request phase payout</Button>
+        <Button variant="outline" aria-label="update phase" :disabled="!selectedProject" @click="updatePhase">Update phase</Button>
       </div>
     </section>
 

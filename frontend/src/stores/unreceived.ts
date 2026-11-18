@@ -12,12 +12,16 @@ export const useUnreceivedStore = defineStore('unreceived', {
     busyAll: false,
     error: '',
     _request: 0,
+    _scope: 0,
   }),
   actions: {
     invalidate() {
       this._request++
+      this._scope++
       this.items = []
       this.error = ''
+      this.busy = {}
+      this.busyAll = false
     },
     async load() {
       const epoch = currentRequestEpoch()
@@ -32,28 +36,39 @@ export const useUnreceivedStore = defineStore('unreceived', {
       }
     },
     async receive(hash: string) {
+      const scope = this._scope
+      const epoch = currentRequestEpoch()
+      const current = () => scope === this._scope && epoch === currentRequestEpoch()
       this.error = ''
       this.busy = { ...this.busy, [hash]: true }
       try {
         await Tx.Receive(hash)
-        await this.load()
+        if (current()) await this.load()
       } catch (e: any) {
-        this.error = e?.message ?? String(e)
+        if (current()) this.error = e?.message ?? String(e)
       } finally {
-        const { [hash]: _, ...rest } = this.busy
-        this.busy = rest
+        if (scope === this._scope) {
+          const { [hash]: _, ...rest } = this.busy
+          this.busy = rest
+        }
       }
     },
     async receiveAll() {
+      const scope = this._scope
+      const epoch = currentRequestEpoch()
+      const current = () => scope === this._scope && epoch === currentRequestEpoch()
       this.error = ''
       this.busyAll = true
       try {
-        for (const u of this.items) await Tx.Receive(u.fromHash)
-        await this.load()
+        for (const u of [...this.items]) {
+          if (!current()) return
+          await Tx.Receive(u.fromHash)
+        }
+        if (current()) await this.load()
       } catch (e: any) {
-        this.error = e?.message ?? String(e)
+        if (current()) this.error = e?.message ?? String(e)
       } finally {
-        this.busyAll = false
+        if (scope === this._scope) this.busyAll = false
       }
     },
   },

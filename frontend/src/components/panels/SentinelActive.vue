@@ -20,7 +20,7 @@ const rewardZero = computed(
 async function collect() {
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareCollectSentinelReward())
+    await tx.prepareCall(() => Nom.PrepareCollectSentinelReward())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -28,7 +28,7 @@ async function collect() {
 async function revoke() {
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareRevokeSentinel())
+    await tx.prepareCall(() => Nom.PrepareRevokeSentinel())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }

@@ -55,8 +55,7 @@ async function fuse() {
   // NomConfirm dialog via tx.awaitConfirm. The panel renders no modal itself.
   error.value = ''
   try {
-    const preview = await Nom.PrepareFuse(beneficiary.value, toBase(amount.value, 8))
-    tx.awaitConfirm(preview)
+    await tx.prepareCall(() => Nom.PrepareFuse(beneficiary.value, toBase(amount.value, 8)))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -65,8 +64,7 @@ async function fuse() {
 async function cancel(id: string) {
   error.value = ''
   try {
-    const preview = await Nom.PrepareCancelFuse(id)
-    tx.awaitConfirm(preview)
+    await tx.prepareCall(() => Nom.PrepareCancelFuse(id))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -94,7 +92,7 @@ watch(
         <Input v-model="beneficiary" placeholder="z1…" aria-label="beneficiary" />
       </Field>
       <div class="space-y-1">
-        <AmountInput v-model="amount" label="Amount (QSR)" aria-label="qsr amount" :max="maxFusion" />
+        <AmountInput v-model="amount" label="Amount (QSR)" :max="maxFusion" />
         <p class="text-xs text-muted-foreground">{{ availableLabel }}</p>
         <p class="text-xs text-muted-foreground">Minimum 10 QSR, in whole QSR increments.</p>
       </div>

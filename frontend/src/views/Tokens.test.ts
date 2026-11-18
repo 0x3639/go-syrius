@@ -1,3 +1,4 @@
+import { useNodeStore } from '../stores/node'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -37,7 +38,7 @@ vi.mock('../stores/token', () => ({
 // tx store: spy awaitConfirm
 const awaitConfirm = vi.hoisted(() => vi.fn())
 vi.mock('../stores/tx', () => ({
-  useTxStore: () => ({ status: 'idle', preview: null, error: '', awaitConfirm }),
+  useTxStore: () => ({ status: 'idle', preview: null, error: '', awaitConfirm, prepareCall: async (prepare: () => Promise<unknown>) => awaitConfirm(await prepare()) }),
 }))
 
 vi.mock('../stores/wallet', () => ({
@@ -73,7 +74,7 @@ import Tokens from './Tokens.vue'
 const flush = () => new Promise((r) => setTimeout(r))
 
 beforeEach(() => {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true
   push.mockClear()
   PrepareIssueToken.mockClear()
   PrepareMint.mockClear()

@@ -127,7 +127,7 @@ async function copyHash(h: string) {
         <TableHead>Direction</TableHead><TableHead>Type</TableHead><TableHead>Address</TableHead><TableHead>Transaction</TableHead><TableHead class="text-right">Amount</TableHead><TableHead class="text-right">Status</TableHead>
       </TableRow></TableHeader>
       <TableBody>
-        <TableEmpty v-if="!node.connected || (txs.pageItems.length === 0 && (txs.page > 0 || unreceived.items.length === 0))" :colspan="6">{{ emptyMessage }}</TableEmpty>
+        <TableEmpty v-if="!node.connected || (!txs.error && txs.pageItems.length === 0 && (txs.page > 0 || unreceived.items.length === 0))" :colspan="6">{{ emptyMessage }}</TableEmpty>
 
         <!-- Pending inbound blocks (newest page only): click to receive; status
              goes Unreceived → Generating Plasma/Receiving (pulsing) → Confirmed. -->

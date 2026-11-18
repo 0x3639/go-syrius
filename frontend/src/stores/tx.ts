@@ -53,6 +53,15 @@ export const useTxStore = defineStore('tx', {
         this.status = 'error'; this.error = e?.message ?? String(e)
       }
     },
+    async prepareCall(prepare: () => Promise<SendPreview | app.CallPreview>) {
+      const epoch = currentRequestEpoch()
+      const preview = await prepare()
+      if (epoch !== currentRequestEpoch() || !useNodeStore().connected) {
+        if (preview.holdId) await Tx.CancelPending(preview.holdId).catch(() => {})
+        return
+      }
+      this.awaitConfirm(preview)
+    },
     // Panel confirmations may follow navigation, but a response arriving after
     // disconnect must not reopen an actionable dialog or strand its hold.
     awaitConfirm(preview: SendPreview | app.CallPreview) {

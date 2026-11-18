@@ -55,6 +55,12 @@ export const useTxsStore = defineStore('txs', {
     },
   },
   actions: {
+    currentScan(epoch: number, request: number): boolean {
+      if (request !== this._request) return false
+      if (epoch === currentRequestEpoch()) return true
+      this.resetPage()
+      return false
+    },
     async fetchChunk(): Promise<boolean> {
       // Reload owns the buffer/cursor. Page/filter changes update the desired
       // view immediately; its loop fills that view before committing.
@@ -64,13 +70,13 @@ export const useTxsStore = defineStore('txs', {
       this._fetching = true
       try {
         const r = (await N.GetTransactions(this.chunkIndex, BLOCK_FETCH)) as unknown as { records: TxRecord[]; hasMore: boolean }
-        if (epoch !== currentRequestEpoch() || request !== this._request) return false
+        if (!this.currentScan(epoch, request)) return false
         this.buffer.push(...(r.records ?? []))
         this.hasMoreBlocks = !!r.hasMore && this.chunkIndex + 1 < MAX_CHUNKS
         this.chunkIndex++
         return true
       } catch {
-        if (epoch !== currentRequestEpoch() || request !== this._request) return false
+        if (!this.currentScan(epoch, request)) return false
         this.error = true
         this.hasMoreBlocks = false
         return false
@@ -105,19 +111,19 @@ export const useTxsStore = defineStore('txs', {
       while (filteredLen() <= (this.page + 1) * PAGE_SIZE && more && idx < MAX_CHUNKS) {
         try {
           const r = (await N.GetTransactions(idx, BLOCK_FETCH)) as unknown as { records: TxRecord[]; hasMore: boolean }
-          if (epoch !== currentRequestEpoch() || request !== this._request) return
+          if (!this.currentScan(epoch, request)) return
           fresh.push(...(r.records ?? []))
           more = !!r.hasMore
           idx++
         } catch {
-          if (epoch !== currentRequestEpoch() || request !== this._request) return
+          if (!this.currentScan(epoch, request)) return
           failed = true
           more = false
           break
         }
       }
       if (idx >= MAX_CHUNKS) more = false
-      if (epoch !== currentRequestEpoch() || request !== this._request) return
+      if (!this.currentScan(epoch, request)) return
       this.buffer = fresh
       this.chunkIndex = idx
       this.hasMoreBlocks = more

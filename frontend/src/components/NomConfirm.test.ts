@@ -42,7 +42,7 @@ const PREVIEW = {
 } as any
 
 beforeEach(() => {
-  setActivePinia(createPinia()); useNodeStore().connected = true
+  setActivePinia(createPinia()); useNodeStore().connected = true; useNodeStore().connected = true
 })
 
 describe('NomConfirm (global panel confirm)', () => {

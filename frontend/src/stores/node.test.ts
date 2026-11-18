@@ -16,6 +16,29 @@ import { useNodeStore } from './node'
 import { Connect } from '../../wailsjs/go/app/NodeService'
 beforeEach(() => setActivePinia(createPinia()))
 describe('node store', () => {
+  it('does not let an older connect failure disconnect a newer success', async () => {
+    let reject!: (e: Error) => void
+    vi.mocked(Connect).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail }))
+    const s = useNodeStore()
+    const old = s.connect()
+    await s.connect()
+    reject(new Error('old failure'))
+    await old
+    expect(s.connected).toBe(true)
+    expect(s.connectionError).toBe('')
+  })
+  it('ignores a failed reconnect from a superseded mode', async () => {
+    let reject!: (e: Error) => void
+    vi.mocked(Connect).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail }))
+    const s = useNodeStore()
+    s.initEvents(vi.fn())
+    const connecting = s.connect()
+    handlers['node:status']({ connected: false, mode: 'embedded' })
+    reject(new Error('old remote failure'))
+    await connecting
+    expect(s.mode).toBe('embedded')
+    expect(s.connectionError).toBe('')
+  })
   it('retains a restart-required error for reconnect UI', async () => {
     vi.mocked(Connect).mockRejectedValueOnce(new Error('embedded node stop timed out; restart go-syrius'))
     const s = useNodeStore()

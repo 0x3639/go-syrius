@@ -51,7 +51,7 @@ async function vote(id: string, choice: number) {
     return
   }
   try {
-    tx.awaitConfirm(await Nom.PrepareVote(id, selectedPillar.value, choice))
+    await tx.prepareCall(() => Nom.PrepareVote(id, selectedPillar.value, choice))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }

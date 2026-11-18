@@ -63,6 +63,8 @@ describe('txs store fetch caps', () => {
     await loading
     expect(GetTransactions).toHaveBeenCalledTimes(1)
     expect(s.buffer).toEqual([])
+    expect(s.loading).toBe(false)
+    expect(s.chunkIndex).toBe(0)
   })
   it('distinguishes an empty history from a failed lookup and recovers on retry', async () => {
     const s = useTxsStore()

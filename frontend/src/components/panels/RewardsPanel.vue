@@ -71,8 +71,7 @@ async function collect(s: Source) {
   // NomConfirm dialog via tx.awaitConfirm. The panel renders no modal itself.
   error.value = ''
   try {
-    const preview = await s.collect()
-    tx.awaitConfirm(preview)
+    await tx.prepareCall(() => s.collect())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }

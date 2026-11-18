@@ -1,3 +1,4 @@
+import { useNodeStore } from '../../stores/node'
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -18,7 +19,7 @@ import { usePillarStore } from '../../stores/pillar'
 import { useTxStore } from '../../stores/tx'
 
 function setup(opts: { reward?: { znn: string; qsr: string }; isRevocable?: boolean; revokeCooldown?: number } = {}) {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true
   const s = usePillarStore()
   const tx = useTxStore()
   vi.spyOn(s, 'refreshRegistration').mockResolvedValue()

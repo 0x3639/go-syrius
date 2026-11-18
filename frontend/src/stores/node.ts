@@ -32,17 +32,22 @@ export const useNodeStore = defineStore('node', {
     // Bumped on every node:status push; lets the refreshStatus pull detect
     // that a fresher push landed while its RPC was in flight.
     _statusSeq: 0,
+    _connectAttempt: 0,
   }),
   actions: {
     async connect() {
       this.connectionError = ''
+      const attempt = ++this._connectAttempt
+      const mode = this.mode
       const seq = this._statusSeq
       try {
         await N.Connect()
-        if (seq === this._statusSeq) this.applyStatus({ connected: true })
+        if (attempt === this._connectAttempt && seq === this._statusSeq) this.applyStatus({ connected: true })
       } catch (e: unknown) {
-        if (seq === this._statusSeq) this.applyStatus({ connected: false })
-        if (!this.connected) this.connectionError = e instanceof Error ? e.message : String(e)
+        if (attempt === this._connectAttempt && seq === this._statusSeq) this.applyStatus({ connected: false })
+        if (attempt === this._connectAttempt && mode === this.mode && !this.connected) {
+          this.connectionError = e instanceof Error ? e.message : String(e)
+        }
       }
     },
     async loadBalances() {
@@ -52,9 +57,13 @@ export const useNodeStore = defineStore('node', {
       return (await N.GetNodeConfig()) as unknown as NodeConfig
     },
     async setMode(mode: string) {
+      this._connectAttempt++
+      this.connectionError = ''
       await N.SetNodeMode(mode)
     },
     async setUrl(mode: string, url: string) {
+      this._connectAttempt++
+      this.connectionError = ''
       await N.SetNodeURL(mode, url)
     },
     async getEmbeddedInfo() {
@@ -74,6 +83,7 @@ export const useNodeStore = defineStore('node', {
       if (connected) this.connectionError = ''
       this.height = s?.height ?? this.height
       const mode = s?.mode ?? this.mode
+      if (mode !== this.mode) this.connectionError = ''
       if (!connected || mode !== this.mode) {
         this.syncing = false
         this.sync = null

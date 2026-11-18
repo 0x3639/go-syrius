@@ -1,3 +1,4 @@
+import { useNodeStore } from '../../stores/node'
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -16,7 +17,7 @@ import { useTxStore } from '../../stores/tx'
 
 describe('AcceleratorDonate', () => {
   it('forwards the donate call', async () => {
-    setActivePinia(createPinia())
+    setActivePinia(createPinia()); useNodeStore().connected = true
     const tx = useTxStore()
     const awaitConfirm = vi.spyOn(tx, 'awaitConfirm').mockImplementation(() => {})
     const w = mount(AcceleratorDonate)

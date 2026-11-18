@@ -8,6 +8,10 @@ import { flushPromises } from '@vue/test-utils'
 
 const GetBuildInfo = vi.hoisted(() => vi.fn().mockResolvedValue({ version: 'v9.9.9', commit: 'abc1234' }))
 vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetBuildInfo }))
+const handlers = vi.hoisted(() => ({} as Record<string, (data?: any) => void>))
+vi.mock('../../wailsjs/runtime/runtime', () => ({
+  EventsOn: vi.fn((event: string, handler: (data?: any) => void) => { handlers[event] = handler }),
+}))
 
 function mountSidebar() {
   return mount(Sidebar, { global: { stubs: { RouterLink: RouterLinkStub } } })
@@ -18,6 +22,7 @@ describe('Sidebar', () => {
 
   it('shows Checking sync after reconnect until a current sample arrives', async () => {
     const node = useNodeStore()
+    node.initEvents(vi.fn())
     node.applyStatus({ connected: true, mode: 'embedded' })
     node.sync = { state: 'stalled' } as any
     const w = mountSidebar()
@@ -27,6 +32,10 @@ describe('Sidebar', () => {
     await w.vm.$nextTick()
     expect(w.text()).toContain('Checking sync…')
     expect(w.text()).not.toContain('Sync stalled')
+    handlers['node:sync']({ state: 'synced' })
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('Synced')
+    expect(w.text()).not.toContain('Checking sync…')
   })
 
   it('distinguishes disconnected, syncing and stalled states', async () => {

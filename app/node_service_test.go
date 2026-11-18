@@ -651,7 +651,7 @@ func TestSupersededDialDoesNotInstall(t *testing.T) {
 	cur := n.connGen
 	n.mu.Unlock()
 
-	if n.installConnection(&rpc_client.RpcClient{}, "ws://stale", 1, 3, gen) {
+	if n.installConnection(&rpc_client.RpcClient{}, "ws://stale", 1, 3, gen, nil) {
 		t.Fatal("a superseded dial must not install its client over the newer one")
 	}
 	if n.currentClient() != nil {
@@ -660,7 +660,7 @@ func TestSupersededDialDoesNotInstall(t *testing.T) {
 
 	// The latest intent still installs normally.
 	fresh := &rpc_client.RpcClient{}
-	if !n.installConnection(fresh, "ws://fresh", 9, 3, cur) {
+	if !n.installConnection(fresh, "ws://fresh", 9, 3, cur, nil) {
 		t.Fatal("the current dial must install")
 	}
 	if n.currentClient() != fresh {
@@ -681,25 +681,20 @@ func TestDisconnectInvalidatesInFlightDial(t *testing.T) {
 	if err := n.Disconnect(); err != nil {
 		t.Fatalf("Disconnect: %v", err)
 	}
-	if n.installConnection(&rpc_client.RpcClient{}, "ws://late", 1, 3, gen) {
+	if n.installConnection(&rpc_client.RpcClient{}, "ws://late", 1, 3, gen, nil) {
 		t.Fatal("a dial that loses to an explicit Disconnect must not install")
 	}
 }
 
-func TestStartMomentumLoopSupersededIsNoop(t *testing.T) {
+func TestSupersededConnectionDoesNotInstallSubscription(t *testing.T) {
 	n := newTestNode(t)
-	n.mu.Lock()
-	n.disconnectLocked()
-	gen := n.connGen
-	n.disconnectLocked() // superseded before the loop starts
-	n.mu.Unlock()
-	if err := n.startMomentumLoop(gen); err != nil {
-		t.Fatalf("a superseded loop start must be a silent no-op, got %v", err)
+	n.connGen = 2
+	stop := make(chan struct{})
+	if n.installConnection(&rpc_client.RpcClient{}, "ws://old", 42, 1, 1, stop) {
+		t.Fatal("superseded candidate was installed")
 	}
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	if n.stop != nil {
-		t.Fatal("a superseded loop must not install a stop channel")
+	if n.stop != nil || n.NodeStatus().Connected {
+		t.Fatal("superseded candidate left a live subscription")
 	}
 }
 
@@ -711,7 +706,7 @@ func TestDegradeConnectionTearsDownCurrentGen(t *testing.T) {
 	n.disconnectLocked()
 	gen := n.connGen
 	n.mu.Unlock()
-	if !n.installConnection(&rpc_client.RpcClient{}, "ws://x", 42, 3, gen) {
+	if !n.installConnection(&rpc_client.RpcClient{}, "ws://x", 42, 3, gen, nil) {
 		t.Fatal("install should succeed")
 	}
 	if !n.degradeConnection(gen) {
@@ -744,7 +739,7 @@ func TestDegradeConnectionStaleGenLeavesNewerConnection(t *testing.T) {
 	newGen := n.connGen
 	n.mu.Unlock()
 	fresh := &rpc_client.RpcClient{}
-	if !n.installConnection(fresh, "ws://fresh", 99, 3, newGen) {
+	if !n.installConnection(fresh, "ws://fresh", 99, 3, newGen, nil) {
 		t.Fatal("newer install should succeed")
 	}
 
@@ -891,7 +886,7 @@ func TestPublishSyncRejectsSupersededPoller(t *testing.T) {
 	n.syncStop = make(chan struct{})
 	n.height = 42
 	oldStop := make(chan struct{})
-	if n.publishSync(1, oldStop, SyncStatus{State: "stalled", CurrentHeight: 999}) {
+	if n.publishSync(1, n.syncStop, SyncStatus{State: "stalled", CurrentHeight: 999}) {
 		t.Fatal("an old connection's sync sample was accepted")
 	}
 	if n.publishSync(2, oldStop, SyncStatus{State: "stalled", CurrentHeight: 999}) {

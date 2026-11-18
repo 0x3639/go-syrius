@@ -9,6 +9,9 @@ import { usePriceStore } from '../stores/price'
 import { useNodeStore } from '../stores/node'
 import { useBalancesStore } from '../stores/balances'
 import { usePlasmaStore } from '../stores/plasma'
+import { useStakeStore } from '../stores/stake'
+import { useSentinelStore } from '../stores/sentinel'
+import { currentRequestEpoch } from '../lib/requestEpoch'
 import { usePillarStore } from '../stores/pillar'
 import { useAcceleratorStore } from '../stores/accelerator'
 import { useTxsStore } from '../stores/txs'
@@ -25,6 +28,8 @@ const price = usePriceStore()
 const node = useNodeStore()
 const balances = useBalancesStore()
 const plasma = usePlasmaStore()
+const stake = useStakeStore()
+const sentinel = useSentinelStore()
 const pillar = usePillarStore()
 const accelerator = useAcceleratorStore()
 const txs = useTxsStore()
@@ -44,14 +49,16 @@ const title = computed(() => (route.meta.title as string) ?? '')
 // so overlapping calls collapse into the running one plus at most one trailing
 // re-run (the trailing run guarantees an account switch mid-refresh still
 // lands its data).
-let refreshing = false
-let refreshQueued = false
+let activeRefresh: { epoch: number; queued: boolean } | null = null
 async function refresh() {
-  if (refreshing) {
-    refreshQueued = true
+  if (wallet.locked || !node.connected) return
+  const epoch = currentRequestEpoch()
+  if (activeRefresh?.epoch === epoch) {
+    activeRefresh.queued = true
     return
   }
-  refreshing = true
+  const run = { epoch, queued: false }
+  activeRefresh = run
   try {
     await Promise.all([
       balances.load(),
@@ -63,38 +70,52 @@ async function refresh() {
       unreceived.load(),
     ])
   } finally {
-    refreshing = false
-    if (refreshQueued) {
-      refreshQueued = false
-      refresh()
+    if (activeRefresh === run) {
+      activeRefresh = null
+      if (run.queued && epoch === currentRequestEpoch()) refresh()
     }
   }
 }
 
-// On account switch: reset history paging, refresh data, re-point auto-receive.
-async function onActiveChange(i: number) {
+function invalidateWalletData() {
   balances.invalidate()
   txs.resetPage()
   plasma.invalidate()
   unreceived.invalidate()
+  stake.invalidate()
+  pillar.invalidate()
+  sentinel.invalidate()
+  accelerator.invalidate()
+}
+
+// On account switch: reset history paging, refresh data, re-point auto-receive.
+async function onActiveChange(i: number) {
+  const epoch = currentRequestEpoch()
+  invalidateWalletData()
+  pillar.stopPolling()
+  sentinel.stopPolling()
   refresh()
   await autoReceive.followAccount(i)
+  if (wallet.locked || epoch !== currentRequestEpoch()) return
   await walletConnect.updateAccount(wallet.activeAddress())
 }
 
 watch(
   () => wallet.activeIndex,
-  (i) => { if (i >= 0) onActiveChange(i) },
+  (i) => { if (!wallet.locked && i >= 0) onActiveChange(i) },
   { flush: 'sync' },
 )
 
 watch(() => node.connected, (connected) => {
-  balances.invalidate()
-  txs.resetPage()
-  plasma.invalidate()
-  unreceived.invalidate()
-  if (connected) refresh()
-  else tx.discard()
+  invalidateWalletData()
+  if (connected) {
+    refresh()
+    // Disconnect stops the backend worker even when its saved preference and
+    // account are unchanged. Reconnect must explicitly restore that worker.
+    if (!wallet.locked && autoReceive.enabled && wallet.activeIndex >= 0) {
+      autoReceive.start(wallet.activeIndex).catch(() => {})
+    }
+  } else tx.discard()
 }, { flush: 'sync' })
 
 // Activity pings for the backend auto-lock watchdog. Throttled: the watchdog
@@ -132,6 +153,7 @@ onMounted(async () => {
   }
 })
 onBeforeUnmount(() => {
+  activeRefresh = null
   price.stop()
   node.clearTick() // stop momentum-driven refreshes while locked
   for (const e of ACTIVITY_EVENTS) window.removeEventListener(e, onUserActivity, { capture: true })

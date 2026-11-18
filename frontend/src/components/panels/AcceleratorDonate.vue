@@ -15,7 +15,7 @@ const error = ref('')
 async function donate() {
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareDonate(amount.value, token.value))
+    await tx.prepareCall(() => Nom.PrepareDonate(amount.value, token.value))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }

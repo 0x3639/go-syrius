@@ -15,6 +15,17 @@ beforeEach(() => {
   CancelPending.mockReset().mockResolvedValue(undefined)
 })
 describe('tx store (confirm-what-you-sign)', () => {
+  it('releases a panel preview prepared before a disconnect/reconnect', async () => {
+    let finish!: (r: any) => void
+    const s = useTxStore()
+    const preparing = s.prepareCall(() => new Promise(resolve => { finish = resolve }))
+    useNodeStore().applyStatus({ connected: false })
+    useNodeStore().applyStatus({ connected: true })
+    finish({ holdId: 101 })
+    await preparing
+    expect(s.status).toBe('idle')
+    expect(CancelPending).toHaveBeenCalledWith(101)
+  })
   it('releases a late panel preview while offline', () => {
     useNodeStore().connected = false
     const s = useTxStore()

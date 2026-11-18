@@ -36,8 +36,8 @@ function unlockDate(timestamp: number) {
 // The Stake contract rewards QSR only. RewardInfo is shared with pillar and
 // sentinel APIs (which can return both assets), so this panel intentionally
 // ignores its always-zero ZNN field.
-const rewardZero = computed(() => !reward.value || reward.value.qsr === '0')
-const entries = computed(() => stakeInfo.value?.entries ?? [])
+const rewardZero = computed(() => !stake.available || !reward.value || reward.value.qsr === '0')
+const entries = computed(() => stake.available ? stakeInfo.value?.entries ?? [] : [])
 
 // NoM-confirm pattern: prepare the call, then hand the preview to the global
 // NomConfirm dialog via tx.awaitConfirm. The panel renders no modal itself.
@@ -47,23 +47,25 @@ async function doStake() {
   if (!canStake.value) return
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareStake(toBase(amount.value, 8), months.value))
+    await tx.prepareCall(() => Nom.PrepareStake(toBase(amount.value, 8), months.value))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
 }
 async function cancel(id: string) {
+  if (!stake.available || !entries.value.some(e => e.id === id && e.isMatured)) return
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareCancelStake(id))
+    await tx.prepareCall(() => Nom.PrepareCancelStake(id))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
 }
 async function collect() {
+  if (rewardZero.value) return
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareCollectReward())
+    await tx.prepareCall(() => Nom.PrepareCollectReward())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -80,6 +82,10 @@ watch(
 
 <template>
   <div class="space-y-5">
+    <p v-if="stake.status === 'error'" class="text-sm text-destructive" role="alert">
+      Staking data could not be loaded. <button class="underline" @click="stake.refresh()">Retry</button>
+    </p>
+    <p v-else-if="!stake.available" class="text-sm text-muted-foreground">Loading staking data…</p>
     <p v-if="stakeInfo" class="text-sm text-muted-foreground">
       Total staked {{ formatAmount(stakeInfo.totalAmount, 8) }} ZNN
     </p>
@@ -99,7 +105,7 @@ watch(
     <section class="space-y-3 panel-card">
       <h2 class="text-sm font-medium text-foreground">Stake ZNN</h2>
       <div class="space-y-1">
-        <AmountInput v-model="amount" label="Amount (ZNN)" aria-label="znn amount" :max="balances.available ? formatAmountExact(available, 8) : ''" />
+        <AmountInput v-model="amount" label="Amount (ZNN)" :max="balances.available ? formatAmountExact(available, 8) : ''" />
         <p class="text-xs text-muted-foreground">{{ availableLabel }}</p>
       </div>
       <Field label="Stake Duration">
@@ -129,7 +135,7 @@ watch(
           >Withdraw</Button
         >
       </div>
-      <p v-if="entries.length === 0" class="text-xs text-muted-foreground">No active stakes.</p>
+      <p v-if="stake.available && entries.length === 0" class="text-xs text-muted-foreground">No active stakes.</p>
     </section>
 
     <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>

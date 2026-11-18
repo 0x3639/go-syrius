@@ -19,6 +19,8 @@ import (
 	"github.com/zenon-network/go-zenon/chain/nom"
 	"github.com/zenon-network/go-zenon/common/types"
 	api "github.com/zenon-network/go-zenon/rpc/api"
+	"github.com/zenon-network/go-zenon/rpc/api/subscribe"
+	"github.com/zenon-network/go-zenon/rpc/server"
 )
 
 // embeddedStopTimeout bounds how long a mode transition waits for the embedded
@@ -135,19 +137,27 @@ func (n *NodeService) setNode(url string) error {
 		n.emitDisconnectedIfCurrent(gen)
 		return fmt.Errorf("node unreachable: %s", redactURLUserinfo(err.Error(), url))
 	}
-	if !n.installConnection(client, url, m.Height, m.ChainIdentifier, gen) {
-		client.Stop()
-		return errors.New("connection attempt superseded by a newer request")
+	n.mu.RLock()
+	subCtx := n.ctx
+	n.mu.RUnlock()
+	if subCtx == nil {
+		subCtx = context.Background()
 	}
-
-	if err := n.startMomentumLoop(gen); err != nil {
-		// Subscription failed: the connection cannot deliver ticks, so it must
-		// not stay installed OR keep reporting connected. degradeConnection
-		// tears down and emits disconnected atomically iff gen still owns the
-		// connection — a stale failure never touches a newer connection's state.
-		n.degradeConnection(gen)
+	setupCtx, cancel := context.WithTimeout(subCtx, momentumSubscribeTimeout)
+	sub, ch, err := client.SubscriberApi.ToMomentums(setupCtx)
+	cancel() // the context controls setup only, not the established stream
+	if err != nil {
+		client.Stop()
+		n.emitDisconnectedIfCurrent(gen)
 		return fmt.Errorf("subscribe to momentums: %w", err)
 	}
+	stop := make(chan struct{})
+	if !n.installConnection(client, url, m.Height, m.ChainIdentifier, gen, stop) {
+		client.Stop()
+		sub.Unsubscribe()
+		return errors.New("connection attempt superseded by a newer request")
+	}
+	n.startMomentumLoop(gen, sub, ch, stop)
 	return nil
 }
 
@@ -166,19 +176,20 @@ func (n *NodeService) degradeConnection(gen uint64) bool {
 	return true
 }
 
-// installConnection publishes a successfully dialed client as the current
+// installConnection publishes a client with a ready subscription as the current
 // connection iff gen is still the latest connection intent, and emits the
 // connected status inside the same critical section (so a concurrent teardown
 // can never emit BETWEEN install and emit and be overridden by our stale
 // snapshot). Returns false when superseded — the caller must Stop the orphaned
 // client.
-func (n *NodeService) installConnection(client *rpc_client.RpcClient, url string, height, chainID, gen uint64) bool {
+func (n *NodeService) installConnection(client *rpc_client.RpcClient, url string, height, chainID, gen uint64, stop chan struct{}) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.connGen != gen {
 		return false
 	}
 	n.client = client
+	n.stop = stop
 	n.url = url
 	n.height = height
 	n.chainID = chainID
@@ -237,42 +248,9 @@ func (n *NodeService) emitDisconnectedIfCurrent(gen uint64) {
 	n.emitStatusLocked(false)
 }
 
-// startMomentumLoop starts the subscription goroutine and returns an error if
-// the subscription cannot be established. gen must be the connection intent the
-// caller installed under; a superseded loop unsubscribes itself instead of
-// racing the newer connection's loop. The caller must NOT hold n.mu.
-func (n *NodeService) startMomentumLoop(gen uint64) error {
-	n.mu.RLock()
-	client := n.client
-	subCtx := n.ctx
-	current := n.connGen == gen
-	n.mu.RUnlock()
-
-	if !current || client == nil {
-		return nil // superseded; the newer connection owns the loop
-	}
-	if subCtx == nil {
-		subCtx = context.Background()
-	}
-
-	setupCtx, cancel := context.WithTimeout(subCtx, momentumSubscribeTimeout)
-	sub, ch, err := client.SubscriberApi.ToMomentums(setupCtx)
-	// Subscribe's context controls only setup, not the established stream.
-	cancel()
-	if err != nil {
-		return err
-	}
-
-	n.mu.Lock()
-	if n.connGen != gen {
-		n.mu.Unlock()
-		sub.Unsubscribe()
-		return nil // superseded while subscribing
-	}
-	n.stop = make(chan struct{})
-	stop := n.stop
-	n.mu.Unlock()
-
+// startMomentumLoop consumes the subscription installed with the client. The
+// stop channel and generation fence all results if a newer connection wins.
+func (n *NodeService) startMomentumLoop(gen uint64, sub *server.ClientSubscription, ch <-chan []subscribe.Momentum, stop <-chan struct{}) {
 	go func() {
 		defer sub.Unsubscribe()
 		for {
@@ -313,7 +291,6 @@ func (n *NodeService) startMomentumLoop(gen uint64) error {
 			}
 		}
 	}()
-	return nil
 }
 
 // disconnectLocked tears down client and stop channel.

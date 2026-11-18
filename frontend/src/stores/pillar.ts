@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import * as Nom from '../../wailsjs/go/app/NomService'
 import { currentRequestEpoch } from '../lib/requestEpoch'
+import { useNodeStore } from './node'
 import type { app } from '../../wailsjs/go/models'
 
 // A pillar Register block costs ~105,000 plasma (2 * EmbeddedSimple). We gate on
@@ -11,6 +12,8 @@ const POLL_INTERVAL_MS = 3000
 
 export const usePillarStore = defineStore('pillar', {
   state: () => ({
+    _epoch: -1,
+    _requests: { pillars: 0, delegation: 0, reward: 0, registration: 0, myPillar: 0 },
     // delegation (existing)
     delegation: null as app.DelegationInfo | null,
     pillars: [] as app.PillarSummary[],
@@ -22,6 +25,7 @@ export const usePillarStore = defineStore('pillar', {
     plasma: null as app.PlasmaInfo | null,
     pendingStep: null as 'plasma' | 'deposit' | 'register' | null,
     pollCount: 0,
+    _pollRequest: 0,
     pollHandle: null as number | null,
   }),
   getters: {
@@ -51,65 +55,91 @@ export const usePillarStore = defineStore('pillar', {
     },
   },
   actions: {
+    invalidate() {
+      this._epoch = currentRequestEpoch()
+      for (const key of Object.keys(this._requests) as (keyof typeof this._requests)[]) this._requests[key]++
+      this.pillars = []
+      this.delegation = null
+      this.reward = null
+      this.myPillar = null
+      this.depositedQsr = '0'
+      this.qsrCost = '0'
+      this.plasma = null
+    },
+    ensureScope() {
+      if (this._epoch !== currentRequestEpoch()) this.invalidate()
+      return currentRequestEpoch()
+    },
     async refreshDelegation() {
-      const epoch = currentRequestEpoch()
+      const epoch = this.ensureScope()
+      const request = ++this._requests.delegation
       try {
         const delegation = await Nom.GetDelegation()
-        if (epoch !== currentRequestEpoch()) return // stale: another account's data
-        this.delegation = delegation
-      } catch { /* not connected / locked — leave as-is */ }
+        if (epoch === currentRequestEpoch() && request === this._requests.delegation) this.delegation = delegation
+      } catch { /* retain only this scope's previous snapshot */ }
     },
     async refresh() {
-      const epoch = currentRequestEpoch()
+      const epoch = this.ensureScope()
+      const listRequest = ++this._requests.pillars
+      const delegationRequest = ++this._requests.delegation
+      const rewardRequest = ++this._requests.reward
       try {
-        const pillars = await Nom.GetPillarList()
-        const delegation = await Nom.GetDelegation()
-        const reward = await Nom.GetPillarReward()
-        if (epoch !== currentRequestEpoch()) return // stale: another account's data
-        this.pillars = pillars
-        this.delegation = delegation
-        this.reward = reward
-      } catch { /* not connected / locked — leave as-is */ }
+        const [pillars, delegation, reward] = await Promise.all([
+          Nom.GetPillarList(), Nom.GetDelegation(), Nom.GetPillarReward(),
+        ])
+        if (epoch !== currentRequestEpoch()) return
+        if (listRequest === this._requests.pillars) this.pillars = pillars
+        if (delegationRequest === this._requests.delegation) this.delegation = delegation
+        if (rewardRequest === this._requests.reward) this.reward = reward
+      } catch { /* retain only this scope's previous snapshot */ }
     },
-    // Refresh the registration view's chain state (owned pillar, deposit, cost,
-    // plasma, reward).
     async refreshRegistration() {
-      const epoch = currentRequestEpoch()
+      const epoch = this.ensureScope()
+      const request = ++this._requests.registration
+      const pillarRequest = ++this._requests.myPillar
+      const rewardRequest = ++this._requests.reward
       try {
-        const myPillar = await Nom.GetMyPillar()
-        const depositedQsr = await Nom.GetPillarDepositedQsr()
-        const qsrCost = await Nom.GetPillarQsrCost()
-        const plasma = await Nom.GetPlasmaInfo()
-        const reward = await Nom.GetPillarReward()
-        if (epoch !== currentRequestEpoch()) return // stale: another account's data
-        this.myPillar = myPillar
-        this.depositedQsr = depositedQsr
-        this.qsrCost = qsrCost
-        this.plasma = plasma
-        this.reward = reward
-      } catch { /* not connected / locked — leave as-is */ }
+        const [myPillar, depositedQsr, qsrCost, plasma, reward] = await Promise.all([
+          Nom.GetMyPillar(), Nom.GetPillarDepositedQsr(), Nom.GetPillarQsrCost(), Nom.GetPlasmaInfo(), Nom.GetPillarReward(),
+        ])
+        if (epoch !== currentRequestEpoch()) return
+        if (pillarRequest === this._requests.myPillar) this.myPillar = myPillar
+        if (rewardRequest === this._requests.reward) this.reward = reward
+        if (request === this._requests.registration) {
+          this.depositedQsr = depositedQsr
+          this.qsrCost = qsrCost
+          this.plasma = plasma
+        }
+      } catch { /* retain only this scope's previous snapshot */ }
     },
-    // Lightweight owned-pillar refresh for the always-visible status strip — just
-    // the owned pillar (1 RPC), independent of which tab is open. The pillar is
-    // owned per-address, so this must follow account switches.
+    // The always-visible status strip needs only the account's owned pillar.
     async refreshMyPillar() {
-      const epoch = currentRequestEpoch()
+      const epoch = this.ensureScope()
+      const request = ++this._requests.myPillar
       try {
         const myPillar = await Nom.GetMyPillar()
-        if (epoch !== currentRequestEpoch()) return // stale: another account's data
-        this.myPillar = myPillar
-      } catch { /* not connected / locked — leave as-is */ }
+        if (epoch === currentRequestEpoch() && request === this._requests.myPillar) this.myPillar = myPillar
+      } catch { /* retain only this scope's previous snapshot */ }
     },
     // Start polling for a just-published step to settle on-chain, then advance.
     beginPending(step: 'plasma' | 'deposit' | 'register') {
       this.stopPolling()
       this.pendingStep = step
       this.pollCount = 0
-      this.pollHandle = window.setInterval(async () => {
-        this.pollCount++
-        await this.refreshRegistration()
-        this.settleCheck()
+      const request = this._pollRequest
+      let pollingEpoch: number | null = null
+      const handle = window.setInterval(async () => {
+        const epoch = currentRequestEpoch()
+        if (!useNodeStore().connected || pollingEpoch === epoch) return
+        pollingEpoch = epoch
+        try {
+          await this.refreshRegistration()
+          if (!useNodeStore().connected || epoch !== currentRequestEpoch() || this._pollRequest !== request) return
+          this.pollCount++
+          this.settleCheck()
+        } finally { if (pollingEpoch === epoch) pollingEpoch = null }
       }, POLL_INTERVAL_MS)
+      this.pollHandle = handle
     },
     // Clear the pending state once the chain reflects the step.
     settleCheck() {
@@ -123,6 +153,7 @@ export const usePillarStore = defineStore('pillar', {
     },
     // Stop polling and clear the pending state (settle, unmount, or cancel).
     stopPolling() {
+      this._pollRequest++
       if (this.pollHandle !== null) {
         clearInterval(this.pollHandle)
         this.pollHandle = null

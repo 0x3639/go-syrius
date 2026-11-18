@@ -33,6 +33,9 @@ async function onSend(intent: { recipient: string; zts: string; amountDecimal: s
       throw new Error('Balances changed. Review the amount and try again.')
     }
     amount = toBase(intent.amountDecimal, tok.decimals)
+    if (BigInt(amount) <= 0n || BigInt(amount) > BigInt(tok.amount)) {
+      throw new Error('Amount must be positive and no greater than the available balance.')
+    }
   } catch (e: unknown) {
     toast?.show(e instanceof Error ? e.message : String(e), 'error')
     return

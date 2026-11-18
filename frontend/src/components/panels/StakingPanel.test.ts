@@ -12,6 +12,7 @@ import { useTxStore } from '../../stores/tx'
 vi.mock('nom-ui', () => ({
   Button: {
     props: ['disabled'],
+    emits: ['click'],
     template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
   },
   Input: {
@@ -42,6 +43,7 @@ function setup() {
   useBalancesStore().status = 'ready'
   useBalancesStore().items = [{ zts: 'zts1znn', symbol: 'ZNN', amount: '10000000000', decimals: 8 }]
   const stake = useStakeStore()
+  stake.status = 'ready'
   const tx = useTxStore()
   // Don't hit the (mocked-absent) backend on mount.
   vi.spyOn(stake, 'refresh').mockResolvedValue()
@@ -67,6 +69,21 @@ afterEach(() => {
 })
 
 describe('StakingPanel', () => {
+  it('disables snapshot actions after invalidation while keeping the amount draft and offering retry', async () => {
+    const { stake } = setup()
+    const w = render()
+    await w.get('[aria-label="Amount (ZNN)"]').setValue('2')
+    stake.invalidate()
+    await w.vm.$nextTick()
+    expect(w.findAll('button').find(b => b.text() === 'Collect reward')!.attributes('disabled')).toBeDefined()
+    expect(w.find('[aria-label="withdraw stake"]').exists()).toBe(false)
+    expect((w.get('[aria-label="Amount (ZNN)"]').element as HTMLInputElement).value).toBe('2')
+    stake.status = 'error'
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('Staking data could not be loaded.')
+    await w.findAll('button').find(b => b.text() === 'Retry')!.trigger('click')
+    expect(stake.refresh).toHaveBeenCalledTimes(2)
+  })
   it('shows only the QSR staking reward and enables collection', async () => {
     setup()
     const w = render()
@@ -83,7 +100,7 @@ describe('StakingPanel', () => {
     const w = render()
     await w.vm.$nextTick()
 
-    await w.get('[aria-label="znn amount"]').setValue('1.5')
+    await w.get('[aria-label="Amount (ZNN)"]').setValue('1.5')
     await w.get('[aria-label="duration months"]').setValue('3')
 
     await w.findAll('button').find(b => b.text() === 'Stake ZNN')!.trigger('click') // Stake ZNN button

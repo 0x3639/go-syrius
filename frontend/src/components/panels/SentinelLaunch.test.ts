@@ -1,3 +1,4 @@
+import { useNodeStore } from '../../stores/node'
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -19,7 +20,7 @@ import { useTxStore } from '../../stores/tx'
 const CLEARED = '5000000000000' // 50,000 QSR
 
 function setup(depositedQsr = '0', pendingStep: 'deposit' | 'register' | null = null) {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true
   const s = useSentinelStore()
   const tx = useTxStore()
   vi.spyOn(s, 'refresh').mockResolvedValue()

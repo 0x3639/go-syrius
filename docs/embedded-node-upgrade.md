@@ -6,8 +6,8 @@ An older node that followed a divergent chain may need a full resync after upgra
 
 ## Recover through Settings
 
-1. In **Settings → Node**, select **Remote**, enter a trusted endpoint for the intended network, and choose **Apply node**. Wait for the embedded node to stop. If the app reports that shutdown timed out, restart go-syrius in Remote mode before continuing.
-2. If retaining the old database for diagnosis, quit the app after the clean stop and copy only its `embedded` directory to a separate backup location. Reopen in Remote mode. Never copy a database while the embedded node is writing to it.
+1. In **Settings → Node**, select **Remote**, enter a trusted endpoint for the intended network, and choose **Apply node**. Then quit go-syrius completely and verify that its process has exited. A successful Remote connection does not prove that embedded shutdown completed.
+2. With the process stopped, optionally copy only its `embedded` directory to a separate backup location for diagnosis. Reopen go-syrius in Remote mode before continuing. Never copy a database while the embedded node is writing to it.
 3. Choose **Delete embedded data**. This removes the app's downloaded node data and requires a full download again. It does not remove the wallet keystores or settings. Do not delete the parent application data directory.
 4. Select **Embedded**, choose **Apply node**, and confirm **Start embedded**. Allow the node to resync; this can take hours and several GB of disk space. Check peer connectivity, progress, and agreement with trusted nodes before relying on the recovered node.
 

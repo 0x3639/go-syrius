@@ -1,3 +1,4 @@
+import { useNodeStore } from '../../stores/node'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -42,7 +43,7 @@ const REWARD = { znn: '100000000', qsr: '0' }
 const DELEGATION = { name: 'Pillar-One', status: 1, weight: '100000000' }
 
 function setup() {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true
   const pillar = usePillarStore()
   const tx = useTxStore()
   // Don't hit the (mocked-absent) backend on mount.

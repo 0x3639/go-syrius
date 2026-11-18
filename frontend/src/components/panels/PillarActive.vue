@@ -57,7 +57,7 @@ const canSave = computed(
 async function collect() {
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareCollectPillarReward())
+    await tx.prepareCall(() => Nom.PrepareCollectPillarReward())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -65,7 +65,7 @@ async function collect() {
 async function revoke() {
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareRevokePillar(myPillar.value?.name ?? ''))
+    await tx.prepareCall(() => Nom.PrepareRevokePillar(myPillar.value?.name ?? ''))
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -73,8 +73,7 @@ async function revoke() {
 async function saveEdit() {
   error.value = ''
   try {
-    tx.awaitConfirm(
-      await Nom.PrepareUpdatePillar(
+    await tx.prepareCall(() => Nom.PrepareUpdatePillar(
         myPillar.value?.name ?? '',
         editProducer.value.trim(),
         editReward.value.trim(),

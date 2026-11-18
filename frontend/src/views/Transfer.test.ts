@@ -18,7 +18,7 @@ describe('Transfer page', () => {
     expect(w.findComponent({ name: 'SendForm' }).exists() || w.find('send-form-stub').exists()).toBe(true)
   })
 
-  it.each([false, true])('rechecks token metadata after retained hold cleanup (invalidated: %s)', async (invalidate) => {
+  it.each(['unchanged', 'invalidated', 'reduced', 'equal'])('rechecks the balance after retained hold cleanup (%s)', async (change) => {
     const tx = useTxStore()
     tx.status = 'error'
     tx.preview = { holdId: 71 } as any
@@ -43,11 +43,13 @@ describe('Transfer page', () => {
     expect(discard).toHaveBeenCalledOnce()
     expect(prepare).not.toHaveBeenCalled()
 
-    if (invalidate) useBalancesStore().invalidate()
+    if (change === 'invalidated') useBalancesStore().invalidate()
+    if (change === 'reduced') useBalancesStore().items[0].amount = '500000'
+    if (change === 'equal') useBalancesStore().items[0].amount = '1000000'
     finishDiscard()
     await Promise.resolve()
     await Promise.resolve()
-    if (invalidate) expect(prepare).not.toHaveBeenCalled()
+    if (change === 'invalidated' || change === 'reduced') expect(prepare).not.toHaveBeenCalled()
     else expect(prepare).toHaveBeenCalledWith('z1qto', 'zts1znn', '1000000')
   })
 })

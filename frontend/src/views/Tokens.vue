@@ -49,7 +49,7 @@ function fail(e: any) { error.value = e?.message ?? String(e) }
 
 async function issue() {
   error.value = ''
-  try { tx.awaitConfirm(await Nom.PrepareIssueToken(iName.value, iSymbol.value, iDomain.value, iTotal.value, iMax.value, iDecimals.value, iMintable.value, iBurnable.value, iUtility.value)) } catch (e) { fail(e) }
+  try { await tx.prepareCall(() => Nom.PrepareIssueToken(iName.value, iSymbol.value, iDomain.value, iTotal.value, iMax.value, iDecimals.value, iMintable.value, iBurnable.value, iUtility.value)) } catch (e) { fail(e) }
 }
 // Mint/Update expand one shared inline row per token: opening one closes the
 // other, clicking the same action again collapses it.
@@ -60,7 +60,7 @@ function startMint(zts: string) {
 }
 async function mint() {
   error.value = ''
-  try { tx.awaitConfirm(await Nom.PrepareMint(mintZts.value, mintAmount.value, mintReceiver.value)) } catch (e) { fail(e) }
+  try { await tx.prepareCall(() => Nom.PrepareMint(mintZts.value, mintAmount.value, mintReceiver.value)) } catch (e) { fail(e) }
 }
 async function doSearch() {
   error.value = ''
@@ -81,7 +81,7 @@ function clearSearch() {
 }
 async function burn(zts: string, amount: string) {
   error.value = ''
-  try { tx.awaitConfirm(await Nom.PrepareBurn(zts, amount)) } catch (e) { fail(e) }
+  try { await tx.prepareCall(() => Nom.PrepareBurn(zts, amount)) } catch (e) { fail(e) }
 }
 function startUpdate(zts: string, owner: string) {
   mintZts.value = ''; burnZts.value = ''
@@ -97,7 +97,7 @@ function closeActionRow() { mintZts.value = ''; updZts.value = ''; burnZts.value
 async function update(t: app.TokenInfo) {
   error.value = ''
   try {
-    tx.awaitConfirm(await Nom.PrepareUpdateToken(updZts.value, updOwner.value, t.isMintable && !updDisableMint.value, t.isBurnable && !updDisableBurn.value))
+    await tx.prepareCall(() => Nom.PrepareUpdateToken(updZts.value, updOwner.value, t.isMintable && !updDisableMint.value, t.isBurnable && !updDisableBurn.value))
   } catch (e) { fail(e) }
 }
 </script>

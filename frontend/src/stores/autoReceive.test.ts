@@ -53,6 +53,27 @@ describe('autoReceive store', () => {
     expect(s.account).toBe(1)
   })
 
+  it('re-arms the same account after connection recovery while locked', async () => {
+    GetSettings.mockResolvedValue({ autoReceive: true })
+    const s = useAutoReceiveStore()
+    await s.init(0)
+    StartAutoReceive.mockClear()
+    StopAutoReceive.mockClear()
+    // The backend worker was stopped with the lost connection while the
+    // authenticated shell was absent. Its frontend account value survives.
+    await s.init(0)
+    expect(StopAutoReceive).toHaveBeenCalledTimes(1)
+    expect(StartAutoReceive).toHaveBeenCalledTimes(1)
+    expect(s.account).toBe(0)
+  })
+
+  it('does not enable auto-receive on unlock when the preference is off', async () => {
+    const s = useAutoReceiveStore()
+    s.account = 0
+    await s.init(0)
+    expect(StartAutoReceive).not.toHaveBeenCalled()
+  })
+
   it('reflects the backend receiving:active event', () => {
     const s = useAutoReceiveStore()
     s.wireEvents()

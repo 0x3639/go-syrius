@@ -928,6 +928,7 @@ func TestDisconnectStopsSyncPoller(t *testing.T) {
 // unable to reconnect without an app restart.
 func TestConnectReusesRunningEmbeddedNode(t *testing.T) {
 	n := newTestNode(t)
+	n.embeddedReconnectDelay = time.Minute // this case exercises only the manual attempt
 	if err := n.config.updateSettings(func(s *Settings) error {
 		s.NodeMode = "embedded"
 		return nil
@@ -941,7 +942,8 @@ func TestConnectReusesRunningEmbeddedNode(t *testing.T) {
 	}
 	// Simulate the post-degrade state: node running, wallet connection gone.
 	n.mu.Lock()
-	n.embedded = stubHandle{url: "ws://127.0.0.1:1", dir: "d"}
+	h := &reconnectHandle{url: "ws://127.0.0.1:1"}
+	n.embedded = h
 	n.mode = "embedded"
 	n.mu.Unlock()
 
@@ -949,6 +951,10 @@ func TestConnectReusesRunningEmbeddedNode(t *testing.T) {
 	if starts != 0 {
 		t.Fatalf("Connect must reuse the running embedded node, started %d new node(s)", starts)
 	}
+	if n.embedded != h || h.stops.Load() != 0 {
+		t.Fatal("a failed wallet reconnect must leave the existing node syncing")
+	}
+	n.Disconnect() // supersede the scheduled background retry
 }
 
 // The embedded node must hold an App Nap prevention assertion for exactly as

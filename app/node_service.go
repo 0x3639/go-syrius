@@ -80,6 +80,9 @@ type NodeService struct {
 	embedded      embeddedHandle
 	embeddedStart func(dataDir string) (embeddedHandle, error)
 	syncStop      chan struct{}
+	// Initial delay for restoring only the wallet's connection to an already
+	// running embedded node. Set once at construction (shortened by tests).
+	embeddedReconnectDelay time.Duration
 
 	// embeddedWedged latches when an embedded stop timed out: the abandoned
 	// node still owns the WS port, so starting another in-process is doomed —
@@ -102,7 +105,7 @@ type NodeService struct {
 }
 
 func newNodeService(c *ConfigService, w *WalletService) *NodeService {
-	n := &NodeService{config: c, wallet: w}
+	n := &NodeService{config: c, wallet: w, embeddedReconnectDelay: time.Second}
 	n.embeddedStart = func(dataDir string) (embeddedHandle, error) {
 		return embeddednode.Start(dataDir)
 	}
@@ -123,7 +126,12 @@ func (n *NodeService) setNode(url string) error {
 	n.emitStatusLocked(false)
 	gen := n.connGen
 	n.mu.Unlock()
+	return n.dialNode(url, gen)
+}
 
+// dialNode connects a candidate for an already-reserved generation. It must
+// never create a new intent: shutdown may supersede it before dialing begins.
+func (n *NodeService) dialNode(url string, gen uint64) error {
 	client, err := rpc_client.NewRpcClient(url)
 	if err != nil {
 		// A dial can take seconds; only emit if this call still owns the
@@ -173,6 +181,9 @@ func (n *NodeService) degradeConnection(gen uint64) bool {
 	}
 	n.disconnectLocked()
 	n.emitStatusLocked(false)
+	if n.mode == "embedded" && n.embedded != nil && !n.embeddedStopping && !n.embeddedWedged {
+		go n.reconnectEmbedded(n.connGen)
+	}
 	return true
 }
 
@@ -477,7 +488,8 @@ func (n *NodeService) startEmbedded() error {
 	n.mu.Unlock()
 	n.emitStatus(false)
 
-	if h == nil {
+	startedHere := h == nil
+	if startedHere {
 		dir, err := n.config.dataDir()
 		if err != nil {
 			return err
@@ -496,7 +508,16 @@ func (n *NodeService) startEmbedded() error {
 		n.appNapBegin("embedded Zenon node running")
 	}
 	if cerr := n.setNode(h.WSURL()); cerr != nil {
-		n.stopEmbedded() // tear down the just-started node so Retry can start fresh
+		if startedHere {
+			n.stopEmbedded() // only tear down a node this attempt started
+		} else {
+			// A busy RPC endpoint must not stop an existing chain sync. Retry
+			// the wallet connection in the background without restarting the node.
+			n.mu.RLock()
+			gen := n.connGen
+			n.mu.RUnlock()
+			go n.reconnectEmbedded(gen)
+		}
 		return cerr
 	}
 	n.startSyncPoller()
@@ -589,6 +610,9 @@ func (n *NodeService) stopEmbedded() {
 	h := n.embedded
 	n.embedded = nil
 	if h != nil {
+		// Invalidate recovery and any candidate dial before stopping the node.
+		// OnShutdown calls this without opMu, so a reconnect may be in flight.
+		n.disconnectLocked()
 		// Same critical section as the nil-out: there must be no instant in
 		// which the handle is gone and neither flag is set.
 		n.embeddedStopping = true

@@ -54,12 +54,13 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
       this.account = -1
     },
     // Load the persisted flag + resume (the subscription doesn't survive a
-    // restart). Skips a redundant restart when already on this account.
+    // restart). Re-arm on every unlock even for the same account: the node
+    // connection can recover while AppShell is unmounted and stop the old worker.
     async init(activeIndex: number) {
       this.wireEvents()
       try {
         this.enabled = (await Cfg.GetSettings()).autoReceive
-        if (this.enabled && this.account !== activeIndex) await this.start(activeIndex)
+        if (this.enabled) await this.start(activeIndex)
       } catch {
         /* offline/locked — leave as-is */
       }

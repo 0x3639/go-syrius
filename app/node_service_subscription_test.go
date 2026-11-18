@@ -14,6 +14,10 @@ import (
 // Answer frontier reads, with an optional subscription acknowledgement. The
 // returned socket lets the test simulate remote transport loss after setup.
 func momentumTestServer(t *testing.T, acknowledge bool) (string, <-chan *websocket.Conn) {
+	return momentumTestServerWithFrontierGate(t, acknowledge, nil)
+}
+
+func momentumTestServerWithFrontierGate(t *testing.T, acknowledge bool, rejectFrontier func() bool) (string, <-chan *websocket.Conn) {
 	t.Helper()
 	subscribed := make(chan *websocket.Conn, 1)
 	var socketsMu sync.Mutex
@@ -45,6 +49,12 @@ func momentumTestServer(t *testing.T, acknowledge bool) (string, <-chan *websock
 			var result any
 			switch req.Method {
 			case "ledger.getFrontierMomentum":
+				if rejectFrontier != nil && rejectFrontier() {
+					if err := conn.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": req.ID, "error": map[string]any{"code": -32000, "message": "node busy"}}); err != nil {
+						return
+					}
+					continue
+				}
 				result = map[string]any{"height": 42, "chainIdentifier": 1}
 			case "ledger.subscribe":
 				if !acknowledge {

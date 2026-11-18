@@ -50,12 +50,12 @@ function toggle(id: string) {
   expanded.value = expanded.value === id ? null : id
 }
 function label(f: Filter): string {
-  return f === 'Voting' ? 'Active AZs' : f
+  return f
 }
 </script>
 
 <template>
-  <div class="space-y-3 p-4">
+  <div class="space-y-5">
     <div class="flex flex-wrap gap-1">
       <button
         v-for="f in FILTERS"
@@ -74,7 +74,7 @@ function label(f: Filter): string {
     <div
       v-for="p in filtered"
       :key="p.id"
-      class="space-y-1 rounded-lg border border-border bg-card p-3 text-sm"
+      class="space-y-1 panel-card text-sm"
     >
       <div class="flex items-center justify-between gap-2">
         <span class="font-medium text-foreground">{{ p.name }}</span>
@@ -83,15 +83,15 @@ function label(f: Filter): string {
         >
       </div>
       <p class="text-xs text-muted-foreground">
-        {{ formatAmount(p.znnFundsNeeded, 8) }} ZNN / {{ formatAmount(p.qsrFundsNeeded, 8) }} QSR ·
-        {{ p.votes.yes }}/{{ p.votes.no }}/{{ p.votes.total }}
+        {{ formatAmount(p.znnFundsNeeded, 8) }} ZNN · {{ formatAmount(p.qsrFundsNeeded, 8) }} QSR ·
+        {{ p.votes.yes }} yes · {{ p.votes.no }} no · {{ p.votes.total }} total votes
       </p>
       <Button variant="outline" class="px-2 py-1 text-xs" :aria-label="`phases ${p.name}`" @click="toggle(p.id)">
         {{ expanded === p.id ? 'Hide phases' : 'Phases' }}
       </Button>
       <template v-if="expanded === p.id">
         <div v-for="ph in p.phases" :key="ph.id" class="ml-3 mt-1 text-xs text-muted-foreground">
-          {{ ph.name }} · {{ statusLabel(ph.status) }} · {{ ph.votes.yes }}/{{ ph.votes.no }}/{{ ph.votes.total }}
+          {{ ph.name }} · {{ statusLabel(ph.status) }} · {{ ph.votes.yes }} yes · {{ ph.votes.no }} no · {{ ph.votes.total }} total votes
           <span v-if="phasePassing(ph)" class="text-primary"> · awaiting payout</span>
         </div>
         <p v-if="!p.phases || p.phases.length === 0" class="ml-3 mt-1 text-xs text-muted-foreground">No phases.</p>

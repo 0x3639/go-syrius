@@ -6,10 +6,6 @@ export function CheckPillarName(arg1:string):Promise<boolean>;
 
 export function EstimatePlasma(arg1:string):Promise<number>;
 
-export function GetAction(arg1:string):Promise<app.ActionDTO>;
-
-export function GetActions(arg1:number,arg2:number):Promise<app.ActionListDTO>;
-
 export function GetActivePillarCount():Promise<number>;
 
 export function GetDelegation():Promise<app.DelegationInfo>;
@@ -39,8 +35,6 @@ export function GetPlasmaInfo():Promise<app.PlasmaInfo>;
 export function GetProject(arg1:string):Promise<app.ProjectDTO>;
 
 export function GetProjects(arg1:number,arg2:number):Promise<app.ProjectListDTO>;
-
-export function GetProposeKinds():Promise<Array<app.ProposeKindDTO>>;
 
 export function GetSentinel():Promise<app.SentinelInfo>;
 
@@ -78,11 +72,7 @@ export function PrepareDepositQsr(arg1:string):Promise<app.CallPreview>;
 
 export function PrepareDonate(arg1:string,arg2:string):Promise<app.CallPreview>;
 
-export function PrepareExecuteAction(arg1:string):Promise<app.CallPreview>;
-
 export function PrepareFuse(arg1:string,arg2:string):Promise<app.CallPreview>;
-
-export function PrepareGovernanceVote(arg1:string,arg2:string,arg3:number):Promise<app.CallPreview>;
 
 export function PrepareIssueToken(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:number,arg7:boolean,arg8:boolean,arg9:boolean):Promise<app.CallPreview>;
 
@@ -91,8 +81,6 @@ export function PrepareMint(arg1:string,arg2:string,arg3:string):Promise<app.Cal
 export function PreparePillarDepositQsr(arg1:string):Promise<app.CallPreview>;
 
 export function PreparePillarWithdrawQsr():Promise<app.CallPreview>;
-
-export function PrepareProposeAction(arg1:string,arg2:string,arg3:string,arg4:string,arg5:Record<string, string>):Promise<app.CallPreview>;
 
 export function PrepareRegisterPillar(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<app.CallPreview>;
 

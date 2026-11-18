@@ -200,22 +200,6 @@ func (c *ConfigService) SetAutoReceive(v bool) error {
 	})
 }
 
-// SetShowGovernance persists the (testnet-only) Governance tab visibility.
-func (c *ConfigService) SetShowGovernance(v bool) error {
-	return c.updateSettings(func(s *Settings) error {
-		s.ShowGovernance = v
-		return nil
-	})
-}
-
-// IsGovernanceFeatureEnabled reports the temporary governance kill switch
-// (governanceFeatureEnabled in nom_governance.go). Read-only and deliberately
-// NOT part of Settings: compile-time state must never persist to — or be
-// resurrected from — settings.json.
-func (c *ConfigService) IsGovernanceFeatureEnabled() bool {
-	return governanceFeatureEnabled
-}
-
 // GetBuildInfo reports the running binary's release version and build commit.
 // Read-only and secret-free by construction — safe to expose to the WebView.
 func (c *ConfigService) GetBuildInfo() BuildInfo {

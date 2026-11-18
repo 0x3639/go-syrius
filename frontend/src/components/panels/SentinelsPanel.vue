@@ -27,7 +27,7 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-4 p-4">
+  <div class="space-y-5">
     <SentinelActive v-if="active" />
     <SentinelLaunch v-else />
   </div>

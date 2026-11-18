@@ -189,8 +189,8 @@ function hide() { revealed.value = '' }
 </script>
 
 <template>
-  <div class="mx-auto max-w-[48rem] space-y-6">
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+  <div class="page-content">
+    <section class="panel-card space-y-2">
       <h2 class="text-sm text-muted-foreground">Appearance</h2>
       <label class="flex items-center gap-2 text-foreground">
         <input
@@ -206,7 +206,7 @@ function hide() { revealed.value = '' }
       </p>
     </section>
 
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+    <section class="panel-card space-y-2">
       <h2 class="text-sm text-muted-foreground">Wallet name</h2>
       <input class="w-full rounded-md border border-input bg-transparent px-3 py-2 text-foreground" placeholder="Wallet name" v-model="walletName" aria-label="wallet name" />
       <Button :disabled="!canRename" @click="doRename">Rename</Button>
@@ -214,7 +214,7 @@ function hide() { revealed.value = '' }
       <p v-if="renameErr" class="text-destructive text-sm" role="alert">{{ renameErr }}</p>
     </section>
 
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+    <section class="panel-card space-y-2">
       <h2 class="text-sm text-muted-foreground">Change password</h2>
       <input type="password" class="w-full rounded-md border border-input bg-transparent px-3 py-2 text-foreground" placeholder="Current password" v-model="oldP" aria-label="current password" />
       <input type="password" class="w-full rounded-md border border-input bg-transparent px-3 py-2 text-foreground" placeholder="New password" v-model="newP" aria-label="new password" />
@@ -224,7 +224,7 @@ function hide() { revealed.value = '' }
       <p v-if="cpErr" class="text-destructive text-sm" role="alert">{{ cpErr }}</p>
     </section>
 
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+    <section class="panel-card space-y-2">
       <h2 class="text-sm text-muted-foreground">Reveal mnemonic</h2>
       <p class="text-destructive text-xs">Anyone who sees these words controls your funds. Reveal only in private.</p>
       <template v-if="revealed">
@@ -238,7 +238,7 @@ function hide() { revealed.value = '' }
       <p v-if="revErr" class="text-destructive text-sm" role="alert">{{ revErr }}</p>
     </section>
 
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+    <section class="panel-card space-y-2">
       <h2 class="text-sm text-muted-foreground">Auto-lock</h2>
       <label class="flex items-center gap-2 text-foreground">
         Lock the wallet after
@@ -262,7 +262,7 @@ function hide() { revealed.value = '' }
       <p v-if="autoLockErr" class="text-destructive text-sm" role="alert">{{ autoLockErr }}</p>
     </section>
 
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+    <section class="panel-card space-y-2">
       <h2 class="text-sm text-muted-foreground">Node</h2>
       <label class="flex items-center gap-2 text-foreground"><input type="radio" v-model="nodeMode" value="remote" @change="modeDirty = true" /> Remote</label>
       <input class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm text-foreground" v-model="remoteUrl" @input="remoteDirty = true" aria-label="wss endpoint url" />
@@ -276,10 +276,10 @@ function hide() { revealed.value = '' }
              peer answered stalls at targetHeight 0, and that must not read as the
              optimistic "connecting to peers…". Heights only when we have a target. -->
         <p v-if="node.sync.state === 'stalled'" class="text-destructive" role="alert">
-          sync stalled — restart go-syrius if this persists<template v-if="node.sync.targetHeight > 0"> · {{ node.sync.currentHeight }} / {{ node.sync.targetHeight }}</template>
+          sync stalled — restart go-syrius if this persists<template v-if="node.sync.targetHeight > 0"> · {{ node.sync.currentHeight.toLocaleString('en-US') }} / {{ node.sync.targetHeight.toLocaleString('en-US') }}</template>
         </p>
         <p v-else-if="node.sync.targetHeight === 0" class="text-muted-foreground">connecting to peers…</p>
-        <p v-else>{{ node.sync.state }} · {{ node.sync.currentHeight }} / {{ node.sync.targetHeight }} ({{ node.sync.percent.toFixed(1) }}%)<template v-if="node.sync.etaSeconds > 0"> · ETA {{ fmtEta(node.sync.etaSeconds) }}</template></p>
+        <p v-else>{{ node.sync.state }} · {{ node.sync.currentHeight.toLocaleString('en-US') }} / {{ node.sync.targetHeight.toLocaleString('en-US') }} ({{ node.sync.percent.toFixed(1) }}%)<template v-if="node.sync.etaSeconds > 0"> · ETA {{ fmtEta(node.sync.etaSeconds) }}</template></p>
         <p class="text-muted-foreground">{{ node.sync.peers }} peers · {{ (embeddedSize / 1e9).toFixed(2) }} GB on disk</p>
       </div>
 
@@ -297,13 +297,14 @@ function hide() { revealed.value = '' }
         <Button :disabled="applyingNode" @click="applyNode" aria-label="Apply node">Apply node</Button>
         <Button v-if="!node.connected" variant="outline" @click="retryNode">Retry</Button>
       </div>
-      <p class="text-xs text-muted-foreground">{{ node.connected ? `Connected (${node.mode}) · height ${node.height}` : `Disconnected (${node.mode})` }}</p>
+      <p class="text-xs text-muted-foreground">{{ node.connected ? `Connected (${node.mode}) · height ${node.height.toLocaleString('en-US')}` : `Disconnected (${node.mode})` }}</p>
       <p v-if="nodeMsg" class="text-primary text-sm">{{ nodeMsg }}</p>
       <p v-if="nodeErr" class="text-destructive text-sm" role="alert">{{ nodeErr }}</p>
     </section>
 
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
-      <h2 class="text-sm text-muted-foreground">Network Configuration</h2>
+    <details class="panel-card">
+      <summary class="disclosure-title">Advanced network settings</summary>
+      <div class="mt-4 space-y-3">
       <p class="text-xs text-muted-foreground">The chain the wallet builds transactions for (1 = mainnet, 73404 = testnet).</p>
       <Field label="Chain ID">
         <Input type="number" v-model="chainId" aria-label="chain id" />
@@ -343,25 +344,10 @@ function hide() { revealed.value = '' }
         <p v-if="mainnetMsg" class="text-primary text-sm">{{ mainnetMsg }}</p>
         <p v-if="mainnetErr" class="text-destructive text-sm" role="alert">{{ mainnetErr }}</p>
       </div>
-    </section>
+      </div>
+    </details>
 
-    <section v-if="ui.governanceFeatureEnabled" class="rounded-xl border border-border bg-card p-5 space-y-2">
-      <h2 class="text-sm text-muted-foreground">Testnet features</h2>
-      <label class="flex items-center gap-2 text-foreground">
-        <input
-          type="checkbox"
-          aria-label="show governance"
-          :checked="ui.showGovernance"
-          @change="ui.setShowGovernance(($event.target as HTMLInputElement).checked)"
-        />
-        Show Governance
-      </label>
-      <p class="text-xs text-destructive">
-        Governance is experimental and only functional on testnet. Enabling it adds a Governance tab to the navigation.
-      </p>
-    </section>
-
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+    <section class="panel-card space-y-2">
       <h2 class="text-sm text-muted-foreground">About</h2>
       <div class="flex justify-between gap-4 text-sm">
         <span class="text-muted-foreground">Version</span>

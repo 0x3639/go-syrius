@@ -75,10 +75,6 @@ type callExpect struct {
 	zts    types.ZenonTokenStandard
 	amount *big.Int
 	data   []byte
-	// policy, when non-nil, re-asserts a prepare-time gate at publish time (e.g.
-	// the governance testnet-only rule). Without it the gate would be checked
-	// only while preparing and could be raced by a chain change before confirm.
-	policy func() error
 }
 
 // assertMatches verifies a built block is sent by the expected account and
@@ -290,14 +286,6 @@ func (t *TxService) confirmPublishBlock(holdId uint64) (*nom.AccountBlock, error
 	t.mu.Unlock()
 	if template == nil {
 		return nil, errors.New("no pending transaction")
-	}
-	// Re-assert any prepare-time policy gate (e.g. governance testnet-only)
-	// before publishing. Like the mainnet guard: refuse WITHOUT clearing, so the
-	// user can reconnect to the right network and retry.
-	if expect.policy != nil {
-		if err := expect.policy(); err != nil {
-			return nil, err
-		}
 	}
 	if holdId == 0 || holdId != holdID {
 		// Held block ≠ the one the confirm dialog displayed (or no identity was
@@ -511,7 +499,7 @@ func (t *TxService) prepareCallWithEffectDecimals(template *nom.AccountBlock, ex
 	if t.wallet.sessionGen() != gen {
 		return CallPreview{}, errors.New("wallet state changed during prepare")
 	}
-	holdID, err := t.holdPending(template, callExpect{from: from, to: expect.to, zts: expect.zts, amount: new(big.Int).Set(expect.amount), data: append([]byte(nil), expect.data...), policy: expect.policy}, gen)
+	holdID, err := t.holdPending(template, callExpect{from: from, to: expect.to, zts: expect.zts, amount: new(big.Int).Set(expect.amount), data: append([]byte(nil), expect.data...)}, gen)
 	if err != nil {
 		return CallPreview{}, err
 	}

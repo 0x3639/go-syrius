@@ -82,7 +82,7 @@ export const useNodeStore = defineStore('node', {
         const s = await N.NodeStatus()
         // A push that arrived while the RPC was in flight is fresher than this
         // snapshot — never let the stale pull overwrite it (it could briefly
-        // re-open the fail-closed governance gate with an old testnet chainId).
+        // restore an old testnet chainId).
         if (seq !== this._statusSeq) return
         this.applyStatus(s)
       } catch { /* not connected; events will hydrate later */ }

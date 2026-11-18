@@ -16,120 +16,6 @@ export namespace app {
 	        this.label = source["label"];
 	    }
 	}
-	export class VoteBreakdownDTO {
-	    total: number;
-	    yes: number;
-	    no: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new VoteBreakdownDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.total = source["total"];
-	        this.yes = source["yes"];
-	        this.no = source["no"];
-	    }
-	}
-	export class ActionDTO {
-	    id: string;
-	    owner: string;
-	    name: string;
-	    description: string;
-	    url: string;
-	    destination: string;
-	    data: string;
-	    type: number;
-	    round: number;
-	    currentVoteId: string;
-	    status: number;
-	    executed: boolean;
-	    expired: boolean;
-	    creationTimestamp: number;
-	    roundStartTimestamp: number;
-	    activePillarThreshold: number;
-	    directionalThreshold: number;
-	    votingPeriod: number;
-	    votes: VoteBreakdownDTO;
-	
-	    static createFrom(source: any = {}) {
-	        return new ActionDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.owner = source["owner"];
-	        this.name = source["name"];
-	        this.description = source["description"];
-	        this.url = source["url"];
-	        this.destination = source["destination"];
-	        this.data = source["data"];
-	        this.type = source["type"];
-	        this.round = source["round"];
-	        this.currentVoteId = source["currentVoteId"];
-	        this.status = source["status"];
-	        this.executed = source["executed"];
-	        this.expired = source["expired"];
-	        this.creationTimestamp = source["creationTimestamp"];
-	        this.roundStartTimestamp = source["roundStartTimestamp"];
-	        this.activePillarThreshold = source["activePillarThreshold"];
-	        this.directionalThreshold = source["directionalThreshold"];
-	        this.votingPeriod = source["votingPeriod"];
-	        this.votes = this.convertValues(source["votes"], VoteBreakdownDTO);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class ActionListDTO {
-	    count: number;
-	    list: ActionDTO[];
-	
-	    static createFrom(source: any = {}) {
-	        return new ActionListDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.count = source["count"];
-	        this.list = this.convertValues(source["list"], ActionDTO);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	export class BuildInfo {
 	    version: string;
 	    commit: string;
@@ -391,6 +277,22 @@ export namespace app {
 	        this.revokeCooldown = source["revokeCooldown"];
 	    }
 	}
+	export class VoteBreakdownDTO {
+	    total: number;
+	    yes: number;
+	    no: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new VoteBreakdownDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.yes = source["yes"];
+	        this.no = source["no"];
+	    }
+	}
 	export class PhaseDTO {
 	    id: string;
 	    projectId: string;
@@ -575,66 +477,6 @@ export namespace app {
 		    return a;
 		}
 	}
-	export class ProposeFieldDTO {
-	    key: string;
-	    label: string;
-	    type: string;
-	    placeholder: string;
-	    required: boolean;
-	    min: number;
-	    max: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new ProposeFieldDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.key = source["key"];
-	        this.label = source["label"];
-	        this.type = source["type"];
-	        this.placeholder = source["placeholder"];
-	        this.required = source["required"];
-	        this.min = source["min"];
-	        this.max = source["max"];
-	    }
-	}
-	export class ProposeKindDTO {
-	    kind: string;
-	    label: string;
-	    group: string;
-	    fields: ProposeFieldDTO[];
-	
-	    static createFrom(source: any = {}) {
-	        return new ProposeKindDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.kind = source["kind"];
-	        this.label = source["label"];
-	        this.group = source["group"];
-	        this.fields = this.convertValues(source["fields"], ProposeFieldDTO);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	export class RewardInfo {
 	    znn: string;
 	    qsr: string;
@@ -728,7 +570,6 @@ export namespace app {
 	    chainId: number;
 	    autoReceive: boolean;
 	    autoLockMinutes?: number;
-	    showGovernance: boolean;
 	    accountLabels: Record<string, string>;
 	    accountCounts: Record<string, number>;
 	    contacts: Contact[];
@@ -749,7 +590,6 @@ export namespace app {
 	        this.chainId = source["chainId"];
 	        this.autoReceive = source["autoReceive"];
 	        this.autoLockMinutes = source["autoLockMinutes"];
-	        this.showGovernance = source["showGovernance"];
 	        this.accountLabels = source["accountLabels"];
 	        this.accountCounts = source["accountCounts"];
 	        this.contacts = this.convertValues(source["contacts"], Contact);

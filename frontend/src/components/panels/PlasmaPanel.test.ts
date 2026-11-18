@@ -3,6 +3,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import PlasmaPanel from './PlasmaPanel.vue'
 import { usePlasmaStore } from '../../stores/plasma'
+import { useBalancesStore } from '../../stores/balances'
+import { useNodeStore } from '../../stores/node'
 import { useTxStore } from '../../stores/tx'
 
 // Stub nom-ui Input/Button to plain elements that honour v-model + click, so we
@@ -36,6 +38,9 @@ import * as Nom from '../../../wailsjs/go/app/NomService'
 
 function setup() {
   setActivePinia(createPinia())
+  useNodeStore().connected = true
+  useBalancesStore().status = 'ready'
+  useBalancesStore().items = [{ zts: 'zts1qsr', symbol: 'QSR', amount: '10000000000', decimals: 8 }]
   const plasma = usePlasmaStore()
   const tx = useTxStore()
   // Don't hit the (mocked-absent) backend on mount.
@@ -66,7 +71,7 @@ describe('PlasmaPanel', () => {
     const w = render()
     await w.vm.$nextTick()
 
-    const addr = 'z1qtestbeneficiaryaddress000000000000000000'
+    const addr = 'z1' + 'q'.repeat(38)
     await w.get('[aria-label="beneficiary"]').setValue(addr)
     await w.get('[aria-label="qsr amount"]').setValue('50')
 

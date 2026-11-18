@@ -50,7 +50,7 @@ describe('node store', () => {
     // …but a fresher push (mainnet) lands before the RPC resolves:
     handlers['node:status']?.({ connected: true, chainId: 1, height: 50, mode: 'remote' })
     await new Promise((r) => setTimeout(r))
-    expect(s.chainId).toBe(1) // stale pull must not re-open the governance gate
+    expect(s.chainId).toBe(1) // stale pull must not restore the old chain
     expect(s.height).toBe(50)
   })
 

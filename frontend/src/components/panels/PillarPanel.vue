@@ -32,7 +32,7 @@ watch(
 </script>
 
 <template>
-  <div class="p-4">
+  <div>
     <Tabs v-model="sub">
       <TabsList class="w-full justify-start">
         <TabsTrigger value="Delegate">Delegate</TabsTrigger>

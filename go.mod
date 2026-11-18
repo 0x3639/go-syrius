@@ -2,14 +2,14 @@ module github.com/0x3639/go-syrius
 
 go 1.26.0
 
-toolchain go1.26.7
+toolchain go1.26.11
 
 require (
 	github.com/0x3639/znn-sdk-go v0.5.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/tyler-smith/go-bip39 v1.1.0
 	github.com/wailsapp/wails/v2 v2.12.0
-	github.com/zenon-network/go-zenon v0.0.8-alphanet.0.20250515170359-667a69d9e9a4
+	github.com/zenon-network/go-zenon v0.0.10-alphanet
 )
 
 require (
@@ -67,5 +67,3 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 )
-
-replace github.com/zenon-network/go-zenon => github.com/0x3639/go-zenon v0.0.0-20260615011802-81c247408859

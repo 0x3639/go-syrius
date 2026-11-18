@@ -19,10 +19,8 @@ vi.mock('../../wailsjs/go/app/NodeService', () => ({
 const GetSettings = vi.hoisted(() => vi.fn().mockResolvedValue({ chainId: 73404 }))
 const SetChainID = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const SetAllowMainnetSend = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
-const SetShowGovernance = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
-const IsGovernanceFeatureEnabled = vi.hoisted(() => vi.fn().mockResolvedValue(false))
 const GetBuildInfo = vi.hoisted(() => vi.fn().mockResolvedValue({ version: 'v9.9.9', commit: 'abc1234' }))
-vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetChainID, SetAllowMainnetSend, SetShowGovernance, IsGovernanceFeatureEnabled, GetBuildInfo }))
+vi.mock('../../wailsjs/go/app/ConfigService', () => ({ GetSettings, SetChainID, SetAllowMainnetSend, GetBuildInfo }))
 
 const RevealMnemonic = vi.hoisted(() => vi.fn().mockResolvedValue('alpha bravo charlie delta'))
 const ChangePassword = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
@@ -67,7 +65,6 @@ beforeEach(() => {
   GetSettings.mockClear()
   SetChainID.mockClear()
   SetAllowMainnetSend.mockReset().mockResolvedValue(undefined)
-  SetShowGovernance.mockClear()
   GetSettings.mockResolvedValue({ chainId: 73404 })
 })
 
@@ -203,27 +200,6 @@ describe('Settings.vue', () => {
     // read-modify-write: GetSettings object merged with the entered chain id
     expect(SetChainID).toHaveBeenCalledWith(1)
     expect(w.text()).toContain('Network configuration applied')
-  })
-
-  it('toggling Show Governance persists via the targeted setter', async () => {
-    IsGovernanceFeatureEnabled.mockResolvedValueOnce(true) // kill switch on for this test
-    const w = mount(Settings)
-    await flush() // onMounted: ui.init() loads showGovernance + the feature flag
-
-    const cb = w.find('input[aria-label="show governance"]')
-    expect((cb.element as HTMLInputElement).checked).toBe(false)
-
-    await cb.setValue(true)
-    await flush()
-
-    expect(SetShowGovernance).toHaveBeenCalledWith(true)
-  })
-
-  it('hides the Show Governance toggle entirely while the kill switch is off', async () => {
-    const w = mount(Settings)
-    await flush()
-    expect(w.find('input[aria-label="show governance"]').exists()).toBe(false)
-    expect(w.text()).not.toContain('Show Governance')
   })
 
   it('requires an explicit warning confirmation before enabling mainnet transactions', async () => {

@@ -32,18 +32,16 @@ export function shortAddress(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-5)}`
 }
 
-// formatAmount is the display formatter. Precision depends on the size of the
-// integer part: 3+ integer digits (>= 100) drops the decimals entirely; smaller
-// values round to 2 decimals (half-up, trailing zeros stripped). The integer
-// part always gets thousands separators. e.g. 200 -> "200",
-// 20.011111 -> "20.01", 50454.01869374 -> "50,454", 500000 -> "500,000". Uses
-// BigInt so large balances never lose integer precision. For the exact value,
-// use formatAmountExact.
+// Consistent two-decimal display, grouped without converting through Number.
+// A nonzero amount below the display precision must never look like zero.
+// Confirmations and amount inputs continue to use formatAmountExact.
 export function formatAmount(base: string, decimals: number): string {
   const neg = base.startsWith('-')
   const b = BigInt((neg ? base.slice(1) : base) || '0')
-  const intMagnitude = b / 10n ** BigInt(decimals) // floor of the integer part
-  const maxFrac = intMagnitude >= 100n ? 0 : 2 // 3+ integer digits -> no decimals
+  const maxFrac = 2
+  if (b > 0n && decimals > maxFrac && b < 10n ** BigInt(decimals - maxFrac)) {
+    return neg ? '> -0.01' : '<0.01'
+  }
 
   let rounded = b
   let dec = decimals

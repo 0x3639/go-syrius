@@ -28,6 +28,17 @@ beforeEach(() => {
 })
 
 describe('txs store fetch caps', () => {
+  it('distinguishes an empty history from a failed lookup and recovers on retry', async () => {
+    const s = useTxsStore()
+    GetTransactions.mockRejectedValueOnce(new Error('offline'))
+    await s.load()
+    expect(s.error).toBe(true)
+    expect(s.loaded).toBe(false)
+    GetTransactions.mockResolvedValueOnce({ records: [], hasMore: false })
+    await s.load()
+    expect(s.error).toBe(false)
+    expect(s.loaded).toBe(true)
+  })
   // A malicious node can claim hasMore forever while returning only records
   // the Transfers filter hides — the page never fills, so without a hard cap
   // load()/ensure() loop and buffer unbounded (CWE-835).

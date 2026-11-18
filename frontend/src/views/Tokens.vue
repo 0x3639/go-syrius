@@ -103,17 +103,18 @@ async function update(t: app.TokenInfo) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-[48rem] space-y-6">
+  <div class="page-content">
     <!-- Every token the active address HOLDS (any issuer) — this is the only
          place third-party ZTS balances are visible (Dashboard shows ZNN/QSR). -->
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+    <section class="panel-card space-y-2">
       <h2 class="text-sm text-muted-foreground">Held balances</h2>
       <TokensPanel />
     </section>
 
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
-      <h2 class="text-sm text-muted-foreground">Issue a token (1 ZNN fee)</h2>
-      <div class="grid grid-cols-2 gap-2">
+    <details class="panel-card">
+      <summary class="disclosure-title">Create a token · 1 ZNN fee</summary>
+      <div class="mt-4 space-y-3">
+      <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <input class="rounded-md border border-input bg-transparent px-2 py-1 text-sm" placeholder="name" v-model="iName" aria-label="issue name" />
         <input class="rounded-md border border-input bg-transparent px-2 py-1 text-sm" placeholder="symbol (A-Z0-9)" v-model="iSymbol" aria-label="issue symbol" />
         <input class="rounded-md border border-input bg-transparent px-2 py-1 text-sm" placeholder="domain (optional)" v-model="iDomain" aria-label="issue domain" />
@@ -127,16 +128,17 @@ async function update(t: app.TokenInfo) {
         <label><input type="checkbox" v-model="iUtility" /> utility</label>
       </div>
       <Button @click="issue" aria-label="issue token">Issue token</Button>
-    </section>
+      </div>
+    </details>
 
-    <section class="rounded-xl border border-border bg-card p-5 space-y-2">
+    <section class="panel-card space-y-2">
       <div class="flex flex-wrap items-center gap-2 pb-1">
         <h2 class="text-sm text-muted-foreground">
-          {{ showingSearch ? `Search results (${tableTokens.length})` : 'My tokens' }}
+          {{ showingSearch ? `Search results (${tableTokens.length})` : 'Token management' }}
         </h2>
         <div class="ml-auto flex items-center gap-2">
           <input
-            class="w-64 rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
+            class="min-w-0 w-full max-w-64 rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
             placeholder="zts1…, name, or symbol" v-model="searchQuery" aria-label="token search"
             @keydown.enter="doSearch"
           />
@@ -144,7 +146,8 @@ async function update(t: app.TokenInfo) {
           <Button v-if="showingSearch" variant="outline" size="sm" aria-label="clear search" @click="clearSearch">Clear</Button>
         </div>
       </div>
-      <Table class="w-full table-fixed text-xs">
+      <div class="overflow-x-auto" role="region" aria-label="Token management" tabindex="0">
+      <Table class="w-full min-w-[700px] table-fixed text-xs">
         <colgroup>
           <col class="w-20" />
           <col class="w-24" />
@@ -220,6 +223,7 @@ async function update(t: app.TokenInfo) {
           </template>
         </TableBody>
       </Table>
+      </div>
       <div v-if="myTokensPageCount > 1" class="flex items-center justify-end gap-3 pt-1 text-xs text-muted-foreground">
         <span>Page {{ myTokensPage + 1 }} / {{ myTokensPageCount }}</span>
         <button
@@ -237,7 +241,7 @@ async function update(t: app.TokenInfo) {
 
     <p v-if="error" class="text-destructive text-sm" role="alert">{{ error }}</p>
 
-    <p v-if="tx.status === 'preparing'" class="text-muted-foreground">Preparing… (PoW if required)</p>
+    <p v-if="tx.status === 'preparing'" class="text-muted-foreground">Preparing transaction…</p>
     <p v-if="tx.status === 'error'" class="text-destructive" role="alert">{{ tx.error }}</p>
   </div>
 </template>

@@ -36,6 +36,11 @@ export const useTxsStore = defineStore('txs', {
     hasMoreBlocks: true,
     page: 0, // current displayed page
     transfersOnly: true,
+    loading: false,
+    loaded: false,
+    error: false,
+    _request: 0,
+    _epoch: -1,
   }),
   getters: {
     filtered(s): TxRecord[] {
@@ -52,14 +57,17 @@ export const useTxsStore = defineStore('txs', {
     async fetchChunk(): Promise<boolean> {
       if (!this.hasMoreBlocks || this.chunkIndex >= MAX_CHUNKS) return false
       const epoch = currentRequestEpoch()
+      const request = this._request
       try {
         const r = (await N.GetTransactions(this.chunkIndex, BLOCK_FETCH)) as unknown as { records: TxRecord[]; hasMore: boolean }
-        if (epoch !== currentRequestEpoch()) return false // stale: another account's blocks
+        if (epoch !== currentRequestEpoch() || request !== this._request) return false
         this.buffer.push(...(r.records ?? []))
         this.hasMoreBlocks = !!r.hasMore && this.chunkIndex + 1 < MAX_CHUNKS
         this.chunkIndex++
         return true
       } catch {
+        if (epoch !== currentRequestEpoch() || request !== this._request) return false
+        this.error = true
         this.hasMoreBlocks = false
         return false
       }
@@ -76,6 +84,11 @@ export const useTxsStore = defineStore('txs', {
     // empty (this runs on every momentum tick).
     async load() {
       const epoch = currentRequestEpoch()
+      if (this._epoch !== epoch) this.resetPage()
+      this._epoch = epoch
+      const request = ++this._request
+      this.loading = true
+      let failed = false
       const fresh: TxRecord[] = []
       let idx = 0
       let more = true
@@ -87,15 +100,19 @@ export const useTxsStore = defineStore('txs', {
           more = !!r.hasMore
           idx++
         } catch {
+          failed = true
           more = false
           break
         }
       }
       if (idx >= MAX_CHUNKS) more = false
-      if (epoch !== currentRequestEpoch()) return // stale: another account's history
+      if (epoch !== currentRequestEpoch() || request !== this._request) return
       this.buffer = fresh
       this.chunkIndex = idx
       this.hasMoreBlocks = more
+      this.error = failed
+      this.loaded = !failed
+      this.loading = false
     },
     async goto(page: number) {
       this.page = Math.max(0, page)
@@ -107,6 +124,13 @@ export const useTxsStore = defineStore('txs', {
       await this.ensure()
     },
     resetPage() {
+      this._request++
+      this.buffer = []
+      this.chunkIndex = 0
+      this.hasMoreBlocks = true
+      this.loaded = false
+      this.loading = false
+      this.error = false
       this.page = 0
     },
   },

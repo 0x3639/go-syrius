@@ -8,10 +8,9 @@ import { usePillarStore } from '../../stores/pillar'
 import { useSentinelStore } from '../../stores/sentinel'
 import { useTxStore } from '../../stores/tx'
 import type { app } from '../../../wailsjs/go/models'
-import { formatAmount } from '../../lib/format'
+import TokenAmount from '../TokenAmount.vue'
 
 type Reward = { znn: string; qsr: string }
-const ZERO: Reward = { znn: '0', qsr: '0' }
 
 const stake = useStakeStore()
 const pillar = usePillarStore()
@@ -26,7 +25,7 @@ const error = ref('')
 
 type Source = {
   label: string
-  reward: Reward
+  reward: Reward | null
   qsrOnly?: boolean
   collect: () => Promise<app.CallPreview>
 }
@@ -37,23 +36,24 @@ type Source = {
 const sources = computed<Source[]>(() => [
   {
     label: 'Delegation',
-    reward: pillarReward.value ?? ZERO,
+    reward: pillarReward.value,
     collect: () => Nom.PrepareCollectPillarReward(),
   },
   {
     label: 'Staking',
-    reward: stakeReward.value ?? ZERO,
+    reward: stakeReward.value,
     qsrOnly: true,
     collect: () => Nom.PrepareCollectReward(),
   },
   {
     label: 'Sentinel',
-    reward: sentinelReward.value ?? ZERO,
+    reward: sentinelReward.value,
     collect: () => Nom.PrepareCollectSentinelReward(),
   },
 ])
 
 function hasReward(source: Source): boolean {
+  if (!source.reward) return false
   return source.qsrOnly
     ? source.reward.qsr !== '0'
     : source.reward.znn !== '0' || source.reward.qsr !== '0'
@@ -87,8 +87,8 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-4 p-4">
-    <section class="space-y-2 rounded-lg border border-border bg-card p-4">
+  <div class="space-y-5">
+    <section class="space-y-2 panel-card">
       <h2 class="text-sm font-medium text-foreground">Uncollected rewards</h2>
       <div
         v-for="s in sources"
@@ -98,9 +98,10 @@ watch(
         <div class="text-sm" :data-testid="`reward-${s.label.toLowerCase()}`">
           <p class="font-medium text-foreground">{{ s.label }}</p>
           <p class="font-mono text-xs text-muted-foreground">
-            <template v-if="s.qsrOnly">{{ formatAmount(s.reward.qsr, 8) }} QSR</template>
+            <template v-if="!s.reward">—</template>
             <template v-else>
-              {{ formatAmount(s.reward.znn, 8) }} ZNN / {{ formatAmount(s.reward.qsr, 8) }} QSR
+              <template v-if="!s.qsrOnly"><TokenAmount :amount="s.reward.znn" symbol="ZNN" /> · </template>
+              <TokenAmount :amount="s.reward.qsr" symbol="QSR" />
             </template>
           </p>
         </div>
@@ -114,7 +115,7 @@ watch(
 
     <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>
 
-    <p v-if="tx.status === 'preparing'" class="text-muted-foreground">Preparing… (PoW if required)</p>
+    <p v-if="tx.status === 'preparing'" class="text-muted-foreground">Preparing transaction…</p>
     <p v-if="tx.status === 'error'" class="text-destructive" role="alert">{{ tx.error }}</p>
   </div>
 </template>

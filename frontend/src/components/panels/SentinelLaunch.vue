@@ -83,7 +83,7 @@ watch(
 </script>
 
 <template>
-  <section class="space-y-4 rounded-lg border border-border bg-card p-4">
+  <section class="space-y-4 panel-card">
     <StepHeader :current="currentStep" />
 
     <!-- Clearing (transient): waiting for the contract to credit/activate. -->

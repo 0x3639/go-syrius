@@ -29,7 +29,7 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-3 p-4">
+  <div class="space-y-5">
     <p class="text-xs text-muted-foreground">Donate ZNN or QSR to the Accelerator-Z funding pool.</p>
     <div class="flex items-end gap-2">
       <div class="flex-1">

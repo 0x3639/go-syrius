@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Input, Button } from 'nom-ui'
 import { useBalancesStore } from '../stores/balances'
-import { formatAmount, formatAmountExact } from '../lib/format'
+import { formatAmountExact, toBase } from '../lib/format'
 import AmountInput from './AmountInput.vue'
 import ContactPicker from './ContactPicker.vue'
 import { BookIcon } from '@lucide/vue'
@@ -15,7 +15,8 @@ const emit = defineEmits<{
   send: [intent: { recipient: string; zts: string; amountDecimal: string }]
 }>()
 
-const { items } = storeToRefs(useBalancesStore())
+const balances = useBalancesStore()
+const { items } = storeToRefs(balances)
 
 const recipient = ref('')
 const zts = ref('')
@@ -51,18 +52,22 @@ watch(
 // Selected token + its available balance (commas for display, plain decimal for Max).
 const selectedTok = computed(() => items.value.find((b) => b.zts === zts.value))
 const balanceLabel = computed(() =>
-  selectedTok.value ? `${formatAmount(selectedTok.value.amount, selectedTok.value.decimals)} ${selectedTok.value.symbol || ''}`.trim() : '',
+  balances.available && selectedTok.value ? `${formatAmountExact(selectedTok.value.amount, selectedTok.value.decimals)} ${selectedTok.value.symbol || ''}`.trim() : '',
 )
 const maxDecimal = computed(() =>
-  selectedTok.value ? formatAmountExact(selectedTok.value.amount, selectedTok.value.decimals) : '',
+  balances.available && selectedTok.value ? formatAmountExact(selectedTok.value.amount, selectedTok.value.decimals) : '',
 )
 
 // z1 bech32: starts z1, lowercase alnum, length ~40. Backend re-validates authoritatively.
 const validAddr = computed(() => /^z1[0-9a-z]{38}$/.test(recipient.value))
-const validAmount = computed(
-  () => amountDecimal.value !== '' && Number(amountDecimal.value) > 0,
-)
-const canSend = computed(() => validAddr.value && validAmount.value && !!zts.value)
+const validAmount = computed(() => {
+  if (!selectedTok.value) return false
+  try {
+    const amount = BigInt(toBase(amountDecimal.value, selectedTok.value.decimals))
+    return amount > 0n && amount <= BigInt(selectedTok.value.amount)
+  } catch { return false }
+})
+const canSend = computed(() => balances.available && validAddr.value && validAmount.value && !!zts.value)
 
 function onSend() {
   if (!canSend.value) return
@@ -118,6 +123,7 @@ function onSend() {
     </p>
 
     <AmountInput v-model="amountDecimal" label="Amount" :max="maxDecimal" />
+    <p v-if="amountDecimal && !validAmount && balances.available" class="text-xs text-destructive">Enter an amount within your available balance.</p>
 
     <Button
       class="w-full"

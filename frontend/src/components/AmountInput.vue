@@ -5,6 +5,7 @@ const props = withDefaults(
   defineProps<{
     modelValue?: string
     label?: string
+    ariaLabel?: string
     // Plain-decimal maximum (the token balance). When > 0 a "Max" button shows.
     max?: string
   }>(),
@@ -32,7 +33,7 @@ function setMax() {
       <input
         inputmode="decimal"
         :value="modelValue"
-        :aria-label="label"
+        :aria-label="ariaLabel || label"
         class="w-full rounded-md border border-input bg-transparent px-3 py-2 pr-16 font-mono text-foreground outline-none focus:ring-2 focus:ring-primary"
         @input="onInput"
       />

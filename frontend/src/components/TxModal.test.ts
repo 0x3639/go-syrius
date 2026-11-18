@@ -186,7 +186,7 @@ describe('TxModal (confirm-what-you-sign)', () => {
   })
 })
 
-describe('TxModal decoded effect (governance/accelerator)', () => {
+describe('TxModal decoded effect (accelerator)', () => {
   it('renders every decoded effect field with FULL untruncated values', () => {
     const tx = useTxStore()
     const admin = 'z1qzal6c5s9rjnnxd2z7dvdhjxpmmj4fmw56a0mz'

@@ -68,7 +68,7 @@ watch(
 
 <template>
   <div class="space-y-5 p-4">
-    <section class="space-y-2 rounded-lg border border-border bg-card p-4">
+    <section class="space-y-2 panel-card">
       <h3 class="text-sm font-medium text-foreground">Post an AZ (create project · 1 ZNN fee)</h3>
       <div class="grid grid-cols-2 gap-2">
         <Field label="Name"><Input v-model="cName" placeholder="name" aria-label="create name" /></Field>
@@ -80,7 +80,7 @@ watch(
       <Button aria-label="create project" @click="createProject">Create project</Button>
     </section>
 
-    <section class="space-y-2 rounded-lg border border-border bg-card p-4">
+    <section class="space-y-2 panel-card">
       <h3 class="text-sm font-medium text-foreground">Request a phase payout</h3>
       <p class="text-xs text-muted-foreground">
         Pick one of your approved projects and submit a phase requesting its payout — pillars vote and

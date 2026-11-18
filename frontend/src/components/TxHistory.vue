@@ -6,6 +6,8 @@ import {
   TableCell,
   TableEmpty,
   TableRow,
+  TableHead,
+  TableHeader,
   TxDirection,
   TxStatus,
 } from 'nom-ui'
@@ -13,13 +15,15 @@ import MonoTruncate from './MonoTruncate.vue'
 import { useTxsStore } from '../stores/txs'
 import { useUnreceivedStore } from '../stores/unreceived'
 import { usePlasmaStore } from '../stores/plasma'
-import { formatAmount } from '../lib/format'
+import { useNodeStore } from '../stores/node'
+import TokenAmount from './TokenAmount.vue'
 import { plasmaLevel } from '../lib/plasma'
 import { CheckIcon, CopyIcon, CircleArrowDownIcon, ChevronLeftIcon, ChevronRightIcon } from '@lucide/vue'
 
 const txs = useTxsStore()
 const unreceived = useUnreceivedStore()
 const plasma = usePlasmaStore()
+const node = useNodeStore()
 
 // While claiming a pending block: PoW generates plasma when the account has none.
 const receivingLabel = computed(() =>
@@ -35,7 +39,10 @@ async function doReceive(hash: string) {
 // Explain an empty page: in Transfers mode a page can be all contract/pair
 // activity that's filtered out — point to All rather than imply no transactions.
 const emptyMessage = computed(() =>
-  txs.transfersOnly && txs.buffer.length > 0
+  !node.connected ? 'Connect to a node to view activity.'
+    : txs.error ? 'Activity could not be loaded.'
+    : !txs.loaded ? 'Loading activity…'
+    : txs.transfersOnly && txs.buffer.length > 0
     ? 'No transfers on this page — switch to All to see contract / pair activity.'
     : 'No transactions.',
 )
@@ -99,12 +106,13 @@ async function copyHash(h: string) {
         >All</button>
       </div>
     </div>
-    <!-- table-fixed with the small columns pinned and the two data columns
-         (counterparty, hash) left flexible: flexible columns shrink with the
-         table width, so MonoTruncate resizes the address/hash to fit (start…tail,
-         both ends kept) as the window narrows — no horizontal scroll, no smaller
-         font. Pinned columns can't reflow when method badges change. -->
-    <Table class="w-full table-fixed">
+    <p v-if="txs.error && node.connected" class="mb-3 text-sm text-destructive" role="alert">
+      Activity could not be loaded.
+      <button class="underline" :disabled="txs.loading" @click="txs.load()">Retry</button>
+    </p>
+    <!-- Keep identifiers readable on smaller windows; scroll within the card. -->
+    <div class="overflow-x-auto" role="region" aria-label="Transaction activity" tabindex="0">
+    <Table class="w-full min-w-[740px] table-fixed">
       <colgroup>
         <col class="w-20" />
         <col class="w-32" />
@@ -113,12 +121,15 @@ async function copyHash(h: string) {
         <col class="w-28" />
         <col class="w-40" />
       </colgroup>
+      <TableHeader><TableRow>
+        <TableHead>Direction</TableHead><TableHead>Type</TableHead><TableHead>Address</TableHead><TableHead>Transaction</TableHead><TableHead class="text-right">Amount</TableHead><TableHead class="text-right">Status</TableHead>
+      </TableRow></TableHeader>
       <TableBody>
-        <TableEmpty v-if="txs.pageItems.length === 0 && (txs.page > 0 || unreceived.items.length === 0)" :colspan="6">{{ emptyMessage }}</TableEmpty>
+        <TableEmpty v-if="!node.connected || (txs.pageItems.length === 0 && (txs.page > 0 || unreceived.items.length === 0))" :colspan="6">{{ emptyMessage }}</TableEmpty>
 
         <!-- Pending inbound blocks (newest page only): click to receive; status
              goes Unreceived → Generating Plasma/Receiving (pulsing) → Confirmed. -->
-        <template v-if="txs.page === 0">
+        <template v-if="node.connected && txs.page === 0">
         <TableRow v-for="u in unreceived.items" :key="u.fromHash">
           <TableCell><TxDirection direction="in" /></TableCell>
           <TableCell></TableCell>
@@ -140,7 +151,7 @@ async function copyHash(h: string) {
             </button>
           </TableCell>
           <TableCell class="text-right font-mono text-foreground">
-            {{ formatAmount(u.amount, u.decimals ?? 8) }} {{ u.token }}
+            <TokenAmount :amount="u.amount" :decimals="u.decimals ?? 8" :symbol="u.token" />
           </TableCell>
           <TableCell class="whitespace-nowrap text-right">
             <span
@@ -162,7 +173,7 @@ async function copyHash(h: string) {
         </TableRow>
         </template>
 
-        <TableRow v-for="t in txs.pageItems" :key="t.hash">
+        <TableRow v-for="t in node.connected ? txs.pageItems : []" :key="t.hash">
           <TableCell>
             <span v-if="t.direction === 'pair'" class="rounded bg-info/15 px-2 py-0.5 text-xs font-medium text-info">Pair</span>
             <TxDirection v-else :direction="(t.direction as 'in' | 'out')" />
@@ -189,7 +200,7 @@ async function copyHash(h: string) {
           </TableCell>
           <TableCell class="text-right font-mono text-foreground">
             <template v-if="!hasValue(t)"><span class="text-muted-foreground">—</span></template>
-            <template v-else>{{ formatAmount(t.amount, t.decimals ?? 8) }} {{ t.token }}</template>
+            <TokenAmount v-else :amount="t.amount" :decimals="t.decimals ?? 8" :symbol="t.token" />
           </TableCell>
           <TableCell class="whitespace-nowrap text-right">
             <TxStatus :status="status(t.confirmed)" />
@@ -197,6 +208,7 @@ async function copyHash(h: string) {
         </TableRow>
       </TableBody>
     </Table>
+    </div>
 
     <div v-if="txs.page > 0 || txs.hasNextPage" class="mt-2 flex items-center justify-end gap-3 text-xs text-muted-foreground">
       <span>Page {{ txs.page + 1 }}</span>

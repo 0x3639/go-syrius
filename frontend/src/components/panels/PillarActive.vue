@@ -99,7 +99,7 @@ watch(
 </script>
 
 <template>
-  <section v-if="myPillar" class="space-y-3 rounded-lg border border-border bg-card p-4">
+  <section v-if="myPillar" class="space-y-3 panel-card">
     <div class="flex items-center gap-2">
       <CircleCheckIcon class="text-primary" :size="18" />
       <h2 class="text-sm font-medium text-foreground">Your Pillar</h2>

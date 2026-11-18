@@ -3,6 +3,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import StakingPanel from './StakingPanel.vue'
 import { useStakeStore } from '../../stores/stake'
+import { useBalancesStore } from '../../stores/balances'
+import { useNodeStore } from '../../stores/node'
 import { useTxStore } from '../../stores/tx'
 
 // Stub nom-ui Button/Input to plain elements mirroring disabled/click/v-model,
@@ -36,6 +38,9 @@ const STAKE_INFO = { totalAmount: '0', entries: [] }
 
 function setup() {
   setActivePinia(createPinia())
+  useNodeStore().connected = true
+  useBalancesStore().status = 'ready'
+  useBalancesStore().items = [{ zts: 'zts1znn', symbol: 'ZNN', amount: '10000000000', decimals: 8 }]
   const stake = useStakeStore()
   const tx = useTxStore()
   // Don't hit the (mocked-absent) backend on mount.
@@ -81,7 +86,7 @@ describe('StakingPanel', () => {
     await w.get('[aria-label="znn amount"]').setValue('1.5')
     await w.get('[aria-label="duration months"]').setValue('3')
 
-    await w.get('section:nth-of-type(2) button').trigger('click') // Stake ZNN button
+    await w.findAll('button').find(b => b.text() === 'Stake ZNN')!.trigger('click') // Stake ZNN button
     await w.vm.$nextTick()
 
     // 1.5 ZNN at 8 decimals = 150000000 base units; duration is the plain "3" month string.

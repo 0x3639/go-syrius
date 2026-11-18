@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"math/big"
 	"strings"
 	"testing"
@@ -515,30 +514,6 @@ func TestReceiveSerializesWithPublish(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Receive did not proceed after the publish lock was released")
-	}
-}
-
-func TestConfirmPublishReassertsPolicy(t *testing.T) {
-	tx := newTestTxService(t)
-	unlockTestWallet(t, tx.wallet)
-	tx.node.chainID = 3
-	from, _ := tx.wallet.activeAddress()
-	policyErr := errors.New("governance is testnet-only")
-	id := mustHoldPending(t, tx, &nom.AccountBlock{
-		Address:       from,
-		ToAddress:     from,
-		Amount:        big.NewInt(0),
-		TokenStandard: types.ZnnTokenStandard,
-	}, callExpect{
-		from: from, to: from, zts: types.ZnnTokenStandard, amount: big.NewInt(0),
-		policy: func() error { return policyErr },
-	}, tx.wallet.sessionGen())
-	_, err := tx.ConfirmPublish(id)
-	if err != policyErr {
-		t.Fatalf("expected the prepare-time policy to be re-asserted at publish, got %v", err)
-	}
-	if tx.pending == nil {
-		t.Fatal("a policy refusal must retain the hold (reconnect + retry, like the mainnet guard)")
 	}
 }
 

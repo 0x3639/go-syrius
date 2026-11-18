@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0x3639/go-syrius/internal/governance"
 	"github.com/0x3639/znn-sdk-go/rpc_client"
 	"github.com/zenon-network/go-zenon/chain/nom"
 	"github.com/zenon-network/go-zenon/common/types"
@@ -645,7 +644,7 @@ func TestSupersededDialDoesNotInstall(t *testing.T) {
 	cur := n.connGen
 	n.mu.Unlock()
 
-	if n.installConnection(&rpc_client.RpcClient{}, nil, nil, "ws://stale", 1, 3, gen) {
+	if n.installConnection(&rpc_client.RpcClient{}, "ws://stale", 1, 3, gen) {
 		t.Fatal("a superseded dial must not install its client over the newer one")
 	}
 	if n.currentClient() != nil {
@@ -654,8 +653,7 @@ func TestSupersededDialDoesNotInstall(t *testing.T) {
 
 	// The latest intent still installs normally.
 	fresh := &rpc_client.RpcClient{}
-	governanceAPI := governance.NewAPI(nil)
-	if !n.installConnection(fresh, nil, governanceAPI, "ws://fresh", 9, 3, cur) {
+	if !n.installConnection(fresh, "ws://fresh", 9, 3, cur) {
 		t.Fatal("the current dial must install")
 	}
 	if n.currentClient() != fresh {
@@ -663,9 +661,6 @@ func TestSupersededDialDoesNotInstall(t *testing.T) {
 	}
 	if n.currentChainID() != 3 {
 		t.Fatalf("chainID not installed, got %d", n.currentChainID())
-	}
-	if n.currentGovernance() != governanceAPI {
-		t.Fatal("expected the matching governance adapter to be installed")
 	}
 }
 
@@ -679,7 +674,7 @@ func TestDisconnectInvalidatesInFlightDial(t *testing.T) {
 	if err := n.Disconnect(); err != nil {
 		t.Fatalf("Disconnect: %v", err)
 	}
-	if n.installConnection(&rpc_client.RpcClient{}, nil, nil, "ws://late", 1, 3, gen) {
+	if n.installConnection(&rpc_client.RpcClient{}, "ws://late", 1, 3, gen) {
 		t.Fatal("a dial that loses to an explicit Disconnect must not install")
 	}
 }
@@ -709,7 +704,7 @@ func TestDegradeConnectionTearsDownCurrentGen(t *testing.T) {
 	n.disconnectLocked()
 	gen := n.connGen
 	n.mu.Unlock()
-	if !n.installConnection(&rpc_client.RpcClient{}, nil, governance.NewAPI(nil), "ws://x", 42, 3, gen) {
+	if !n.installConnection(&rpc_client.RpcClient{}, "ws://x", 42, 3, gen) {
 		t.Fatal("install should succeed")
 	}
 	if !n.degradeConnection(gen) {
@@ -721,9 +716,6 @@ func TestDegradeConnectionTearsDownCurrentGen(t *testing.T) {
 	}
 	if n.currentClient() != nil {
 		t.Fatal("no client may remain installed")
-	}
-	if n.currentGovernance() != nil {
-		t.Fatal("no governance adapter may remain installed")
 	}
 	// Repeated closure/degradation of the same (now superseded) gen is a no-op —
 	// no double-close, no second teardown.
@@ -745,7 +737,7 @@ func TestDegradeConnectionStaleGenLeavesNewerConnection(t *testing.T) {
 	newGen := n.connGen
 	n.mu.Unlock()
 	fresh := &rpc_client.RpcClient{}
-	if !n.installConnection(fresh, nil, nil, "ws://fresh", 99, 3, newGen) {
+	if !n.installConnection(fresh, "ws://fresh", 99, 3, newGen) {
 		t.Fatal("newer install should succeed")
 	}
 

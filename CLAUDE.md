@@ -15,7 +15,7 @@ A reimplementation of the Zenon `syrius` wallet (originally Flutter/Dart) as a *
 ## Stack (locked decisions — see plan.md §6)
 
 - **Wails v2** (v2.12.0; not v3 — stability for a funds-handling app)
-- **Go 1.26** (go.mod `go 1.26.0`, `toolchain go1.26.7`), importing `znn-sdk-go` (pinned, author-controlled; currently v0.5.0) and `go-zenon`
+- **Go 1.26** (go.mod `go 1.26.0`, `toolchain go1.26.11`), importing `znn-sdk-go` (pinned, author-controlled; currently v0.5.0) and `go-zenon`
 - **Vue 3 + TypeScript + Vite**, **Tailwind CSS 4**, **Pinia** for state, **vue-router** (memory history). UI built on **nom-ui** (Vue component library, `github:digitalSloth/nom-ui` pinned) — Dialog/Tabs/Address/TxStatus/TxDirection/TokenIcon/toast + its blockchain primitives. *(Originally scaffolded in Svelte; migrated to Vue 3 + nom-ui — merged to main `a9c2880`, 2026-06-25. The Go backend + Wails bindings were untouched by the migration.)*
 - Build via Wails CLI + GitHub Actions cross-platform matrix
 
@@ -27,7 +27,7 @@ The frontend (WebView) must **never** receive a private key, mnemonic seed, or d
 
 ### Service layout (planned — see plan.md §4)
 
-Wails-bound services live under `app/`, each a clear seam: `WalletService` (unlock/lock/accounts), `NodeService` (node modes + status events), `TxService` (build→pow→sign→publish), `NomService` (plasma/stake/pillar/sentinel/token/accelerator), `LedgerService` (Phase 6), `ConfigService` (settings/data dir). Non-bound internals under `internal/`: `signer/` (software | ledger abstraction), `powmgr/` (cancellable PoW), `compat/` (keystore compatibility + tests). Frontend under `frontend/src/` (Vue): `views/` (route components: public Unlock/Create/ImportMnemonic, plus authenticated Dashboard/Transfer/Receive/Tokens/NetworkPage/Settings/AddressBook), `components/AppShell.vue` (layout route wrapping every authenticated screen — Sidebar + TopBar + the single global data bootstrap/refresh after unlock), `router/` (vue-router + lock guard; authenticated routes nest under AppShell, `/` redirects to `/dashboard`), `stores/` (Pinia: wallet/node/balances/tx/txs/unreceived/token/plasma/pillar/stake/sentinel/accelerator/governance/contacts/price/ui/autoReceive), `components/` (+ `components/panels/` for the NoM panels rendered by NetworkPage), `lib/format.ts` (BigInt `formatAmount`/`formatAmountExact` — never use nom-ui `Amount` for balances, it loses precision), and the generated `frontend/wailsjs/` bindings.
+Wails-bound services live under `app/`, each a clear seam: `WalletService` (unlock/lock/accounts), `NodeService` (node modes + status events), `TxService` (build→pow→sign→publish), `NomService` (plasma/stake/pillar/sentinel/token/accelerator), `LedgerService` (Phase 6), `ConfigService` (settings/data dir). Non-bound internals under `internal/`: `signer/` (software | ledger abstraction), `powmgr/` (cancellable PoW), `compat/` (keystore compatibility + tests). Frontend under `frontend/src/` (Vue): `views/` (route components: public Unlock/Create/ImportMnemonic, plus authenticated Dashboard/Transfer/Receive/Tokens/NetworkPage/Settings/AddressBook), `components/AppShell.vue` (layout route wrapping every authenticated screen — Sidebar + TopBar + the single global data bootstrap/refresh after unlock), `router/` (vue-router + lock guard; authenticated routes nest under AppShell, `/` redirects to `/dashboard`), `stores/` (Pinia: wallet/node/balances/tx/txs/unreceived/token/plasma/pillar/stake/sentinel/accelerator/contacts/price/ui/autoReceive), `components/` (+ `components/panels/` for the NoM panels rendered by NetworkPage), `lib/format.ts` (BigInt `formatAmount`/`formatAmountExact` — never use nom-ui `Amount` for balances, it loses precision), and the generated `frontend/wailsjs/` bindings.
 
 ### Two node modes
 
@@ -75,7 +75,7 @@ Ordered by risk; do not start UI-heavy work before the foundation is proven.
 
 ## Commands
 
-**Local dev hazard:** a parent `go.work` on the author's machine references a missing sibling module, so local `go`/`wails` commands need `GOWORK=off` (and `GOTOOLCHAIN=auto`, since go.mod pins go 1.26.0 / toolchain go1.26.7). CI does **not** need these (standalone checkout). The build emits an unrelated gopsutil/IOKit cgo deprecation warning — not an error.
+**Local dev hazard:** a parent `go.work` on the author's machine references a missing sibling module, so local `go`/`wails` commands need `GOWORK=off` (and `GOTOOLCHAIN=auto`, since go.mod pins go 1.26.0 / toolchain go1.26.11). CI does **not** need these (standalone checkout). The build emits an unrelated gopsutil/IOKit cgo deprecation warning — not an error.
 
 - **Run / build the app:** `GOWORK=off wails dev` (run), `GOWORK=off wails build` (package). Linux build needs `-tags webkit2_41` (+ `libgtk-3-dev libwebkit2gtk-4.1-dev`).
 - **Backend tests:** `GOWORK=off GOTOOLCHAIN=auto go test ./...` (plus `go vet ./...`, `go build ./...`). Integration/live-node tests are behind `//go:build integration` and need `ZNN_NODE_URL` (e.g. `... go test -tags integration ./internal/spike -run TestReadOnly... -v`).

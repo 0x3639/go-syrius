@@ -14,13 +14,11 @@ import (
 
 	"github.com/0x3639/go-syrius/internal/appnap"
 	"github.com/0x3639/go-syrius/internal/embeddednode"
-	"github.com/0x3639/go-syrius/internal/governance"
 	"github.com/0x3639/znn-sdk-go/rpc_client"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zenon-network/go-zenon/chain/nom"
 	"github.com/zenon-network/go-zenon/common/types"
 	api "github.com/zenon-network/go-zenon/rpc/api"
-	"github.com/zenon-network/go-zenon/rpc/server"
 )
 
 // embeddedStopTimeout bounds how long a mode transition waits for the embedded
@@ -49,15 +47,13 @@ type NodeService struct {
 	config *ConfigService
 	wallet *WalletService
 
-	mu               sync.RWMutex
-	mode             string
-	client           *rpc_client.RpcClient
-	governance       *governance.API
-	governanceClient *server.Client
-	url              string
-	height           uint64
-	chainID          uint64
-	stop             chan struct{}
+	mu      sync.RWMutex
+	mode    string
+	client  *rpc_client.RpcClient
+	url     string
+	height  uint64
+	chainID uint64
+	stop    chan struct{}
 	// connGen identifies the latest connection intent. Every disconnect (and thus
 	// every SetNode/Connect/Disconnect) bumps it; a dial that finishes late must
 	// find its captured gen still current or it may not install — otherwise two
@@ -135,19 +131,7 @@ func (n *NodeService) setNode(url string) error {
 		n.emitDisconnectedIfCurrent(gen)
 		return fmt.Errorf("node unreachable: %s", redactURLUserinfo(err.Error(), url))
 	}
-	// Governance is not exposed by the stable SDK surface (still absent in v0.3.0).
-	// Keep the shipped testnet feature through the app-local adapter, using its
-	// own raw caller because RpcClient does not expose its underlying transport.
-	governanceClient, err := server.Dial(url)
-	if err != nil {
-		client.Stop()
-		n.emitDisconnectedIfCurrent(gen)
-		return fmt.Errorf("connect governance transport: %s", redactURLUserinfo(err.Error(), url))
-	}
-	governanceAPI := governance.NewAPI(governanceClient)
-
-	if !n.installConnection(client, governanceClient, governanceAPI, url, m.Height, m.ChainIdentifier, gen) {
-		governanceClient.Close()
+	if !n.installConnection(client, url, m.Height, m.ChainIdentifier, gen) {
 		client.Stop()
 		return errors.New("connection attempt superseded by a newer request")
 	}
@@ -184,15 +168,13 @@ func (n *NodeService) degradeConnection(gen uint64) bool {
 // can never emit BETWEEN install and emit and be overridden by our stale
 // snapshot). Returns false when superseded — the caller must Stop the orphaned
 // client.
-func (n *NodeService) installConnection(client *rpc_client.RpcClient, governanceClient *server.Client, governanceAPI *governance.API, url string, height, chainID, gen uint64) bool {
+func (n *NodeService) installConnection(client *rpc_client.RpcClient, url string, height, chainID, gen uint64) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.connGen != gen {
 		return false
 	}
 	n.client = client
-	n.governanceClient = governanceClient
-	n.governance = governanceAPI
 	n.url = url
 	n.height = height
 	n.chainID = chainID
@@ -344,11 +326,6 @@ func (n *NodeService) disconnectLocked() {
 		n.client.Stop()
 		n.client = nil
 	}
-	if n.governanceClient != nil {
-		n.governanceClient.Close()
-		n.governanceClient = nil
-	}
-	n.governance = nil
 	// Reset the cached chain identifier so a stale value (e.g. testnet) can't be
 	// read by currentChainID() after disconnect and bypass the mainnet guard.
 	n.chainID = 0
@@ -886,14 +863,6 @@ func (n *NodeService) currentClient() *rpc_client.RpcClient {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
 	return n.client
-}
-
-// currentGovernance returns the app-local governance adapter installed for the
-// active connection. It is nil whenever the node is disconnected.
-func (n *NodeService) currentGovernance() *governance.API {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	return n.governance
 }
 
 // currentChainID returns the connected node's chain identifier (0 if unknown).

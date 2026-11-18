@@ -8,6 +8,7 @@ import { toBase } from '../lib/format'
 import SendForm from '../components/SendForm.vue'
 import TxModal from '../components/TxModal.vue'
 import TxResult from '../components/TxResult.vue'
+import BalanceNotice from '../components/BalanceNotice.vue'
 
 const balances = useBalancesStore()
 const { items } = storeToRefs(balances)
@@ -23,10 +24,7 @@ async function onSend(intent: { recipient: string; zts: string; amountDecimal: s
   // await the local binding before preparing the replacement transaction.
   if (tx.status === 'error') await tx.discard()
   const tok = items.value.find((b) => b.zts === intent.zts)
-  // toBase is now strict (GS-12) and throws on malformed input. SendForm's
-  // canSend blocks most bad values, but regex-rejected forms like '1e3'/'Infinity'
-  // still pass its Number(x) > 0 check — catch here so the throw surfaces as a
-  // handled error toast instead of an unhandled rejection in the event handler.
+  // Recheck the amount at the view boundary and surface conversion failures.
   let amount: string
   try {
     amount = toBase(intent.amountDecimal, tok?.decimals ?? 8)
@@ -41,10 +39,11 @@ watch(status, (s) => { if (s === 'done') toast?.show('Transaction published', 's
 </script>
 
 <template>
-  <div class="mx-auto max-w-[34rem]">
-    <div class="rounded-xl border border-border bg-card p-6">
+  <div class="page-content">
+    <BalanceNotice />
+    <div class="panel-card">
       <SendForm v-if="status === 'idle' || status === 'error'" @send="onSend" />
-      <p v-if="status === 'preparing'" class="text-sm text-muted-foreground">Preparing… (PoW if required)</p>
+      <p v-if="status === 'preparing'" class="text-sm text-muted-foreground">Preparing transaction…</p>
       <p v-if="status === 'error'" class="text-sm text-destructive" role="alert">{{ error }}</p>
       <TxModal v-if="status === 'awaiting' || status === 'publishing'" />
       <TxResult v-if="status === 'done'" @close="tx.reset()" />

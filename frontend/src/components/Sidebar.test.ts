@@ -3,7 +3,6 @@ import { mount, RouterLinkStub } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import Sidebar from './Sidebar.vue'
 import { useNodeStore } from '../stores/node'
-import { useUiStore } from '../stores/ui'
 import { vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 
@@ -17,25 +16,25 @@ function mountSidebar() {
 describe('Sidebar', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
+  it('distinguishes disconnected, syncing and stalled states', async () => {
+    const node = useNodeStore()
+    const w = mountSidebar()
+    expect(w.text()).toContain('Disconnected')
+    expect(w.text()).not.toContain('Syncing')
+    node.connected = true; node.syncing = true
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('Syncing')
+    node.sync = { state: 'stalled', currentHeight: 1, targetHeight: 2, percent: 50, etaSeconds: 0, peers: 0 }
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('Sync stalled')
+  })
+
   it('renders the core nav destinations', () => {
     const w = mountSidebar()
     const text = w.text()
     for (const label of ['Dashboard', 'Transfer', 'Receive', 'Tokens', 'Plasma', 'Staking', 'Pillars', 'Sentinels', 'Accelerator', 'Rewards', 'WalletConnect', 'Settings']) {
       expect(text).toContain(label)
     }
-  })
-
-  it('hides Governance unless the feature flag, opt-in, and testnet all hold', async () => {
-    const w = mountSidebar()
-    expect(w.text()).not.toContain('Governance')
-    const ui = useUiStore(); const node = useNodeStore()
-    ui.showGovernance = true; node.chainId = 2
-    await w.vm.$nextTick()
-    // kill switch off → still hidden even when opted in on testnet
-    expect(w.text()).not.toContain('Governance')
-    ui.governanceFeatureEnabled = true
-    await w.vm.$nextTick()
-    expect(w.text()).toContain('Governance')
   })
 
   it('shows the app version below the sync pill', async () => {

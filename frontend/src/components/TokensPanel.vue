@@ -3,9 +3,11 @@ import { ref, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Input, TokenIcon } from 'nom-ui'
 import { useBalancesStore } from '../stores/balances'
-import { formatAmount } from '../lib/format'
+import BalanceNotice from './BalanceNotice.vue'
+import TokenAmount from './TokenAmount.vue'
 
-const { items } = storeToRefs(useBalancesStore())
+const balances = useBalancesStore()
+const { items } = storeToRefs(balances)
 
 const q = ref('')
 
@@ -24,8 +26,9 @@ const filtered = computed(() => {
 
 <template>
   <div class="space-y-3">
+    <BalanceNotice />
     <Input v-model="q" placeholder="Filter held tokens…" aria-label="search tokens" class="w-full" />
-    <template v-if="filtered.length">
+    <template v-if="balances.available && filtered.length">
       <div
         v-for="b in filtered"
         :key="b.zts"
@@ -39,10 +42,10 @@ const filtered = computed(() => {
           </div>
         </div>
         <div class="pl-4 font-mono tabular-nums text-foreground">
-          {{ formatAmount(b.amount, b.decimals ?? 8) }}
+          <TokenAmount :amount="b.amount" :decimals="b.decimals ?? 8" />
         </div>
       </div>
     </template>
-    <p v-else class="text-sm text-muted-foreground">No tokens.</p>
+    <p v-else-if="balances.available" class="text-sm text-muted-foreground">{{ q.trim() ? 'No matching tokens.' : 'No tokens held.' }}</p>
   </div>
 </template>

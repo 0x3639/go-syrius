@@ -16,6 +16,19 @@ function mountSidebar() {
 describe('Sidebar', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
+  it('shows Checking sync after reconnect until a current sample arrives', async () => {
+    const node = useNodeStore()
+    node.applyStatus({ connected: true, mode: 'embedded' })
+    node.sync = { state: 'stalled' } as any
+    const w = mountSidebar()
+    expect(w.text()).toContain('Sync stalled')
+    node.applyStatus({ connected: false })
+    node.applyStatus({ connected: true })
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('Checking sync…')
+    expect(w.text()).not.toContain('Sync stalled')
+  })
+
   it('distinguishes disconnected, syncing and stalled states', async () => {
     const node = useNodeStore()
     const w = mountSidebar()

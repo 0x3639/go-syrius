@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mount, enableAutoUnmount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 
 // NetworkPage resolves its panel via useRoute() (inject-based), so a $route
@@ -12,8 +12,10 @@ vi.mock('vue-router', () => ({ useRoute: () => routeState }))
 import NetworkPage from './NetworkPage.vue'
 import { useNodeStore } from '../stores/node'
 
+enableAutoUnmount(afterEach)
+
 const stubs = {
-  PlasmaPanel: { template: '<div class="plasma-stub"/>' },
+  PlasmaPanel: { data: () => ({ draft: '' }), template: '<div class="plasma-stub"><input v-model="draft" /></div>' },
 }
 
 describe('NetworkPage', () => {
@@ -24,16 +26,21 @@ describe('NetworkPage', () => {
   })
 
   it('renders the panel named by route meta', () => {
-    const w = mount(NetworkPage, { global: { stubs } })
+    const w = mount(NetworkPage, { attachTo: document.body, global: { stubs } })
     expect(w.find('.plasma-stub').exists()).toBe(true)
   })
 
-  it('hides stale network data and offers reconnection while offline', () => {
-    useNodeStore().connected = false
-    const w = mount(NetworkPage, { global: { stubs } })
-    expect(w.find('.plasma-stub').exists()).toBe(false)
-    expect(w.text()).toContain('Disconnected')
+  it('preserves the mounted draft through disconnect and reconnect', async () => {
+    const node = useNodeStore()
+    const w = mount(NetworkPage, { attachTo: document.body, global: { stubs } })
+    await w.get('input').setValue('12 QSR draft')
+    node.connected = false
+    await w.vm.$nextTick()
+    expect(w.find('.plasma-stub').isVisible()).toBe(false)
     expect(w.text()).toContain('Reconnect')
+    node.connected = true
+    await w.vm.$nextTick()
+    expect(w.find('.plasma-stub').isVisible()).toBe(true)
+    expect((w.get('input').element as HTMLInputElement).value).toBe('12 QSR draft')
   })
-
 })

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { useNodeRefresh } from '../../lib/useNodeRefresh'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Button } from 'nom-ui'
 import Field from '../Field.vue'
@@ -68,7 +69,7 @@ async function collect() {
   }
 }
 
-onMounted(() => stake.refresh())
+useNodeRefresh(() => stake.refresh())
 watch(
   () => tx.status,
   (s) => {

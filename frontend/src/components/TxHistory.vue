@@ -93,6 +93,7 @@ async function copyHash(h: string) {
         <button
           type="button"
           aria-label="show transfers only"
+          :disabled="!node.connected"
           class="rounded px-2 py-1 transition-colors"
           :class="txs.transfersOnly ? 'bg-foreground/10 font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'"
           @click="txs.setTransfersOnly(true)"
@@ -100,6 +101,7 @@ async function copyHash(h: string) {
         <button
           type="button"
           aria-label="show all transactions"
+          :disabled="!node.connected"
           class="rounded px-2 py-1 transition-colors"
           :class="!txs.transfersOnly ? 'bg-foreground/10 font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'"
           @click="txs.setTransfersOnly(false)"
@@ -215,7 +217,7 @@ async function copyHash(h: string) {
       <button
         type="button"
         aria-label="previous page"
-        :disabled="txs.page === 0"
+        :disabled="!node.connected || txs.page === 0"
         class="grid h-7 w-7 place-items-center rounded border border-border transition-colors hover:bg-foreground/[0.06] disabled:opacity-40"
         @click="txs.goto(txs.page - 1)"
       >
@@ -224,7 +226,7 @@ async function copyHash(h: string) {
       <button
         type="button"
         aria-label="next page"
-        :disabled="!txs.hasNextPage"
+        :disabled="!node.connected || !txs.hasNextPage"
         class="grid h-7 w-7 place-items-center rounded border border-border transition-colors hover:bg-foreground/[0.06] disabled:opacity-40"
         @click="txs.goto(txs.page + 1)"
       >

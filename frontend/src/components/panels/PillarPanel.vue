@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { useNodeRefresh } from '../../lib/useNodeRefresh'
+import { ref, onUnmounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from 'nom-ui'
 import { usePillarStore } from '../../stores/pillar'
@@ -16,7 +17,7 @@ const wallet = useWalletStore()
 const { ownsPillar } = storeToRefs(pillarStore)
 const sub = ref('Delegate')
 
-onMounted(() => pillarStore.refreshRegistration())
+useNodeRefresh(() => pillarStore.refreshRegistration())
 onUnmounted(() => pillarStore.stopPolling())
 
 // A pillar is owned by a specific account address, so when the user switches

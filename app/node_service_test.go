@@ -568,6 +568,10 @@ func TestConnectStartsEmbeddedWhenModePersisted(t *testing.T) {
 func TestDeleteEmbeddedData(t *testing.T) {
 	n := newTestNode(t)
 	dir, _ := n.config.dataDir()
+	walletFile := filepath.Join(dir, "wallet.dat")
+	if err := os.WriteFile(walletFile, []byte("wallet sentinel"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	emb := filepath.Join(dir, "embedded")
 	if err := os.MkdirAll(emb, 0o700); err != nil {
 		t.Fatal(err)
@@ -580,6 +584,9 @@ func TestDeleteEmbeddedData(t *testing.T) {
 	}
 	if _, err := os.Stat(emb); !os.IsNotExist(err) {
 		t.Fatal("embedded dir should be gone")
+	}
+	if data, err := os.ReadFile(walletFile); err != nil || string(data) != "wallet sentinel" {
+		t.Fatalf("deleting embedded data touched an unrelated wallet file: %q, %v", data, err)
 	}
 	// absent dir is fine
 	if err := n.DeleteEmbeddedData(); err != nil {
@@ -855,23 +862,43 @@ func TestSupersededEmbeddedStartCannotInstall(t *testing.T) {
 // height: during bulk sync the momentum subscription delivers only every few
 // minutes, so without this bump the UI height pill lags the real sync progress
 // by whole epochs (observed live: status height 408k vs sync height 538k).
-func TestNoteSyncHeight_BumpsStatusMonotonically(t *testing.T) {
+func TestPublishSync_BumpsStatusMonotonically(t *testing.T) {
 	n := newTestNode(t)
 	n.mu.Lock()
 	n.height = 100
+	n.client = &rpc_client.RpcClient{}
+	n.syncStop = make(chan struct{})
 	n.mu.Unlock()
 
-	n.noteSyncHeight(150)
+	n.publishSync(0, n.syncStop, SyncStatus{CurrentHeight: 150})
 	if got := n.NodeStatus().Height; got != 150 {
 		t.Fatalf("sync sample must raise status height: got %d want 150", got)
 	}
-	n.noteSyncHeight(120) // a lower/stale sample must never regress the height
+	n.publishSync(0, n.syncStop, SyncStatus{CurrentHeight: 120}) // never regress
 	if got := n.NodeStatus().Height; got != 150 {
 		t.Fatalf("height must be monotonic: got %d want 150", got)
 	}
-	n.noteSyncHeight(0) // a not-ready sample is ignored
+	n.publishSync(0, n.syncStop, SyncStatus{}) // a not-ready sample is ignored
 	if got := n.NodeStatus().Height; got != 150 {
 		t.Fatalf("zero sample must be ignored: got %d want 150", got)
+	}
+}
+
+func TestPublishSyncRejectsSupersededPoller(t *testing.T) {
+	n := newTestNode(t)
+	n.client = &rpc_client.RpcClient{}
+	n.connGen = 2
+	n.syncStop = make(chan struct{})
+	n.height = 42
+	oldStop := make(chan struct{})
+	if n.publishSync(1, oldStop, SyncStatus{State: "stalled", CurrentHeight: 999}) {
+		t.Fatal("an old connection's sync sample was accepted")
+	}
+	if n.publishSync(2, oldStop, SyncStatus{State: "stalled", CurrentHeight: 999}) {
+		t.Fatal("a replaced poller's sync sample was accepted")
+	}
+	if n.NodeStatus().Height != 42 {
+		t.Fatal("stale sync sample changed the new connection's height")
 	}
 }
 

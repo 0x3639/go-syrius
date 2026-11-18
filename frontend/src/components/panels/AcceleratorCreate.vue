@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { useNodeRefresh } from '../../lib/useNodeRefresh'
+import { ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Input, Button } from 'nom-ui'
 import * as Nom from '../../../wailsjs/go/app/NomService'
@@ -12,7 +13,7 @@ const tx = useTxStore()
 const { myProjects } = storeToRefs(acc)
 const error = ref('')
 
-onMounted(() => acc.loadMyProjects())
+useNodeRefresh(() => acc.loadMyProjects())
 
 // create project
 const cName = ref('')

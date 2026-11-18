@@ -32,8 +32,9 @@ const bottomNav = [
 ]
 
 const heightLabel = computed(() => node.height.toLocaleString('en-US'))
-const synced = computed(() => node.connected && !node.syncing)
-const statusLabel = computed(() => !node.connected ? 'Disconnected' : node.sync?.state === 'stalled' ? 'Sync stalled' : node.syncing ? 'Syncing…' : 'Synced')
+const checkingSync = computed(() => node.mode === 'embedded' && !node.sync)
+const synced = computed(() => node.connected && !node.syncing && !checkingSync.value)
+const statusLabel = computed(() => !node.connected ? 'Disconnected' : checkingSync.value ? 'Checking sync…' : node.sync?.state === 'stalled' ? 'Sync stalled' : node.syncing ? 'Syncing…' : 'Synced')
 
 const appVersion = ref('')
 onMounted(async () => {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { useNodeRefresh } from '../../lib/useNodeRefresh'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Input, Button } from 'nom-ui'
 import * as Nom from '../../../wailsjs/go/app/NomService'
@@ -22,14 +23,21 @@ const error = ref('')
 const balances = useBalancesStore()
 const available = computed(() => balances.items.find(b => b.symbol === 'QSR')?.amount ?? '0')
 const availableLabel = computed(() => balances.available ? `${formatAmountExact(available.value, 8)} QSR available` : 'Balance unavailable')
+const maxFusion = computed(() => {
+  const whole = BigInt(available.value) / 100000000n
+  return balances.available && whole >= 10n ? whole.toString() : ''
+})
 const canFuse = computed(() => {
   try {
     const base = BigInt(toBase(amount.value, 8))
-    return balances.available && /^z1[0-9a-z]{38}$/.test(beneficiary.value) && base > 0n && base <= BigInt(available.value)
+    const address = beneficiary.value
+    const uniformCase = address === address.toLowerCase() || address === address.toUpperCase()
+    return balances.available && uniformCase && /^z1[0-9a-z]{38}$/i.test(address)
+      && base >= 1000000000n && base % 100000000n === 0n && base <= BigInt(available.value)
   } catch { return false }
 })
 
-onMounted(() => plasma.refresh())
+useNodeRefresh(() => plasma.refresh())
 
 // Live plasma estimate: mirrors the Svelte `$: if (amount) estimate(...)`. Only
 // the whole-QSR part drives the estimate, matching the original.
@@ -86,8 +94,9 @@ watch(
         <Input v-model="beneficiary" placeholder="z1…" aria-label="beneficiary" />
       </Field>
       <div class="space-y-1">
-        <AmountInput v-model="amount" label="Amount (QSR)" aria-label="qsr amount" :max="balances.available ? formatAmountExact(available, 8) : ''" />
+        <AmountInput v-model="amount" label="Amount (QSR)" aria-label="qsr amount" :max="maxFusion" />
         <p class="text-xs text-muted-foreground">{{ availableLabel }}</p>
+        <p class="text-xs text-muted-foreground">Minimum 10 QSR, in whole QSR increments.</p>
       </div>
       <p v-if="estimate > 0" class="text-xs text-muted-foreground">≈ {{ estimate.toLocaleString('en-US') }} plasma</p>
       <Button class="w-full" :disabled="!canFuse" @click="fuse">Fuse Plasma</Button>

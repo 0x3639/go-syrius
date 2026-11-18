@@ -41,6 +41,7 @@ export const useTxsStore = defineStore('txs', {
     error: false,
     _request: 0,
     _epoch: -1,
+    _fetching: false,
   }),
   getters: {
     filtered(s): TxRecord[] {
@@ -55,9 +56,12 @@ export const useTxsStore = defineStore('txs', {
   },
   actions: {
     async fetchChunk(): Promise<boolean> {
-      if (!this.hasMoreBlocks || this.chunkIndex >= MAX_CHUNKS) return false
+      // Reload owns the buffer/cursor. Page/filter changes update the desired
+      // view immediately; its loop fills that view before committing.
+      if (this.loading || this._fetching || !this.hasMoreBlocks || this.chunkIndex >= MAX_CHUNKS) return false
       const epoch = currentRequestEpoch()
       const request = this._request
+      this._fetching = true
       try {
         const r = (await N.GetTransactions(this.chunkIndex, BLOCK_FETCH)) as unknown as { records: TxRecord[]; hasMore: boolean }
         if (epoch !== currentRequestEpoch() || request !== this._request) return false
@@ -70,12 +74,16 @@ export const useTxsStore = defineStore('txs', {
         this.error = true
         this.hasMoreBlocks = false
         return false
+      } finally {
+        if (request === this._request) this._fetching = false
       }
     },
     // Fetch chunks until the current page is full and we can tell whether a next
     // page exists, or there are no more blocks.
     async ensure() {
-      while (this.filtered.length <= (this.page + 1) * PAGE_SIZE && this.hasMoreBlocks) {
+      const epoch = currentRequestEpoch()
+      const request = this._request
+      while (epoch === currentRequestEpoch() && request === this._request && this.filtered.length <= (this.page + 1) * PAGE_SIZE && this.hasMoreBlocks) {
         if (!(await this.fetchChunk())) break
       }
     },
@@ -87,6 +95,7 @@ export const useTxsStore = defineStore('txs', {
       if (this._epoch !== epoch) this.resetPage()
       this._epoch = epoch
       const request = ++this._request
+      this._fetching = false
       this.loading = true
       let failed = false
       const fresh: TxRecord[] = []
@@ -96,10 +105,12 @@ export const useTxsStore = defineStore('txs', {
       while (filteredLen() <= (this.page + 1) * PAGE_SIZE && more && idx < MAX_CHUNKS) {
         try {
           const r = (await N.GetTransactions(idx, BLOCK_FETCH)) as unknown as { records: TxRecord[]; hasMore: boolean }
+          if (epoch !== currentRequestEpoch() || request !== this._request) return
           fresh.push(...(r.records ?? []))
           more = !!r.hasMore
           idx++
         } catch {
+          if (epoch !== currentRequestEpoch() || request !== this._request) return
           failed = true
           more = false
           break
@@ -113,6 +124,7 @@ export const useTxsStore = defineStore('txs', {
       this.error = failed
       this.loaded = !failed
       this.loading = false
+      this._fetching = false
     },
     async goto(page: number) {
       this.page = Math.max(0, page)
@@ -130,6 +142,7 @@ export const useTxsStore = defineStore('txs', {
       this.hasMoreBlocks = true
       this.loaded = false
       this.loading = false
+      this._fetching = false
       this.error = false
       this.page = 0
     },

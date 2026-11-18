@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { useNodeRefresh } from '../../lib/useNodeRefresh'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Button } from 'nom-ui'
 import * as Nom from '../../../wailsjs/go/app/NomService'
@@ -77,7 +78,7 @@ async function collect(s: Source) {
   }
 }
 
-onMounted(refreshAll)
+useNodeRefresh(refreshAll)
 watch(
   () => tx.status,
   (s) => {

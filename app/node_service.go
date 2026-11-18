@@ -34,6 +34,9 @@ var embeddedStopTimeout = 10 * time.Second
 // Variable (not const) so tests can shorten it.
 var remoteVerifyTimeout = 15 * time.Second
 
+// Bound the subscription handshake separately from the long-lived stream.
+var momentumSubscribeTimeout = 15 * time.Second
+
 // embeddedHandle abstracts a running embedded node (real or test stub).
 type embeddedHandle interface {
 	WSURL() string
@@ -115,6 +118,7 @@ func newNodeService(c *ConfigService, w *WalletService) *NodeService {
 func (n *NodeService) setNode(url string) error {
 	n.mu.Lock()
 	n.disconnectLocked()
+	n.emitStatusLocked(false)
 	gen := n.connGen
 	n.mu.Unlock()
 
@@ -251,7 +255,10 @@ func (n *NodeService) startMomentumLoop(gen uint64) error {
 		subCtx = context.Background()
 	}
 
-	sub, ch, err := client.SubscriberApi.ToMomentums(subCtx)
+	setupCtx, cancel := context.WithTimeout(subCtx, momentumSubscribeTimeout)
+	sub, ch, err := client.SubscriberApi.ToMomentums(setupCtx)
+	// Subscribe's context controls only setup, not the established stream.
+	cancel()
 	if err != nil {
 		return err
 	}
@@ -272,6 +279,10 @@ func (n *NodeService) startMomentumLoop(gen uint64) error {
 			select {
 			case <-stop:
 				return
+			case <-sub.Err():
+				// The RPC client signals transport loss here; it leaves ch open.
+				n.degradeConnection(gen)
+				return
 			case ms, ok := <-ch:
 				if !ok {
 					// Unexpected channel closure: the connection is dead, not just
@@ -283,6 +294,10 @@ func (n *NodeService) startMomentumLoop(gen uint64) error {
 					return
 				}
 				n.mu.Lock()
+				if n.connGen != gen {
+					n.mu.Unlock()
+					return
+				}
 				for _, m := range ms {
 					if m.Height > n.height {
 						n.height = m.Height
@@ -290,12 +305,11 @@ func (n *NodeService) startMomentumLoop(gen uint64) error {
 				}
 				height := n.height
 				ctx := n.ctx
-				n.mu.Unlock()
-
 				if ctx != nil {
 					runtime.EventsEmit(ctx, EventMomentumTick, height)
 				}
-				n.emitStatus(true)
+				n.emitStatusLocked(true)
+				n.mu.Unlock()
 			}
 		}
 	}()
@@ -628,24 +642,25 @@ func (n *NodeService) stopEmbedded() {
 	n.appNapEnd()
 }
 
-// noteSyncHeight folds a sync-poller ledger-height sample into the status
-// height (monotonic, zero samples ignored). During embedded bulk sync the
-// momentum subscription delivers only sparsely, so without this the status
-// height — the sidebar pill — lags the live sync progress by whole epochs.
-// Emits node:status only when the height actually advances. The monotonic
-// guard also neutralizes a straggler sample from a dying poller after a mode
-// switch: it can never drag a fresher connection's height backwards.
-func (n *NodeService) noteSyncHeight(h uint64) {
-	if h == 0 {
-		return
-	}
+// publishSync emits only the current poller's sample and folds its ledger
+// height into node status. During bulk sync momentum notifications are sparse;
+// this keeps the sidebar height current without admitting old poller results.
+func (n *NodeService) publishSync(gen uint64, stop <-chan struct{}, st SyncStatus) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if h <= n.height {
-		return
+	// A completed RPC from the old poller must not restore its progress or
+	// stalled state after a reconnect, even if the new mode is also embedded.
+	if n.connGen != gen || n.syncStop != stop || n.client == nil {
+		return false
 	}
-	n.height = h
-	n.emitStatusLocked(true)
+	if n.ctx != nil {
+		runtime.EventsEmit(n.ctx, EventNodeSync, st)
+	}
+	if st.CurrentHeight > n.height {
+		n.height = st.CurrentHeight
+		n.emitStatusLocked(true)
+	}
+	return true
 }
 
 // startSyncPoller polls StatsApi sync info every 2s and emits node:sync.
@@ -658,6 +673,7 @@ func (n *NodeService) startSyncPoller() {
 	n.syncStop = stop
 	client := n.client
 	ctx := n.ctx
+	gen := n.connGen
 	n.mu.Unlock()
 	if client == nil || ctx == nil {
 		return
@@ -679,19 +695,14 @@ func (n *NodeService) startSyncPoller() {
 					// A dead node stops answering; after the stall window,
 					// say so instead of freezing the last good frame.
 					if tracker.observeError(now) {
-						// A superseded poller must not paint a stalled frame
-						// over a fresher connection's status.
-						select {
-						case <-stop:
-							return
-						default:
-						}
 						// Through computeSync, not a bare literal: the last
 						// known-good heights still carry a real percent, and
 						// collapsing the bar to 0.0% would misreport a node
 						// that stalled at 80% as one that never started.
 						st := computeSync(nil, tracker.lastHeight, lastTarget, lastPeers, "stalled")
-						runtime.EventsEmit(ctx, EventNodeSync, st)
+						if !n.publishSync(gen, stop, st) {
+							return
+						}
 					}
 					continue
 				}
@@ -712,8 +723,9 @@ func (n *NodeService) startSyncPoller() {
 					state = "stalled"
 				}
 				st := computeSync(samples, info.CurrentHeight, info.TargetHeight, peers, state)
-				runtime.EventsEmit(ctx, EventNodeSync, st)
-				n.noteSyncHeight(info.CurrentHeight)
+				if !n.publishSync(gen, stop, st) {
+					return
+				}
 			}
 		}
 	}()

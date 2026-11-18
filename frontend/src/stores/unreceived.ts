@@ -11,16 +11,23 @@ export const useUnreceivedStore = defineStore('unreceived', {
     busy: {} as Record<string, boolean>,
     busyAll: false,
     error: '',
+    _request: 0,
   }),
   actions: {
+    invalidate() {
+      this._request++
+      this.items = []
+      this.error = ''
+    },
     async load() {
       const epoch = currentRequestEpoch()
+      const request = ++this._request
       try {
         const items = (await N.GetUnreceived()) as unknown as Unreceived[]
-        if (epoch !== currentRequestEpoch()) return // stale: another account's data
+        if (epoch !== currentRequestEpoch() || request !== this._request) return
         this.items = items
       } catch {
-        if (epoch !== currentRequestEpoch()) return
+        if (epoch !== currentRequestEpoch() || request !== this._request) return
         this.items = []
       }
     },

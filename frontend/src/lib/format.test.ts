@@ -63,6 +63,13 @@ describe('isValidPillarName', () => {
 // GS-12: malformed decimal strings must be rejected, not silently normalized
 // ('1.2.3' used to become 1.2; '-0.5' used to become positive 0.5).
 describe('toBase strictness', () => {
+  it('rejects lost precision but accepts redundant trailing zeroes', () => {
+    expect(() => toBase('1.500000009', 8)).toThrow('decimal places')
+    expect(() => toBase('1.0000001', 6)).toThrow('decimal places')
+    expect(() => toBase('1.1', 0)).toThrow('decimal places')
+    expect(toBase('1.500000000', 8)).toBe('150000000')
+    expect(toBase('1.000', 0)).toBe('1')
+  })
   it('rejects multiple dots', () => {
     expect(() => toBase('1.2.3', 8)).toThrow()
   })

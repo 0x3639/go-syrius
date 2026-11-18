@@ -66,6 +66,42 @@ afterEach(() => {
 })
 
 describe('PlasmaPanel', () => {
+  it('floors Max to whole QSR and validates the fusion minimum and address case', async () => {
+    setup()
+    useBalancesStore().items[0].amount = '1250000000'
+    const w = render()
+    const address = 'z1qqjnwjjpnue8xmmpanz6csze6tcmtzzdtfsww7'.toUpperCase()
+    await w.get('[aria-label="beneficiary"]').setValue(address)
+    await w.get('[aria-label="max amount"]').trigger('click')
+    expect((w.get('[aria-label="qsr amount"]').element as HTMLInputElement).value).toBe('12')
+    expect(w.text()).toContain('12.5 QSR available')
+    const button = w.findAll('button').find(b => b.text() === 'Fuse Plasma')!
+    expect(button.attributes('disabled')).toBeUndefined()
+    await button.trigger('click')
+    expect(Nom.PrepareFuse).toHaveBeenCalledWith(address, '1200000000')
+    for (const value of ['9', '12.5', '-10']) {
+      await w.get('[aria-label="qsr amount"]').setValue(value)
+      expect(button.attributes('disabled')).toBeDefined()
+    }
+    await w.get('[aria-label="qsr amount"]').setValue('10')
+    await w.get('[aria-label="beneficiary"]').setValue('z' + address.slice(1))
+    expect(button.attributes('disabled')).toBeDefined()
+    useBalancesStore().items[0].amount = '999999999'
+    await w.vm.$nextTick()
+    expect(w.find('[aria-label="max amount"]').exists()).toBe(false)
+  })
+
+  it('refreshes on reconnect without discarding its draft', async () => {
+    const { plasma } = setup()
+    const w = render()
+    await w.get('[aria-label="qsr amount"]').setValue('12')
+    useNodeStore().connected = false
+    await w.vm.$nextTick()
+    useNodeStore().connected = true
+    await w.vm.$nextTick()
+    expect(plasma.refresh).toHaveBeenCalledTimes(2)
+    expect((w.get('[aria-label="qsr amount"]').element as HTMLInputElement).value).toBe('12')
+  })
   it('Fuse calls PrepareFuse(beneficiary, baseUnits) then tx.awaitConfirm(preview)', async () => {
     const { awaitConfirm } = setup()
     const w = render()

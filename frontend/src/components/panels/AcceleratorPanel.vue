@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { useNodeRefresh } from '../../lib/useNodeRefresh'
+import { ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from 'nom-ui'
 import { useAcceleratorStore } from '../../stores/accelerator'
@@ -29,7 +30,7 @@ function load() {
   acc.loadProjects()
   acc.loadVotablePillars()
 }
-onMounted(load)
+useNodeRefresh(load)
 watch(() => wallet.activeIndex, load)
 </script>
 

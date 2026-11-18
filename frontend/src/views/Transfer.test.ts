@@ -2,16 +2,23 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import Transfer from './Transfer.vue'
+import { useBalancesStore } from '../stores/balances'
+import { useNodeStore } from '../stores/node'
 import { useTxStore } from '../stores/tx'
 
 describe('Transfer page', () => {
-  beforeEach(() => setActivePinia(createPinia()))
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    useNodeStore().connected = true
+    useBalancesStore().status = 'ready'
+    useBalancesStore().items = [{ zts: 'zts1znn', symbol: 'SIX', amount: '2000000', decimals: 6 }]
+  })
   it('renders the send form while idle', () => {
     const w = mount(Transfer, { global: { stubs: { SendForm: true, TxModal: true, TxResult: true } } })
     expect(w.findComponent({ name: 'SendForm' }).exists() || w.find('send-form-stub').exists()).toBe(true)
   })
 
-  it('awaits cleanup of a retained error hold before preparing a replacement send', async () => {
+  it.each([false, true])('rechecks token metadata after retained hold cleanup (invalidated: %s)', async (invalidate) => {
     const tx = useTxStore()
     tx.status = 'error'
     tx.preview = { holdId: 71 } as any
@@ -36,9 +43,11 @@ describe('Transfer page', () => {
     expect(discard).toHaveBeenCalledOnce()
     expect(prepare).not.toHaveBeenCalled()
 
+    if (invalidate) useBalancesStore().invalidate()
     finishDiscard()
     await Promise.resolve()
     await Promise.resolve()
-    expect(prepare).toHaveBeenCalledWith('z1qto', 'zts1znn', '100000000')
+    if (invalidate) expect(prepare).not.toHaveBeenCalled()
+    else expect(prepare).toHaveBeenCalledWith('z1qto', 'zts1znn', '1000000')
   })
 })

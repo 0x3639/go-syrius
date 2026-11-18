@@ -30,6 +30,8 @@ const initialSub = computed(() => (typeof route.query.sub === 'string' ? route.q
        section reads consistently instead of sprawling full-width. -->
   <div class="page-content">
     <BalanceNotice />
-    <component :is="panel" v-if="node.connected" v-bind="panelKey === 'accelerator' ? { initialSub } : {}" />
+    <div v-show="node.connected">
+      <component :is="panel" v-bind="panelKey === 'accelerator' ? { initialSub } : {}" />
+    </div>
   </div>
 </template>

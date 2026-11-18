@@ -10,6 +10,8 @@ export function toBase(decimal: string, decimals: number): string {
     throw new Error(`invalid amount: ${decimal}`)
   }
   const [i, f = ''] = s.split('.')
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255) throw new Error('invalid token precision')
+  if (/[1-9]/.test(f.slice(decimals))) throw new Error(`Amount supports at most ${decimals} decimal places`)
   const frac = (f + '0'.repeat(decimals)).slice(0, decimals)
   return (BigInt(i || '0') * 10n ** BigInt(decimals) + BigInt(frac || '0')).toString()
 }

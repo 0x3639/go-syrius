@@ -17,8 +17,9 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const showMax = computed(() => !!props.max && Number(props.max) > 0)
 
 function onInput(e: Event) {
-  const cleaned = (e.target as HTMLInputElement).value.replace(/[^0-9.]/g, '')
-  emit('update:modelValue', cleaned)
+  // Preserve the user's value so strict validation can reject it. Stripping
+  // characters would turn a pasted negative amount into a positive transfer.
+  emit('update:modelValue', (e.target as HTMLInputElement).value)
 }
 
 function setMax() {

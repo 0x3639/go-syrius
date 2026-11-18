@@ -6,6 +6,8 @@ A reimplementation of the Zenon **syrius** wallet as a **Go + [Wails v2](https:/
 
 > The former experimental **Governance** module has been removed ahead of its redesign. The embedded node uses **go-zenon v0.0.10** (`v0.0.10-alphanet`).
 
+Embedded users with an old or divergent chain database can follow the [embedded-node recovery guidance](docs/embedded-node-upgrade.md). Upgrading the application preserves existing node data; it does not automatically resync it.
+
 ---
 
 ## Security model (read this)

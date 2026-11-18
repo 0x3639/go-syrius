@@ -21,6 +21,20 @@ beforeEach(() => {
 })
 
 describe('unreceived store', () => {
+  it('clears pending rows and rejects an old connection response after invalidation', async () => {
+    const s = useUnreceivedStore()
+    await s.load()
+    let finish!: (r: unknown) => void
+    GetUnreceived.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const loading = s.load()
+    s.invalidate()
+    expect(s.items).toEqual([])
+    finish([{ fromHash: 'old-node' }])
+    await loading
+    expect(s.items).toEqual([])
+    await s.load()
+    expect(s.items[0].fromHash).toBe('h1')
+  })
   it('load sets items from GetUnreceived', async () => {
     const s = useUnreceivedStore()
     await s.load()

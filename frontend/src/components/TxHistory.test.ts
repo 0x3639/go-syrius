@@ -50,6 +50,18 @@ function seed(records: TxRecord[]) {
 }
 
 describe('TxHistory', () => {
+  it('disables history filters while disconnected', async () => {
+    useNodeStore().connected = false
+    const s = useTxsStore()
+    const filter = vi.spyOn(s, 'setTransfersOnly')
+    const w = mount(TxHistory)
+    for (const label of ['show transfers only', 'show all transactions']) {
+      const button = w.get(`[aria-label="${label}"]`)
+      expect(button.attributes('disabled')).toBeDefined()
+      await button.trigger('click')
+    }
+    expect(filter).not.toHaveBeenCalled()
+  })
   it('renders a row with the formatted amount', async () => {
     const w = mount(TxHistory)
     seed([tx])

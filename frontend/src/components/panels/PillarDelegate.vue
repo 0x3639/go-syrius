@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { useNodeRefresh } from '../../lib/useNodeRefresh'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Input, Button } from 'nom-ui'
 import * as Nom from '../../../wailsjs/go/app/NomService'
@@ -55,7 +56,7 @@ async function collect() {
   }
 }
 
-onMounted(() => pillar.refresh())
+useNodeRefresh(() => pillar.refresh())
 watch(
   () => tx.status,
   (s) => {

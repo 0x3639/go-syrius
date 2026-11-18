@@ -256,6 +256,8 @@ describe('Settings.vue', () => {
     await flush()
 
     expect(w.text()).toContain("differs from the connected node's chain 1")
+    const warning = w.findAll('[role="alert"]').find(el => el.text().includes('differs from'))!
+    expect(warning.element.closest('details')).toBeNull()
   })
 
   it('renders the persisted auto-lock timeout', async () => {

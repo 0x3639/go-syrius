@@ -13,8 +13,33 @@ vi.mock('../../wailsjs/runtime/runtime', () => ({
   EventsOn: vi.fn((evt: string, cb: (data?: any) => void) => { handlers[evt] = cb }),
 }))
 import { useNodeStore } from './node'
+import { Connect } from '../../wailsjs/go/app/NodeService'
 beforeEach(() => setActivePinia(createPinia()))
 describe('node store', () => {
+  it('retains a restart-required error for reconnect UI', async () => {
+    vi.mocked(Connect).mockRejectedValueOnce(new Error('embedded node stop timed out; restart go-syrius'))
+    const s = useNodeStore()
+    await s.connect()
+    expect(s.connected).toBe(false)
+    expect(s.connectionError).toContain('restart go-syrius')
+    await s.connect()
+    expect(s.connected).toBe(true)
+    expect(s.connectionError).toBe('')
+  })
+
+  it('drops old sync samples on disconnect and ignores offline stragglers', async () => {
+    const s = useNodeStore()
+    s.initEvents(vi.fn())
+    handlers['node:status']({ connected: true, mode: 'embedded' })
+    handlers['node:sync']({ state: 'stalled' })
+    handlers['node:status']({ connected: false, mode: 'embedded' })
+    handlers['node:sync']({ state: 'stalled' })
+    expect(s.sync).toBeNull()
+    handlers['node:status']({ connected: true, mode: 'embedded' })
+    expect(s.sync).toBeNull()
+    handlers['node:sync']({ state: 'synced' })
+    expect(s.sync?.state).toBe('synced')
+  })
   it('connects and loads balances', async () => {
     const s = useNodeStore()
     await s.connect(); expect(s.connected).toBe(true)

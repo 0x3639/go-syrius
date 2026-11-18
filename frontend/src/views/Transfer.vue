@@ -5,6 +5,7 @@ import { watch } from 'vue'
 import { useBalancesStore } from '../stores/balances'
 import { useTxStore } from '../stores/tx'
 import { toBase } from '../lib/format'
+import { currentRequestEpoch } from '../lib/requestEpoch'
 import SendForm from '../components/SendForm.vue'
 import TxModal from '../components/TxModal.vue'
 import TxResult from '../components/TxResult.vue'
@@ -19,6 +20,7 @@ let toast: ReturnType<typeof useToast> | undefined
 try { toast = useToast() } catch { toast = undefined }
 
 async function onSend(intent: { recipient: string; zts: string; amountDecimal: string }) {
+  const epoch = currentRequestEpoch()
   // A retryable confirm failure may still own its backend hold. The transfer
   // page renders a new form in error state, so release that exact old hold and
   // await the local binding before preparing the replacement transaction.
@@ -27,7 +29,10 @@ async function onSend(intent: { recipient: string; zts: string; amountDecimal: s
   // Recheck the amount at the view boundary and surface conversion failures.
   let amount: string
   try {
-    amount = toBase(intent.amountDecimal, tok?.decimals ?? 8)
+    if (epoch !== currentRequestEpoch() || !balances.available || !tok) {
+      throw new Error('Balances changed. Review the amount and try again.')
+    }
+    amount = toBase(intent.amountDecimal, tok.decimals)
   } catch (e: unknown) {
     toast?.show(e instanceof Error ? e.message : String(e), 'error')
     return

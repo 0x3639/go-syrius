@@ -1,3 +1,4 @@
+import { useNodeStore } from '../stores/node'
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -41,7 +42,7 @@ const PREVIEW = {
 } as any
 
 beforeEach(() => {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true
 })
 
 describe('NomConfirm (global panel confirm)', () => {

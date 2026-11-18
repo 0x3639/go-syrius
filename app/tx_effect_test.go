@@ -2,6 +2,7 @@ package app
 
 import (
 	"math/big"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -31,31 +32,31 @@ func TestDecodeContractTemplates(t *testing.T) {
 	tests := []struct {
 		name  string
 		block *nom.AccountBlock
-		want  []string
+		want  TransactionEffect
 	}{
-		{"spork.create", spork.CreateSpork("test-spork", "gates the new hash algo"), []string{"test-spork", "gates the new hash algo"}},
-		{"spork.activate", spork.ActivateSpork(h), []string{effHash}},
-		{"bridge.addNetwork", bridge.AddNetwork(2, 31337, "Ethereum", "0xabcdef0123", `{"rpc":"wss://x"}`), []string{"2", "31337", "Ethereum", "0xabcdef0123", `{"rpc":"wss://x"}`}},
-		{"bridge.removeNetwork", bridge.RemoveNetwork(2, 31337), []string{"2", "31337"}},
-		{"bridge.setTokenPair", bridge.SetTokenPair(1, 2, znn, "0xdeadbeef", true, false, true, mustBig(t, effBigAmount), 15, 40, "{}"), []string{znn.String(), "0xdeadbeef", "true", "false", effBigAmount, "15", "40", "{}"}},
-		{"bridge.removeTokenPair", bridge.RemoveTokenPair(1, 2, qsr, "0xdeadbeef"), []string{qsr.String(), "0xdeadbeef"}},
-		{"bridge.halt", bridge.Halt("halt-signature-data"), []string{"halt-signature-data"}},
-		{"bridge.unhalt", bridge.Unhalt(), nil},
-		{"bridge.emergency", bridge.Emergency(), nil},
-		{"bridge.changeAdministrator", bridge.ChangeAdministrator(a), []string{effAddr1}},
-		{"bridge.changeTssECDSAPubKey", bridge.ChangeTssECDSAPubKey("pubkey-b64", "old-sig", "new-sig"), []string{"pubkey-b64", "old-sig", "new-sig"}},
-		{"bridge.setAllowKeygen", bridge.SetAllowKeygen(true), []string{"true"}},
-		{"bridge.setOrchestratorInfo", bridge.SetOrchestratorInfo(6, 66, 20, 10), []string{"6", "66", "20", "10"}},
-		{"bridge.setMetadata", bridge.SetBridgeMetadata(`{"affiliate":true}`), []string{`{"affiliate":true}`}},
-		{"bridge.setNetworkMetadata", bridge.SetNetworkMetadata(1, 2, `{"n":1}`), []string{`{"n":1}`}},
-		{"bridge.revokeUnwrapRequest", bridge.RevokeUnwrapRequest(h, 3), []string{effHash, "3"}},
-		{"bridge.nominateGuardians", bridge.NominateGuardians([]types.Address{a, b}), []string{effAddr1 + ", " + effAddr2}},
-		{"liquidity.emergency", liquidity.Emergency(), nil},
-		{"liquidity.setTokenTuple", liquidity.SetTokenTupleMethod([]string{znn.String(), qsr.String()}, []uint32{7000, 3000}, []uint32{4000, 6000}, []*big.Int{big.NewInt(100), mustBig(t, effBigAmount)}), []string{znn.String() + ", " + qsr.String(), "7000, 3000", "4000, 6000", "100, " + effBigAmount}},
-		{"liquidity.setIsHalted", liquidity.SetIsHalted(true), []string{"true"}},
-		{"liquidity.setAdditionalReward", liquidity.SetAdditionalReward(big.NewInt(100000000), big.NewInt(1000000000)), []string{"100000000", "1000000000"}},
-		{"liquidity.changeAdministrator", liquidity.ChangeAdministrator(b), []string{effAddr2}},
-		{"liquidity.nominateGuardians", liquidity.NominateGuardians([]types.Address{a, b}), []string{effAddr1 + ", " + effAddr2}},
+		{"spork.create", spork.CreateSpork("test-spork", "gates the new hash algo"), TransactionEffect{"Spork", "CreateSpork", []EffectField{{"name", "test-spork"}, {"description", "gates the new hash algo"}}}},
+		{"spork.activate", spork.ActivateSpork(h), TransactionEffect{"Spork", "ActivateSpork", []EffectField{{"id", effHash}}}},
+		{"bridge.addNetwork", bridge.AddNetwork(2, 31337, "Ethereum", "0xabcdef0123", `{"rpc":"wss://x"}`), TransactionEffect{"Bridge", "SetNetwork", []EffectField{{"networkClass", "2"}, {"chainId", "31337"}, {"name", "Ethereum"}, {"contractAddress", "0xabcdef0123"}, {"metadata", `{"rpc":"wss://x"}`}}}},
+		{"bridge.removeNetwork", bridge.RemoveNetwork(2, 31337), TransactionEffect{"Bridge", "RemoveNetwork", []EffectField{{"networkClass", "2"}, {"chainId", "31337"}}}},
+		{"bridge.setTokenPair", bridge.SetTokenPair(1, 2, znn, "0xdeadbeef", true, false, true, mustBig(t, effBigAmount), 15, 40, "{}"), TransactionEffect{"Bridge", "SetTokenPair", []EffectField{{"networkClass", "1"}, {"chainId", "2"}, {"tokenStandard", znn.String()}, {"tokenAddress", "0xdeadbeef"}, {"bridgeable", "true"}, {"redeemable", "false"}, {"owned", "true"}, {"minAmount", effBigAmount}, {"feePercentage", "15"}, {"redeemDelay", "40"}, {"metadata", "{}"}}}},
+		{"bridge.removeTokenPair", bridge.RemoveTokenPair(1, 2, qsr, "0xdeadbeef"), TransactionEffect{"Bridge", "RemoveTokenPair", []EffectField{{"networkClass", "1"}, {"chainId", "2"}, {"tokenStandard", qsr.String()}, {"tokenAddress", "0xdeadbeef"}}}},
+		{"bridge.halt", bridge.Halt("halt-signature-data"), TransactionEffect{"Bridge", "Halt", []EffectField{{"signature", "halt-signature-data"}}}},
+		{"bridge.unhalt", bridge.Unhalt(), TransactionEffect{"Bridge", "Unhalt", []EffectField{}}},
+		{"bridge.emergency", bridge.Emergency(), TransactionEffect{"Bridge", "Emergency", []EffectField{}}},
+		{"bridge.changeAdministrator", bridge.ChangeAdministrator(a), TransactionEffect{"Bridge", "ChangeAdministrator", []EffectField{{"administrator", effAddr1}}}},
+		{"bridge.changeTssECDSAPubKey", bridge.ChangeTssECDSAPubKey("pubkey-b64", "old-sig", "new-sig"), TransactionEffect{"Bridge", "ChangeTssECDSAPubKey", []EffectField{{"pubKey", "pubkey-b64"}, {"oldPubKeySignature", "old-sig"}, {"newPubKeySignature", "new-sig"}}}},
+		{"bridge.setAllowKeygen", bridge.SetAllowKeygen(true), TransactionEffect{"Bridge", "SetAllowKeyGen", []EffectField{{"allowKeyGen", "true"}}}},
+		{"bridge.setOrchestratorInfo", bridge.SetOrchestratorInfo(6, 66, 20, 10), TransactionEffect{"Bridge", "SetOrchestratorInfo", []EffectField{{"windowSize", "6"}, {"keyGenThreshold", "66"}, {"confirmationsToFinality", "20"}, {"estimatedMomentumTime", "10"}}}},
+		{"bridge.setMetadata", bridge.SetBridgeMetadata(`{"affiliate":true}`), TransactionEffect{"Bridge", "SetBridgeMetadata", []EffectField{{"metadata", `{"affiliate":true}`}}}},
+		{"bridge.setNetworkMetadata", bridge.SetNetworkMetadata(1, 2, `{"n":1}`), TransactionEffect{"Bridge", "SetNetworkMetadata", []EffectField{{"networkClass", "1"}, {"chainId", "2"}, {"metadata", `{"n":1}`}}}},
+		{"bridge.revokeUnwrapRequest", bridge.RevokeUnwrapRequest(h, 3), TransactionEffect{"Bridge", "RevokeUnwrapRequest", []EffectField{{"transactionHash", effHash}, {"logIndex", "3"}}}},
+		{"bridge.nominateGuardians", bridge.NominateGuardians([]types.Address{a, b}), TransactionEffect{"Bridge", "NominateGuardians", []EffectField{{"guardians", effAddr1 + ", " + effAddr2}}}},
+		{"liquidity.emergency", liquidity.Emergency(), TransactionEffect{"Liquidity", "Emergency", []EffectField{}}},
+		{"liquidity.setTokenTuple", liquidity.SetTokenTupleMethod([]string{znn.String(), qsr.String()}, []uint32{7000, 3000}, []uint32{4000, 6000}, []*big.Int{big.NewInt(100), mustBig(t, effBigAmount)}), TransactionEffect{"Liquidity", "SetTokenTuple", []EffectField{{"tokenStandards", znn.String() + ", " + qsr.String()}, {"znnPercentages", "7000, 3000"}, {"qsrPercentages", "4000, 6000"}, {"minAmounts", "100, " + effBigAmount}}}},
+		{"liquidity.setIsHalted", liquidity.SetIsHalted(true), TransactionEffect{"Liquidity", "SetIsHalted", []EffectField{{"isHalted", "true"}}}},
+		{"liquidity.setAdditionalReward", liquidity.SetAdditionalReward(big.NewInt(100000000), big.NewInt(1000000000)), TransactionEffect{"Liquidity", "SetAdditionalReward", []EffectField{{"znnReward", "100000000"}, {"qsrReward", "1000000000"}}}},
+		{"liquidity.changeAdministrator", liquidity.ChangeAdministrator(b), TransactionEffect{"Liquidity", "ChangeAdministrator", []EffectField{{"administrator", effAddr2}}}},
+		{"liquidity.nominateGuardians", liquidity.NominateGuardians([]types.Address{a, b}), TransactionEffect{"Liquidity", "NominateGuardians", []EffectField{{"guardians", effAddr1 + ", " + effAddr2}}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -63,10 +64,9 @@ func TestDecodeContractTemplates(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if effect.Contract == "" || effect.Method == "" {
-				t.Fatalf("unnamed effect: %+v", effect)
+			if !reflect.DeepEqual(*effect, tt.want) {
+				t.Fatalf("decoded effect = %+v, want %+v", *effect, tt.want)
 			}
-			assertEffectHasValues(t, effect, tt.want...)
 		})
 	}
 }

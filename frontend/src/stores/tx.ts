@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import * as Tx from '../../wailsjs/go/app/TxService'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import type { app } from '../../wailsjs/go/models'
+import { useNodeStore } from './node'
+import { currentRequestEpoch } from '../lib/requestEpoch'
 
 export type EffectField = { label: string; value: string }
 export type TransactionEffect = { contract: string; method: string; fields: EffectField[] }
@@ -29,6 +31,7 @@ export const useTxStore = defineStore('tx', {
     },
     async prepare(toAddress: string, zts: string, amount: string) {
       const token = ++prepareToken
+      const epoch = currentRequestEpoch()
       this.status = 'preparing'; this.preview = null; this.hash = ''; this.error = ''
       try {
         const preview = (await Tx.PrepareSend({ toAddress, zts, amount } as any)) as unknown as SendPreview
@@ -36,24 +39,29 @@ export const useTxStore = defineStore('tx', {
         // reset bumps the token; another flow took the state) is dropped — but
         // its backend hold MUST be released, or the single pending slot would
         // diverge from whatever a dialog is displaying.
-        if (token !== prepareToken || this.status !== 'preparing') {
+        if (epoch !== currentRequestEpoch() || token !== prepareToken || this.status !== 'preparing') {
           const orphan = preview?.holdId ?? 0
           if (orphan !== 0) Tx.CancelPending(orphan).catch(() => {})
+          if (token === prepareToken && this.status === 'preparing') this.reset()
           return
         }
         this.preview = preview
         this.status = 'awaiting'
       } catch (e: any) {
         if (token !== prepareToken || this.status !== 'preparing') return
+        if (epoch !== currentRequestEpoch()) { this.reset(); return }
         this.status = 'error'; this.error = e?.message ?? String(e)
       }
     },
-    // NOTE: the panel flows (tx.awaitConfirm(await Nom.PrepareX())) carry no
-    // staleness guard on purpose — if the user navigates mid-prepare, the
-    // global dialog follows them (long-standing UX). Funds-safety does not
-    // depend on it: ConfirmPublish(holdId) refuses to broadcast anything but
-    // the exact block this preview describes.
-    awaitConfirm(preview: SendPreview | app.CallPreview) { this.preview = preview as SendPreview; this.status = 'awaiting'; this.hash = ''; this.error = '' },
+    // Panel confirmations may follow navigation, but a response arriving after
+    // disconnect must not reopen an actionable dialog or strand its hold.
+    awaitConfirm(preview: SendPreview | app.CallPreview) {
+      if (!useNodeStore().connected) {
+        if (preview.holdId) Tx.CancelPending(preview.holdId).catch(() => {})
+        return
+      }
+      this.preview = preview as SendPreview; this.status = 'awaiting'; this.hash = ''; this.error = ''
+    },
     async confirm() {
       const holdId = this.preview?.holdId ?? 0
       this.status = 'publishing'

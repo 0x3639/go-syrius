@@ -38,6 +38,15 @@ beforeEach(() => {
 })
 
 describe('SendForm', () => {
+  it('rejects nonzero digits beyond token precision without rejecting trailing zeroes', async () => {
+    useBalancesStore().items = [znn]
+    const w = mount(SendForm)
+    await w.get('[aria-label="recipient"]').setValue('z1' + 'q'.repeat(38))
+    await w.get('[aria-label="Amount"]').setValue('1.500000009')
+    expect(w.get('[aria-label="Send"]').attributes('disabled')).toBeDefined()
+    await w.get('[aria-label="Amount"]').setValue('1.500000000')
+    expect(w.get('[aria-label="Send"]').attributes('disabled')).toBeUndefined()
+  })
   it('prevents amounts above the balance and sending while disconnected', async () => {
     useBalancesStore().items = [znn]
     const w = mount(SendForm)

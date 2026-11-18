@@ -6,5 +6,8 @@ const exact = computed(() => `${formatAmountExact(props.amount, props.decimals)}
 </script>
 
 <template>
-  <span class="font-mono tabular-nums" :title="exact" :aria-label="exact">{{ `${formatAmount(amount, decimals)} ${symbol}`.trim() }}</span>
+  <span class="font-mono tabular-nums" :title="exact">
+    <span aria-hidden="true">{{ `${formatAmount(amount, decimals)} ${symbol}`.trim() }}</span>
+    <span class="sr-only">{{ exact }}</span>
+  </span>
 </template>

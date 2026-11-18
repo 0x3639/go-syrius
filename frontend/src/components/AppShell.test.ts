@@ -73,7 +73,7 @@ function stubStores() {
   vi.spyOn(walletConnect, 'ensureClient').mockResolvedValue({} as any)
   vi.spyOn(walletConnect, 'updateAccount').mockResolvedValue(undefined as any)
 
-  return { node, balances, txs, autoReceive, wallet, walletConnect }
+  return { node, balances, txs, plasma, unreceived, autoReceive, wallet, walletConnect }
 }
 
 function mountShell() {
@@ -90,6 +90,21 @@ function mountShell() {
 
 describe('AppShell', () => {
   beforeEach(() => setActivePinia(createPinia()))
+
+  it('invalidates all displayed wallet snapshots on a same-tick reconnect', () => {
+    const { node, balances, plasma, unreceived } = stubStores()
+    node.connected = true
+    mountShell()
+    balances.items = [{ amount: '1' } as any]
+    plasma.info = { currentPlasma: 100 } as any
+    unreceived.items = [{ fromHash: 'old' } as any]
+    // Successful endpoint replacement may deliver false/true before Vue renders.
+    node.applyStatus({ connected: false })
+    node.applyStatus({ connected: true })
+    expect(balances.items).toEqual([])
+    expect(plasma.info).toBeNull()
+    expect(unreceived.items).toEqual([])
+  })
 
   it('renders the sidebar, a topbar title from route meta, and a router-view outlet', () => {
     stubStores()

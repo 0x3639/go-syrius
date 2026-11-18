@@ -1,3 +1,4 @@
+import { useNodeStore } from '../stores/node'
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -26,7 +27,7 @@ import TxModal from './TxModal.vue'
 import { useTxStore } from '../stores/tx'
 
 beforeEach(() => {
-  setActivePinia(createPinia())
+  setActivePinia(createPinia()); useNodeStore().connected = true
   ConfirmPublish.mockClear()
 })
 

@@ -16,9 +16,9 @@ describe('AmountInput', () => {
     expect(w.find('button[aria-label="max amount"]').exists()).toBe(false)
   })
 
-  it('strips non-numeric input', async () => {
+  it.each(['1a.2b3', '-50', '-1.5'])('preserves %s for strict validation', async (value) => {
     const w = mount(AmountInput, { props: { modelValue: '' } })
-    await w.find('input').setValue('1a.2b3')
-    expect(w.emitted('update:modelValue')![0]).toEqual(['1.23'])
+    await w.find('input').setValue(value)
+    expect(w.emitted('update:modelValue')![0]).toEqual([value])
   })
 })

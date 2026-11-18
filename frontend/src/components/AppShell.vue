@@ -75,6 +75,8 @@ async function refresh() {
 async function onActiveChange(i: number) {
   balances.invalidate()
   txs.resetPage()
+  plasma.invalidate()
+  unreceived.invalidate()
   refresh()
   await autoReceive.followAccount(i)
   await walletConnect.updateAccount(wallet.activeAddress())
@@ -83,13 +85,17 @@ async function onActiveChange(i: number) {
 watch(
   () => wallet.activeIndex,
   (i) => { if (i >= 0) onActiveChange(i) },
+  { flush: 'sync' },
 )
 
 watch(() => node.connected, (connected) => {
   balances.invalidate()
   txs.resetPage()
+  plasma.invalidate()
+  unreceived.invalidate()
   if (connected) refresh()
-})
+  else tx.discard()
+}, { flush: 'sync' })
 
 // Activity pings for the backend auto-lock watchdog. Throttled: the watchdog
 // only needs coarse "user is here" signals, one binding call per 15s max.

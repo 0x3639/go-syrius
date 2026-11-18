@@ -46,11 +46,27 @@ type embeddedHandle interface {
 	Stop() error
 }
 
+// nodeConnection is private until its generation is accepted for installation.
+// Preparing it performs network I/O but cannot change NodeService's live state.
+type nodeConnection struct {
+	client    *rpc_client.RpcClient
+	frontier  *api.Momentum
+	sub       *server.ClientSubscription
+	momentums <-chan []subscribe.Momentum
+}
+
+func (c *nodeConnection) close() {
+	c.client.Stop()
+	c.sub.Unsubscribe()
+}
+
 // NodeService owns the remote RPC connection and surfaces reads + status events.
 type NodeService struct {
 	ctx    context.Context
 	config *ConfigService
 	wallet *WalletService
+	// Wails by default; transport tests capture emitted status/sync samples.
+	emitEvent func(context.Context, string, ...interface{})
 
 	mu      sync.RWMutex
 	mode    string
@@ -71,7 +87,9 @@ type NodeService struct {
 	// sequence — persist mode, stop/start the embedded node, set n.mode, dial —
 	// and overlapping transitions could otherwise interleave those steps so the
 	// persisted mode, in-memory mode, embedded lifecycle, and connected URL
-	// belong to different requests. Lock order: opMu before mu, never inverse.
+	// belong to different requests. Background recovery reserves and installs
+	// under opMu, but prepares its private candidate outside it so explicit
+	// transitions need not wait for that probe. Lock order: opMu before mu.
 	opMu sync.Mutex
 
 	receiveFn func(fromHash string) (string, error)
@@ -105,7 +123,7 @@ type NodeService struct {
 }
 
 func newNodeService(c *ConfigService, w *WalletService) *NodeService {
-	n := &NodeService{config: c, wallet: w, embeddedReconnectDelay: time.Second}
+	n := &NodeService{config: c, wallet: w, emitEvent: runtime.EventsEmit, embeddedReconnectDelay: time.Second}
 	n.embeddedStart = func(dataDir string) (embeddedHandle, error) {
 		return embeddednode.Start(dataDir)
 	}
@@ -132,18 +150,23 @@ func (n *NodeService) setNode(url string) error {
 // dialNode connects a candidate for an already-reserved generation. It must
 // never create a new intent: shutdown may supersede it before dialing begins.
 func (n *NodeService) dialNode(url string, gen uint64) error {
+	candidate, err := n.prepareNodeConnection(url)
+	if err != nil {
+		n.emitDisconnectedIfCurrent(gen)
+		return err
+	}
+	return n.installPreparedConnection(candidate, url, gen)
+}
+
+func (n *NodeService) prepareNodeConnection(url string) (*nodeConnection, error) {
 	client, err := rpc_client.NewRpcClient(url)
 	if err != nil {
-		// A dial can take seconds; only emit if this call still owns the
-		// connection intent — never over a newer connection's status.
-		n.emitDisconnectedIfCurrent(gen)
-		return fmt.Errorf("connect: %s", redactURLUserinfo(err.Error(), url))
+		return nil, fmt.Errorf("connect: %s", redactURLUserinfo(err.Error(), url))
 	}
 	m, err := verifyFrontierWithTimeout(client, remoteVerifyTimeout)
 	if err != nil {
 		client.Stop()
-		n.emitDisconnectedIfCurrent(gen)
-		return fmt.Errorf("node unreachable: %s", redactURLUserinfo(err.Error(), url))
+		return nil, fmt.Errorf("node unreachable: %s", redactURLUserinfo(err.Error(), url))
 	}
 	n.mu.RLock()
 	subCtx := n.ctx
@@ -156,16 +179,18 @@ func (n *NodeService) dialNode(url string, gen uint64) error {
 	cancel() // the context controls setup only, not the established stream
 	if err != nil {
 		client.Stop()
-		n.emitDisconnectedIfCurrent(gen)
-		return fmt.Errorf("subscribe to momentums: %w", err)
+		return nil, fmt.Errorf("subscribe to momentums: %w", err)
 	}
+	return &nodeConnection{client: client, frontier: m, sub: sub, momentums: ch}, nil
+}
+
+func (n *NodeService) installPreparedConnection(candidate *nodeConnection, url string, gen uint64) error {
 	stop := make(chan struct{})
-	if !n.installConnection(client, url, m.Height, m.ChainIdentifier, gen, stop) {
-		client.Stop()
-		sub.Unsubscribe()
+	if !n.installConnection(candidate.client, url, candidate.frontier.Height, candidate.frontier.ChainIdentifier, gen, stop) {
+		candidate.close()
 		return errors.New("connection attempt superseded by a newer request")
 	}
-	n.startMomentumLoop(gen, sub, ch, stop)
+	n.startMomentumLoop(gen, candidate.sub, candidate.momentums, stop)
 	return nil
 }
 
@@ -221,7 +246,7 @@ func (n *NodeService) emitStatusLocked(connected bool) {
 		mode = "remote"
 	}
 	st := NodeStatus{Mode: mode, Connected: connected && n.client != nil, Height: n.height, ChainID: n.chainID}
-	runtime.EventsEmit(n.ctx, EventNodeStatus, st)
+	n.emitEvent(n.ctx, EventNodeStatus, st)
 }
 
 // verifyFrontierWithTimeout runs the reachability RPC with a hard deadline. On
@@ -295,7 +320,7 @@ func (n *NodeService) startMomentumLoop(gen uint64, sub *server.ClientSubscripti
 				height := n.height
 				ctx := n.ctx
 				if ctx != nil {
-					runtime.EventsEmit(ctx, EventMomentumTick, height)
+					n.emitEvent(ctx, EventMomentumTick, height)
 				}
 				n.emitStatusLocked(true)
 				n.mu.Unlock()
@@ -375,7 +400,7 @@ func (n *NodeService) emitStatus(connected bool) {
 		mode = "remote"
 	}
 	st := NodeStatus{Mode: mode, Connected: connected && !clientNil, Height: height, ChainID: chainID}
-	runtime.EventsEmit(ctx, EventNodeStatus, st)
+	n.emitEvent(ctx, EventNodeStatus, st)
 }
 
 // SetNodeMode persists the node mode and connects to that mode's URL. The mode
@@ -655,7 +680,7 @@ func (n *NodeService) publishSync(gen uint64, stop <-chan struct{}, st SyncStatu
 		return false
 	}
 	if n.ctx != nil {
-		runtime.EventsEmit(n.ctx, EventNodeSync, st)
+		n.emitEvent(n.ctx, EventNodeSync, st)
 	}
 	if st.CurrentHeight > n.height {
 		n.height = st.CurrentHeight
@@ -1001,7 +1026,7 @@ func (n *NodeService) sweepUnreceived(client *rpc_client.RpcClient, addr types.A
 				// silently stalls (it retries a few times, then gives up). Emit so
 				// the UI can flag it instead of the block just never arriving.
 				if _, err := n.receiveFn(b.Hash.String()); err != nil && n.ctx != nil {
-					runtime.EventsEmit(n.ctx, EventAutoReceiveError, map[string]string{
+					n.emitEvent(n.ctx, EventAutoReceiveError, map[string]string{
 						"hash":  b.Hash.String(),
 						"error": err.Error(),
 					})
@@ -1032,7 +1057,7 @@ func (n *NodeService) sweepUnreceived(client *rpc_client.RpcClient, addr types.A
 // actively receiving — used to show a "Receiving…" / generating-plasma indicator.
 func (n *NodeService) emitReceiving(active bool) {
 	if n.ctx != nil {
-		runtime.EventsEmit(n.ctx, EventAutoReceiving, active)
+		n.emitEvent(n.ctx, EventAutoReceiving, active)
 	}
 }
 

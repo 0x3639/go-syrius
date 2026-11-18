@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -35,6 +36,18 @@ func TestEmbeddedConnectionRecoversWhileWalletLocked(t *testing.T) {
 		return recovering.Load() && attempts.Add(1) <= 2
 	})
 	n := newTestNode(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	n.ctx = ctx
+	t.Cleanup(cancel)
+	samples := make(chan SyncStatus, 10)
+	n.emitEvent = func(_ context.Context, name string, data ...interface{}) {
+		if name == EventNodeSync {
+			select {
+			case samples <- data[0].(SyncStatus):
+			default:
+			}
+		}
+	}
 	n.wallet = newWalletService(n.config)
 	unlockTestWallet(t, n.wallet)
 	h := &reconnectHandle{url: url}
@@ -81,11 +94,18 @@ func TestEmbeddedConnectionRecoversWhileWalletLocked(t *testing.T) {
 		t.Fatal("recovery unlocked the wallet")
 	}
 	n.mu.RLock()
-	polling := n.syncStop != nil
 	sameNode := n.embedded == h
 	n.mu.RUnlock()
-	if !polling || !sameNode {
-		t.Fatal("recovery did not restore sync polling on the existing node")
+	if !sameNode {
+		t.Fatal("recovery replaced the running node")
+	}
+	select {
+	case sample := <-samples:
+		if sample.CurrentHeight != 400010 || sample.TargetHeight != 500000 || sample.Peers != 3 {
+			t.Fatalf("unexpected recovered sync sample: %+v", sample)
+		}
+	case <-time.After(4 * time.Second):
+		t.Fatal("recovery did not poll and publish a fresh sync sample")
 	}
 	if _, err := n.currentClient().LedgerApi.GetFrontierMomentum(); err != nil {
 		t.Fatalf("restored read: %v", err)
@@ -118,38 +138,85 @@ func TestEmbeddedRecoveryRespectsNewerIntent(t *testing.T) {
 	}
 }
 
-func TestShutdownInvalidatesEmbeddedRecoveryInFlight(t *testing.T) {
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	url, _ := momentumTestServerWithFrontierGate(t, true, func() bool {
-		close(entered)
-		<-release
-		return false
-	})
-	n := newTestNode(t)
-	h := &reconnectHandle{url: url}
-	n.mode = "embedded"
-	n.embedded = h
-	done := make(chan bool, 1)
-	go func() { _, retry := n.retryEmbeddedConnection(0); done <- retry }()
-	t.Cleanup(func() { n.Disconnect() })
-	select {
-	case <-entered:
-	case <-time.After(3 * time.Second):
-		close(release)
-		t.Fatal("recovery never reached the frontier probe")
-	}
-	n.stopEmbedded()
-	close(release)
-	select {
-	case retry := <-done:
-		if retry {
-			t.Fatal("shutdown left recovery active")
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("recovery did not finish after shutdown")
-	}
-	if n.NodeStatus().Connected || n.currentClient() != nil {
-		t.Fatal("recovery published a connection after shutdown")
+func TestExplicitTransitionSupersedesBlockedRecovery(t *testing.T) {
+	for _, action := range []string{"disconnect", "remote", "shutdown"} {
+		t.Run(action, func(t *testing.T) {
+			entered := make(chan struct{})
+			release := make(chan struct{})
+			url, _ := momentumTestServerWithFrontierGate(t, true, func() bool {
+				close(entered)
+				<-release
+				return false
+			})
+			remoteURL, _ := momentumTestServer(t, true)
+			n := newTestNode(t)
+			if err := n.config.updateSettings(func(s *Settings) error { s.RemoteNodeURL = remoteURL; return nil }); err != nil {
+				t.Fatal(err)
+			}
+			n.ctx = context.Background()
+			var connectedEvents atomic.Int32
+			n.emitEvent = func(_ context.Context, name string, data ...interface{}) {
+				if name == EventNodeStatus && data[0].(NodeStatus).Connected {
+					connectedEvents.Add(1)
+				}
+			}
+			h := &reconnectHandle{url: url}
+			n.mode = "embedded"
+			n.embedded = h
+			done := make(chan bool, 1)
+			go func() { _, retry := n.retryEmbeddedConnection(0); done <- retry }()
+			// Release the fake server before Disconnect even on a failed assertion.
+			t.Cleanup(func() {
+				select {
+				case <-release:
+				default:
+					close(release)
+				}
+				n.Disconnect()
+			})
+			select {
+			case <-entered:
+			case <-time.After(3 * time.Second):
+				t.Fatal("recovery never reached the frontier probe")
+			}
+			transitionDone := make(chan error, 1)
+			go func() {
+				switch action {
+				case "disconnect":
+					transitionDone <- n.Disconnect()
+				case "remote":
+					transitionDone <- n.SetNodeMode("remote")
+				case "shutdown":
+					a := &App{Node: n, Wallet: newWalletService(n.config)}
+					a.OnShutdown(context.Background())
+					transitionDone <- nil
+				}
+			}()
+			select {
+			case err := <-transitionDone:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("explicit transition waited for the background recovery probe")
+			}
+			winner := n.currentClient()
+			events := connectedEvents.Load()
+			close(release)
+			select {
+			case retry := <-done:
+				if retry {
+					t.Fatal("explicit transition left recovery active")
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("obsolete recovery did not finish")
+			}
+			if n.currentClient() != winner || connectedEvents.Load() != events {
+				t.Fatal("late candidate replaced the explicit transition")
+			}
+			if n.NodeStatus().Connected != (action == "remote") {
+				t.Fatal("incorrect final connection state")
+			}
+		})
 	}
 }

@@ -61,6 +61,10 @@ func momentumTestServerWithFrontierGate(t *testing.T, acknowledge bool, rejectFr
 					continue
 				}
 				result = "test-subscription"
+			case "stats.syncInfo":
+				result = map[string]any{"state": 1, "currentHeight": 400010, "targetHeight": 500000}
+			case "stats.networkInfo":
+				result = map[string]any{"numPeers": 3}
 			default:
 				result = true
 			}

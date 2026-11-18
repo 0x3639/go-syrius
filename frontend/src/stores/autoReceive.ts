@@ -13,6 +13,10 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
     account: -1,
     receiving: false,
     wired: false,
+    _request: 0,
+    _preferenceRequest: 0,
+    _targetAccount: -1,
+    _controlTail: null as Promise<void> | null,
     // Last auto-receive failure message + a counter that bumps on each error, so
     // the UI can surface every occurrence (even repeats of the same message).
     lastError: '',
@@ -42,41 +46,67 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
         /* runtime unavailable (tests/offline) */
       }
     },
-    // start() always stops first so it re-points at the CURRENT active account —
-    // StartAutoReceive alone early-returns "already running" on the old one.
-    async start(activeIndex: number) {
-      await N.StopAutoReceive()
-      await N.StartAutoReceive()
-      this.account = activeIndex
-    },
-    async stop() {
-      await N.StopAutoReceive()
+    // Serialize backend control calls. A newer intent supersedes queued work
+    // and stale completions, while an already-dispatched start finishes before
+    // the following stop/restart. Preferences persist in the same order.
+    async updateWorker(activeIndex: number | null, persist?: boolean) {
+      const request = ++this._request
       this.account = -1
+      const run = (this._controlTail ?? Promise.resolve()).catch(() => {}).then(async () => {
+        if (persist !== undefined) await Cfg.SetAutoReceive(persist)
+        if (request !== this._request) return
+        await N.StopAutoReceive()
+        // The user may turn it off or switch accounts while stopping.
+        if (request !== this._request || activeIndex === null || !this.enabled) return
+        await N.StartAutoReceive()
+        if (request === this._request && this.enabled) this.account = activeIndex
+      })
+      this._controlTail = run
+      try {
+        await run
+      } finally {
+        if (this._controlTail === run) this._controlTail = null
+      }
+    },
+    // Start always stops first: the backend otherwise keeps the old account's
+    // worker. Clear the recorded account immediately so a switch back to it
+    // cannot skip a restart while another account's start is pending.
+    start(activeIndex: number) {
+      this._targetAccount = activeIndex
+      return this.updateWorker(activeIndex)
+    },
+    stop() {
+      return this.updateWorker(null)
     },
     // Load the persisted flag + resume (the subscription doesn't survive a
     // restart). Re-arm on every unlock even for the same account: the node
     // connection can recover while AppShell is unmounted and stop the old worker.
     async init(activeIndex: number) {
       this.wireEvents()
+      const preferenceRequest = ++this._preferenceRequest
+      this._targetAccount = activeIndex
       try {
-        this.enabled = (await Cfg.GetSettings()).autoReceive
-        if (this.enabled) await this.start(activeIndex)
+        const settings = await Cfg.GetSettings()
+        if (preferenceRequest !== this._preferenceRequest) return
+        this.enabled = settings.autoReceive
+        if (this.enabled) await this.start(this._targetAccount)
       } catch {
         /* offline/locked — leave as-is */
       }
     },
     async toggle(activeIndex: number) {
+      this._preferenceRequest++
+      this._targetAccount = activeIndex
       this.enabled = !this.enabled
       try {
-        await Cfg.SetAutoReceive(this.enabled)
-        if (this.enabled) await this.start(activeIndex)
-        else await this.stop()
+        await this.updateWorker(this.enabled ? activeIndex : null, this.enabled)
       } catch {
         /* ignore */
       }
     },
     // Follow account switches: re-sweep + re-subscribe for the new account.
     async followAccount(activeIndex: number) {
+      this._targetAccount = activeIndex
       if (this.enabled && activeIndex !== this.account) await this.start(activeIndex)
     },
   },

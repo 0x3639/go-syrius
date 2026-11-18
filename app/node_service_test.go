@@ -927,6 +927,7 @@ func TestDisconnectStopsSyncPoller(t *testing.T) {
 // starting a second one would hit the single-instance guard and leave the user
 // unable to reconnect without an app restart.
 func TestConnectReusesRunningEmbeddedNode(t *testing.T) {
+	url, _ := momentumTestServerWithFrontierGate(t, true, func() bool { return true })
 	n := newTestNode(t)
 	n.embeddedReconnectDelay = time.Minute // this case exercises only the manual attempt
 	if err := n.config.updateSettings(func(s *Settings) error {
@@ -938,16 +939,18 @@ func TestConnectReusesRunningEmbeddedNode(t *testing.T) {
 	starts := 0
 	n.embeddedStart = func(dataDir string) (embeddedHandle, error) {
 		starts++
-		return stubHandle{url: "ws://127.0.0.1:1", dir: dataDir}, nil
+		return stubHandle{url: url, dir: dataDir}, nil
 	}
 	// Simulate the post-degrade state: node running, wallet connection gone.
 	n.mu.Lock()
-	h := &reconnectHandle{url: "ws://127.0.0.1:1"}
+	h := &reconnectHandle{url: url}
 	n.embedded = h
 	n.mode = "embedded"
 	n.mu.Unlock()
 
-	_ = n.Connect() // dial fails (unreachable stub URL); ignore the error
+	if err := n.Connect(); err == nil || !strings.Contains(err.Error(), "node busy") {
+		t.Fatalf("expected the frontier probe to fail, got %v", err)
+	}
 	if starts != 0 {
 		t.Fatalf("Connect must reuse the running embedded node, started %d new node(s)", starts)
 	}

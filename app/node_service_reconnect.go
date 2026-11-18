@@ -39,18 +39,18 @@ func (n *NodeService) reconnectEmbedded(gen uint64) {
 	}
 }
 
-// retryEmbeddedConnection is one bounded attempt. The operation lock prevents
-// a mode change from interleaving with it; the generation fence also covers
-// shutdown, which stops the embedded node without taking opMu.
+// retryEmbeddedConnection reserves and commits under the operation lock, just
+// like an explicit transition. Only private network preparation runs outside
+// that lock: a newer intent can proceed immediately and supersede the candidate.
 func (n *NodeService) retryEmbeddedConnection(gen uint64) (uint64, bool) {
 	n.opMu.Lock()
-	defer n.opMu.Unlock()
 	n.mu.Lock()
 	current := n.connGen == gen && n.mode == "embedded" && n.embedded != nil &&
 		n.client == nil && !n.embeddedStopping && !n.embeddedWedged
 	h := n.embedded
 	if !current {
 		n.mu.Unlock()
+		n.opMu.Unlock()
 		return gen, false
 	}
 	// Reserve the candidate in the same critical section as the eligibility
@@ -60,17 +60,27 @@ func (n *NodeService) retryEmbeddedConnection(gen uint64) (uint64, bool) {
 	n.emitStatusLocked(false)
 	gen = n.connGen
 	n.mu.Unlock()
+	n.opMu.Unlock()
 
-	err := n.dialNode(h.WSURL(), gen)
+	url := h.WSURL()
+	candidate, err := n.prepareNodeConnection(url)
+	n.opMu.Lock()
+	defer n.opMu.Unlock()
 	n.mu.RLock()
 	current = n.connGen == gen && n.mode == "embedded" && n.embedded != nil &&
 		!n.embeddedStopping && !n.embeddedWedged
 	n.mu.RUnlock()
 	if !current {
+		if candidate != nil {
+			candidate.close()
+		}
 		return gen, false
 	}
 	if err != nil {
 		return gen, true
+	}
+	if err := n.installPreparedConnection(candidate, url, gen); err != nil {
+		return gen, false
 	}
 	n.startSyncPoller()
 	return gen, false

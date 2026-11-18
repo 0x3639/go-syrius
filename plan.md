@@ -2,7 +2,7 @@
 
 A start-to-finish plan to reimplement the Zenon `syrius` wallet (currently Flutter/Dart) as a Go + Wails desktop application.
 
-> **Embedded connection recovery (2026-11-18):** Wallet lock leaves the embedded node syncing. A lost wallet RPC connection to a running embedded node now retries automatically with backoff, restoring reads, momentum events and sync polling even while locked. Retry failures preserve the running node and its data; explicit disconnect, mode changes and shutdown supersede recovery. Remote connections retain manual Reconnect/Retry. Enabled auto-receive is re-armed on unlock after a connection recovery.
+> **Embedded connection recovery (2026-11-18):** Wallet lock leaves the embedded node syncing. A lost wallet RPC connection to a running embedded node now retries automatically with backoff, restoring reads, momentum events and sync polling even while locked. Retry failures preserve the running node and its data; explicit disconnect, mode changes and shutdown supersede recovery without waiting for a background connection probe. Remote connections retain manual Reconnect/Retry. Enabled auto-receive is re-armed on unlock after a connection recovery; worker changes run in order and honor the latest preference and account choice.
 >
 > **Status (2026-07-01):** Phases 0–5 and 7a are shipped and merged to `main`; Phase 6 (Ledger) is deferred; 7b–7f remain. Per-phase acceptance records live in `docs/phase*-acceptance.md` — the phase checklists below are the original spec, kept as written rather than re-ticked. The frontend was migrated from the Svelte scaffold to **Vue 3 + Pinia + nom-ui** (merged `a9c2880`, 2026-06-25); stack references below have been updated, and CLAUDE.md "Working order" tracks current status.
 >

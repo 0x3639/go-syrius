@@ -3,9 +3,24 @@
 /* Generate the utility classes nom-ui's component source uses: */
 @source "../node_modules/nom-ui/src";
 
-/* Shared page rhythm for wallet and network screens. */
+/* Shared page rhythm for wallet and network screens ("Calm Ledger" layout).
+   .page-content is a size container so two-column splits follow the width of
+   the content area (which shrinks with the sidebar), not the window. */
 @layer components {
-  .page-content { @apply mx-auto w-full max-w-[48rem] space-y-5; }
-  .panel-card { @apply rounded-xl border border-border bg-card p-5; }
+  .page-content { @apply @container w-full max-w-[72rem] space-y-5; }
+  .page-narrow { @apply max-w-[56rem]; }
+  .panel-card { @apply rounded-2xl border border-border bg-card p-6; }
+  .panel-list { @apply overflow-hidden rounded-2xl border border-border bg-card; }
+  .panel-accent { @apply rounded-2xl border border-primary/30 bg-primary/[0.07] p-6; }
+  .page-split { @apply grid grid-cols-1 items-start gap-5 @3xl:grid-cols-[minmax(0,2fr)_minmax(17rem,1fr)]; }
+  .page-halves { @apply grid grid-cols-1 items-start gap-5 @3xl:grid-cols-2; }
+  .section-title { @apply text-base font-semibold text-foreground; }
+  .field-label { @apply text-sm font-medium text-foreground; }
+  .hint { @apply text-xs leading-relaxed text-muted-foreground; }
+  .list-row { @apply flex items-center gap-3.5 border-t border-border/70 px-6 py-3.5; }
+  .avatar-dot { @apply grid h-9 w-9 flex-none place-items-center rounded-full bg-primary/15 text-xs font-bold text-primary; }
+  .status-pill { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold; }
+  .choice { @apply rounded-lg border border-input bg-background px-3.5 py-2.5 text-left text-sm text-foreground transition-colors hover:border-muted-foreground/50; }
+  .choice-on { @apply border-primary bg-primary/[0.08] hover:border-primary; }
   .disclosure-title { @apply cursor-pointer text-sm font-medium text-foreground; }
 }

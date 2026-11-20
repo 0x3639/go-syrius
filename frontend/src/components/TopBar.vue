@@ -16,10 +16,9 @@ import { useUiStore } from '../stores/ui'
 import { useNodeStore } from '../stores/node'
 import { useWalletConnectStore } from '../stores/walletconnect'
 import { plasmaLevel, plasmaColorClass } from '../lib/plasma'
-import AccountSlotPicker from './AccountSlotPicker.vue'
 
 // Only rendered inside AppShell, i.e. only while unlocked — no locked variant.
-defineProps<{ title?: string }>()
+defineProps<{ title?: string; subtitle?: string }>()
 
 const router = useRouter()
 const route = useRoute()
@@ -60,15 +59,15 @@ async function lockWallet() {
 </script>
 
 <template>
-  <header class="flex min-h-15 flex-none flex-wrap items-center gap-3 border-b border-border px-4 py-3 lg:px-6">
-    <h1 class="text-lg font-semibold tracking-tight text-foreground">
-      {{ title }}<template v-if="route.name === 'net-pillars' && pillar.ownsPillar"> — <span class="text-success">{{ pillar.myPillar?.name }}</span></template>
-    </h1>
+  <header class="flex flex-none flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-2 pt-5 lg:px-8">
+    <div class="min-w-0 flex-1 basis-64">
+      <h1 class="text-2xl font-semibold tracking-tight text-foreground">
+        {{ title }}<template v-if="route.name === 'net-pillars' && pillar.ownsPillar"> — <span class="text-success">{{ pillar.myPillar?.name }}</span></template>
+      </h1>
+      <p v-if="subtitle" class="mt-0.5 text-sm text-muted-foreground">{{ subtitle }}</p>
+    </div>
 
-    <div class="ml-auto flex flex-wrap items-center gap-2">
-      <!-- Account/address pill: opens the account picker dropdown -->
-      <AccountSlotPicker variant="pill" />
-
+    <div class="flex flex-wrap items-center gap-1 rounded-xl border border-border bg-card p-1">
       <button type="button" aria-label="Toggle theme"
         class="grid h-8.5 w-8.5 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
         @click="ui.toggleTheme()">
@@ -131,9 +130,9 @@ async function lockWallet() {
       <span class="mx-1 h-5 w-px bg-border"></span>
 
       <button type="button" aria-label="Lock wallet" title="Lock wallet"
-        class="grid h-8.5 w-8.5 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+        class="flex h-8.5 items-center gap-2 rounded-md px-3 text-sm font-medium text-foreground transition-colors hover:bg-foreground/[0.06]"
         @click="lockWallet">
-        <LockIcon :size="16" />
+        <LockIcon :size="15" />Lock
       </button>
     </div>
   </header>

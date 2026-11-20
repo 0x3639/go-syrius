@@ -67,67 +67,71 @@ watch(
 
 <template>
   <div class="space-y-5">
-    <section class="space-y-2 panel-card">
-      <h2 class="text-sm font-medium text-foreground">Your delegation</h2>
-      <div v-if="delegated && delegation" class="flex items-center justify-between pr-2 text-sm">
-        <p>
-          Delegated to <span class="font-mono text-primary">{{ delegation.name }}</span> · weight
-          <span class="font-mono">{{ formatAmount(delegation.weight, 8) }} ZNN</span>
-        </p>
-        <Button variant="outline" class="w-32 flex-none" aria-label="undelegate" @click="undelegate">Undelegate</Button>
+    <section class="flex flex-wrap items-center gap-x-8 gap-y-4" :class="delegated ? 'panel-accent' : 'panel-card'">
+      <div class="min-w-0 flex-1 basis-56">
+        <h2 class="hint">Your delegation</h2>
+        <template v-if="delegated && delegation">
+          <p class="truncate text-xl font-semibold text-foreground">Delegated to <span class="text-primary">{{ delegation.name }}</span></p>
+          <p class="hint">weight <span class="font-mono text-foreground">{{ formatAmount(delegation.weight, 8) }} ZNN</span></p>
+        </template>
+        <template v-else>
+          <p class="text-xl font-semibold text-foreground">Not delegated.</p>
+          <p class="hint">Pick a Pillar below to start earning a share of its rewards.</p>
+        </template>
       </div>
-      <p v-else class="text-xs text-muted-foreground">Not delegated.</p>
-
-      <div v-if="pillarReward" class="flex items-center justify-between pr-2 text-sm">
-        <p class="text-muted-foreground">
-          Uncollected reward
-          <span class="font-mono text-foreground">{{ formatAmount(pillarReward.znn, 8) }} ZNN</span> ·
-          <span class="font-mono text-foreground">{{ formatAmount(pillarReward.qsr, 8) }} QSR</span>
-        </p>
-        <Button class="w-32 flex-none" :disabled="rewardZero" @click="collect">Collect</Button>
+      <div v-if="pillarReward" class="basis-48">
+        <div class="hint">Uncollected reward</div>
+        <div class="font-mono text-base" :class="rewardZero ? 'text-foreground' : 'text-primary'">{{ formatAmount(pillarReward.znn, 8) }} ZNN · {{ formatAmount(pillarReward.qsr, 8) }} QSR</div>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <Button v-if="pillarReward" :disabled="rewardZero" @click="collect">Collect</Button>
+        <Button v-if="delegated && delegation" variant="outline" aria-label="undelegate" @click="undelegate">Undelegate</Button>
       </div>
     </section>
 
-    <section class="space-y-3 panel-card">
-      <div class="flex items-center justify-between gap-3">
-        <h2 class="text-sm font-medium text-foreground">Pillars</h2>
-        <span class="text-xs text-muted-foreground">Sorted by Rank</span>
+    <section class="panel-list">
+      <div class="flex flex-wrap items-center gap-3 px-6 py-4">
+        <h2 class="section-title">All Pillars</h2>
+        <Input v-model="search" placeholder="Search by name" aria-label="search pillars" class="max-w-72 flex-1" />
+        <span class="hint ml-auto">Sorted by rank</span>
       </div>
-      <Input v-model="search" placeholder="Search pillars" aria-label="search pillars" />
 
-      <div class="space-y-1">
-        <div
-          v-for="p in filtered"
-          :key="p.name"
-          class="flex flex-col gap-3 rounded-md border px-2 py-3 transition-colors lg:flex-row lg:items-center lg:justify-between"
-          :class="p.name === mine
-            ? 'border-success/50 bg-success/10'
-            : 'border-transparent hover:border-border hover:bg-muted'"
-        >
-          <div class="flex min-w-0 items-baseline gap-3">
-            <span class="shrink-0 font-mono text-xs text-muted-foreground">#{{ p.rank }}</span>
-            <span class="truncate text-sm text-foreground" :title="p.name">{{ p.name }}</span>
-            <span
-              v-if="p.name === mine"
-              class="shrink-0 rounded bg-success/20 px-1.5 py-0.5 text-[10px] font-medium text-success"
-              >pillar</span
-            >
-            <span
-              v-if="p.name === delegation?.name"
-              class="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary"
-              >delegated</span
-            >
-          </div>
-          <div class="flex flex-wrap items-center justify-end gap-3">
-            <span class="text-xs text-primary" title="Share of delegation rewards distributed to delegators; this is not an annual yield.">{{ p.delegateRewardPercent }}% reward share</span>
-            <span class="font-mono text-xs text-muted-foreground"
-              >{{ formatAmount(p.weight, 8) }} ZNN</span
-            >
-            <Button class="w-32 flex-none" :aria-label="`delegate to ${p.name}`" @click="delegate(p.name)">Delegate</Button>
-          </div>
-        </div>
-        <p v-if="filtered.length === 0" class="text-xs text-muted-foreground">No pillars.</p>
+      <div class="hidden gap-3 border-t border-border/70 px-6 py-2 text-xs font-medium text-muted-foreground @2xl:flex">
+        <span class="w-10">Rank</span>
+        <span class="flex-1">Pillar</span>
+        <span class="w-28 text-right" title="Share of delegation rewards distributed to delegators; this is not an annual yield.">Reward share</span>
+        <span class="w-40 text-right">Delegated weight</span>
+        <span class="w-32"></span>
       </div>
+      <div
+        v-for="p in filtered"
+        :key="p.name"
+        class="flex flex-wrap items-center gap-3 border-t border-border/70 px-6 py-3 transition-colors"
+        :class="p.name === mine
+          ? 'bg-success/10'
+          : p.name === delegation?.name ? 'bg-primary/[0.07]' : 'hover:bg-foreground/[0.03]'"
+      >
+        <span class="w-10 shrink-0 font-mono text-xs text-muted-foreground">#{{ p.rank }}</span>
+        <div class="flex min-w-0 flex-1 basis-40 items-baseline gap-2">
+          <span class="truncate text-[15px] font-semibold text-foreground" :title="p.name">{{ p.name }}</span>
+          <span
+            v-if="p.name === mine"
+            class="status-pill shrink-0 bg-success/20 text-success"
+            >pillar</span
+          >
+          <span
+            v-if="p.name === delegation?.name"
+            class="status-pill shrink-0 bg-primary/15 text-primary"
+            >delegated</span
+          >
+        </div>
+        <span class="w-28 text-right font-mono text-sm text-foreground" title="Share of delegation rewards distributed to delegators; this is not an annual yield.">{{ p.delegateRewardPercent }}%<span class="sr-only @2xl:hidden"> reward share</span></span>
+        <span class="w-40 text-right font-mono text-sm text-muted-foreground"
+          >{{ formatAmount(p.weight, 8) }} ZNN</span
+        >
+        <Button variant="outline" class="w-32 flex-none" :aria-label="`delegate to ${p.name}`" @click="delegate(p.name)">{{ delegated ? 'Switch' : 'Delegate' }}</Button>
+      </div>
+      <p v-if="filtered.length === 0" class="border-t border-border/70 px-6 py-6 text-sm text-muted-foreground">No pillars.</p>
     </section>
 
     <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>

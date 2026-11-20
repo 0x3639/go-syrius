@@ -40,6 +40,53 @@ describe('autoReceive store', () => {
     expect(StopAutoReceive).toHaveBeenCalled()
   })
 
+  it('reverts the switch and reports it when saving the preference fails', async () => {
+    const s = useAutoReceiveStore()
+    SetAutoReceive.mockRejectedValueOnce(new Error('settings write failed'))
+    await s.toggle(0)
+    expect(s.enabled).toBe(false)
+    expect(s.errorCount).toBe(1)
+    expect(s.lastError).toContain('could not be saved')
+    expect(StartAutoReceive).not.toHaveBeenCalled()
+  })
+
+  it('restarts the worker when turning off fails to save', async () => {
+    const s = useAutoReceiveStore()
+    await s.toggle(2) // on
+    StartAutoReceive.mockClear()
+    SetAutoReceive.mockRejectedValueOnce(new Error('settings write failed'))
+    await s.toggle(2) // off fails to persist → stays on, worker re-armed
+    expect(s.enabled).toBe(true)
+    expect(StartAutoReceive).toHaveBeenCalledTimes(1)
+    expect(s.account).toBe(2)
+  })
+
+  it('does not let a stale save failure overwrite a newer toggle', async () => {
+    const s = useAutoReceiveStore()
+    const first = deferred()
+    SetAutoReceive.mockImplementationOnce(() => first.promise)
+    const on = s.toggle(0) // on, save pending
+    const off = s.toggle(0) // newer request: off
+    first.reject(new Error('settings write failed'))
+    await Promise.all([on, off])
+    expect(s.enabled).toBe(false)
+    expect(s.errorCount).toBe(0)
+  })
+
+  it('rolls back to the last saved value when overlapping saves both fail', async () => {
+    const s = useAutoReceiveStore() // persisted: off
+    const first = deferred()
+    const second = deferred()
+    SetAutoReceive.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise)
+    const on = s.toggle(0)
+    const off = s.toggle(0)
+    first.reject(new Error('settings write failed'))
+    second.reject(new Error('settings write failed'))
+    await Promise.all([on, off])
+    expect(s.enabled).toBe(false) // not the optimistic "on" the second toggle started from
+    expect(StartAutoReceive).not.toHaveBeenCalled()
+  })
+
   it('init resumes when enabled in settings', async () => {
     GetSettings.mockResolvedValueOnce({ autoReceive: true })
     const s = useAutoReceiveStore()

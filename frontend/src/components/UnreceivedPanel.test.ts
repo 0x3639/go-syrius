@@ -34,7 +34,7 @@ describe('UnreceivedPanel', () => {
     store.items = [item]
     await w.vm.$nextTick()
 
-    expect(w.text()).toContain('Unreceived (1)')
+    expect(w.text()).toContain('Waiting to be received · 1')
     expect(w.text()).toContain('1.5 ZNN')
     const btns = w.findAll('button')
     const receive = btns.find((b) => b.text() === 'Receive')

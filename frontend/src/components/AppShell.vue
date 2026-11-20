@@ -40,6 +40,7 @@ const wallet = useWalletStore()
 const tx = useTxStore()
 const walletConnect = useWalletConnectStore()
 const title = computed(() => (route.meta.title as string) ?? '')
+const subtitle = computed(() => (route.meta.subtitle as string) ?? '')
 
 // Global bootstrap. AppShell wraps every authenticated route and unmounts only
 // on lock, so this is the single place the app re-hydrates after an unlock —
@@ -165,8 +166,8 @@ onBeforeUnmount(() => {
   <div class="flex h-screen bg-background">
     <Sidebar />
     <div class="flex min-h-0 min-w-0 flex-1 flex-col">
-      <TopBar :title="title" />
-      <main class="min-h-0 flex-1 overflow-y-auto p-4 lg:p-6">
+      <TopBar :title="title" :subtitle="subtitle" />
+      <main class="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-4 lg:px-8">
         <router-view />
       </main>
     </div>

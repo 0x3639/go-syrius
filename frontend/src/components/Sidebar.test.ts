@@ -54,7 +54,7 @@ describe('Sidebar', () => {
   it('renders the core nav destinations', () => {
     const w = mountSidebar()
     const text = w.text()
-    for (const label of ['Dashboard', 'Transfer', 'Receive', 'Tokens', 'Plasma', 'Staking', 'Pillars', 'Sentinels', 'Accelerator', 'Rewards', 'WalletConnect', 'Settings']) {
+    for (const label of ['Dashboard', 'Send', 'Receive', 'Tokens', 'Plasma', 'Staking', 'Pillars', 'Sentinels', 'Accelerator', 'Rewards', 'WalletConnect', 'Settings']) {
       expect(text).toContain(label)
     }
   })

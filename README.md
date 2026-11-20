@@ -112,6 +112,19 @@ GOWORK=off wails build           # Linux: add -tags webkit2_41 (+ libgtk-3-dev l
 
 Frontend (in `frontend/`): `pnpm install --frozen-lockfile`, `pnpm run typecheck`, `pnpm test`, `pnpm run build`. For a working WalletConnect in local builds, copy `frontend/.env.example` to `frontend/.env.local` and set your own WalletConnect project id.
 
+## Bend laws (developers)
+
+Run `test/bend/run.sh` for the wallet's formal-model gate. It checks 76 Bend
+laws, compares the models with real Go wallet behavior, and requires deliberate
+model and wallet faults to be detected. Bend runs only in restricted Docker
+containers; Go and Python 3.9+ are also required. No live node or wallet is used.
+
+`BEND_DEPTH=4 test/bend/run.sh` explores every pending-slot and journal operation
+sequence up to four steps. `BEND_SEED=42 BEND_RANDOM=200 test/bend/run.sh` explores more repeatable
+lifecycle and recovery histories; parser fuzzing also runs with a bounded budget.
+The same gate runs in GitHub Actions as **Bend laws**, alongside the
+existing tests and security checks. See [the law catalog and proof boundaries](docs/BEND_LAWS.md).
+
 ## Releases
 
 Releases are cut from a version tag via `.github/workflows/release.yml` (cross-platform build matrix → per-platform assets + `SHA256SUMS` → GitHub Release; a `-suffix` in the tag marks a pre-release). The workflow's actions are pinned to immutable commit SHAs with a CI guard against unpinned refs. Current builds are **unsigned**; code signing + notarization are planned (Phase 7c).

@@ -75,6 +75,40 @@ Ordered by risk; do not start UI-heavy work before the foundation is proven.
 
 ## Commands
 
+### Bend laws
+
+When using Bend:
+- run `bend guide` to learn it
+- use `LAWS.bend` to keep important rules
+- run `bend PROOF.bend` before committing
+- parallelize the code whenever possible
+
+Execute these Bend commands inside the pinned checker container to honor this
+repository's dependency-execution policy. `test/bend/run.sh` runs every proof
+and its independent verdict check. Parallelize independent computations where
+appropriate; preserve the wallet's required signing and state-change ordering.
+
+`docs/BEND_LAWS.md` catalogs the wallet invariants and their evidence. The
+reviewable claims are `test/bend/*/LAWS.bend`; models and
+proofs are separate. Changes to transaction confirmation, bridge validation,
+publication journals, auto-lock, or reconnect eligibility must keep the models
+and their Go comparisons in sync. Add laws and deliberate faults when extending
+these guarantees; do not weaken a law simply to make a changed implementation
+pass. Explain any intended contract change in the catalog and `plan.md`.
+
+Run `test/bend/run.sh` before committing changes to those paths or to this gate.
+The same entry point runs in `.github/workflows/bend.yml`. It checks proofs with
+both Bend and its independent verdict kernel, model faults, real-wallet
+comparisons, Go faults through overlays, and bounded parser fuzzing.
+`BEND_DEPTH=4` checks longer exhaustive sequences; `BEND_SEED` and `BEND_RANDOM`
+control repeatable lifecycle/recovery histories. Keep minimal failing cases as
+regressions when a new history exposes a defect. Bend runs only in containers;
+no host install or host JavaScript
+fallback. The frontend and ordinary Go test suites remain required: these laws
+prove models, not the Go/TypeScript application or its cryptography.
+
+### Existing checks
+
 **Local dev hazard:** a parent `go.work` on the author's machine references a missing sibling module, so local `go`/`wails` commands need `GOWORK=off` (and `GOTOOLCHAIN=auto`, since go.mod pins go 1.25.13). CI does **not** need these (standalone checkout). The build emits an unrelated gopsutil/IOKit cgo deprecation warning — not an error.
 
 - **Run / build the app:** `GOWORK=off wails dev` (run), `GOWORK=off wails build` (package). Linux build needs `-tags webkit2_41` (+ `libgtk-3-dev libwebkit2gtk-4.1-dev`).

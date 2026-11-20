@@ -1,10 +1,12 @@
 package app
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -104,25 +106,81 @@ func (j *wcJournal) loadLocked() (map[string]wcPublicationRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	m := map[string]wcPublicationRecord{}
-	if err := json.Unmarshal(raw, &m); err != nil {
+	m, err := decodeWCJournal(raw)
+	if err != nil {
 		return nil, fmt.Errorf("corrupt WalletConnect publication journal: %w", err)
 	}
-	// Backfill record ownership from the map key. Records written before the
-	// topic/requestId fields existed deserialize with empty/zero ownership; the
-	// key (`topic#requestId`) is authoritative, so derive it here. This keeps
-	// intent-matching (and the new-id duplicate defense) working for durable
-	// records already on disk.
-	for k, rec := range m {
-		if rec.Topic != "" && rec.RequestID != 0 {
-			continue
+	return m, nil
+}
+
+// decodeWCJournal distinguishes an empty journal from lost or ambiguous data.
+// In particular JSON null is valid JSON but is not an empty journal: treating
+// it as one loses replay protection (and a later map assignment would panic).
+func decodeWCJournal(raw []byte) (map[string]wcPublicationRecord, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	start, err := dec.Token()
+	if err != nil || start != json.Delim('{') {
+		return nil, fmt.Errorf("expected a journal object")
+	}
+	m := make(map[string]wcPublicationRecord)
+	for dec.More() {
+		token, err := dec.Token()
+		if err != nil {
+			return nil, err
 		}
-		if topic, id, ok := parseWCJournalKey(k); ok {
-			rec.Topic, rec.RequestID = topic, id
-			m[k] = rec
+		key, ok := token.(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid journal key")
 		}
+		if _, exists := m[key]; exists {
+			return nil, fmt.Errorf("duplicate journal key %q", key)
+		}
+		if len(m) >= wcJournalMaxRecords {
+			return nil, fmt.Errorf("journal exceeds its record limit")
+		}
+		var rec wcPublicationRecord
+		if err := dec.Decode(&rec); err != nil {
+			return nil, err
+		}
+		if err := validateWCRecord(key, &rec); err != nil {
+			return nil, err
+		}
+		m[key] = rec
+	}
+	if end, err := dec.Token(); err != nil || end != json.Delim('}') {
+		return nil, fmt.Errorf("incomplete journal object")
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); err != io.EOF {
+		return nil, fmt.Errorf("unexpected trailing journal data")
 	}
 	return m, nil
+}
+
+func validateWCRecord(key string, rec *wcPublicationRecord) error {
+	topic, id, ok := parseWCJournalKey(key)
+	if !ok || topic == "" || id == 0 || wcJournalKey(topic, id) != key {
+		return fmt.Errorf("invalid journal identity %q", key)
+	}
+	if (rec.Topic != "" && rec.Topic != topic) || (rec.RequestID != 0 && rec.RequestID != id) {
+		return fmt.Errorf("journal ownership disagrees with key %q", key)
+	}
+	// Legacy records omitted ownership; the key supplies it. Conflicting
+	// ownership is corruption, not a legacy record to silently rewrite.
+	rec.Topic, rec.RequestID = topic, id
+	if rec.State != wcStateSigned && rec.State != wcStatePublished {
+		return fmt.Errorf("invalid publication state for %q", key)
+	}
+	if rec.IntentHash == "" || rec.Hash == "" {
+		return fmt.Errorf("missing publication identity for %q", key)
+	}
+	var block struct {
+		Hash string `json:"hash"`
+	}
+	if err := json.Unmarshal(rec.BlockJSON, &block); err != nil || block.Hash != rec.Hash {
+		return fmt.Errorf("missing or inconsistent journaled block for %q", key)
+	}
+	return nil
 }
 
 // parseWCJournalKey splits a `topic#requestId` key. A WalletConnect topic is a
@@ -192,6 +250,9 @@ func (j *wcJournal) get(key string) (wcPublicationRecord, bool, error) {
 func (j *wcJournal) put(key string, rec wcPublicationRecord) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if err := validateWCRecord(key, &rec); err != nil {
+		return err
+	}
 	m, err := j.loadLocked()
 	if err != nil {
 		return err

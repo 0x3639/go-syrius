@@ -90,6 +90,9 @@ func clientTokenDecimals(client *rpc_client.RpcClient) ztsDecimalsLookup {
 		if tok == nil || tok.TokenStandard == types.ZeroTokenStandard {
 			return 0, errTokenNotFound
 		}
+		if tok.TokenStandard != zts {
+			return 0, fmt.Errorf("node returned metadata for %s when %s was requested", tok.TokenStandard, zts)
+		}
 		return boundTokenDecimals(int(tok.Decimals), zts)
 	}
 }

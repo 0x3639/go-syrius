@@ -1,0 +1,82 @@
+name: Bend laws
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      depth:
+        description: 'Maximum operation sequence length (4 is the deeper check)'
+        type: choice
+        options: ['3', '4']
+        default: '3'
+      seed:
+        description: 'Repeatable seed for lifecycle and recovery histories'
+        type: string
+        default: '1'
+      random_histories:
+        description: 'Random histories per family (1–1000)'
+        type: string
+        default: '40'
+      fuzz_seconds:
+        description: 'Fuzz budget per target (1–300 seconds)'
+        type: string
+        default: '10'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bend:
+    name: Bend laws
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: Proofs, model comparisons, and fault detection
+        env:
+          BEND_DEPTH: ${{ inputs.depth || '3' }}
+          BEND_SEED: ${{ inputs.seed || github.run_number }}
+          BEND_RANDOM: ${{ inputs.random_histories || '40' }}
+          BEND_FUZZ_SECONDS: ${{ inputs.fuzz_seconds || '10' }}
+          OUT: ${{ runner.temp }}/bend-logs
+        run: test/bend/run.sh
+      - name: Race checks for lifecycle and recovery
+        env:
+          BEND_SEED: ${{ inputs.seed || github.run_number }}
+          BEND_RANDOM: ${{ inputs.random_histories || '40' }}
+        run: go test -race -tags bendrules ./app -run '^TestBend(Lifecycle|MetadataIdentity|CorruptJournal|Recovery)$' -count=1 -timeout 10m
+      - name: Failure logs
+        if: failure()
+        env:
+          OUT: ${{ runner.temp }}/bend-logs
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for log in "$OUT"/run-*/*.log; do
+            echo "::group::$(basename "$log")"
+            tail -n 200 "$log"
+            echo '::endgroup::'
+          done
+      - name: Retain failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bend-failure-evidence
+          path: |
+            ${{ runner.temp }}/bend-logs/run-*/*.log
+            app/testdata/fuzz/FuzzWCJournalDecode/**
+            app/testdata/fuzz/FuzzWalletConnectIntent/**
+          retention-days: 7
+          if-no-files-found: warn

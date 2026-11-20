@@ -441,12 +441,12 @@ func TestWalletConnectJournalFailsClosedWhenFull(t *testing.T) {
 	// (which refuses new broadcasts) instead of dropping old outcomes.
 	tx := newTestTxService(t)
 	for i := 0; i < wcJournalMaxRecords; i++ {
-		rec := wcPublicationRecord{IntentHash: "x", State: wcStatePublished, Hash: "00", CreatedAt: int64(i + 1)}
+		rec := wcPublicationRecord{IntentHash: "x", State: wcStatePublished, BlockJSON: json.RawMessage(`{"hash":"00"}`), Hash: "00", CreatedAt: int64(i + 1)}
 		if err := tx.wcJournal.put(wcJournalKey("t", uint64(i+1)), rec); err != nil {
 			t.Fatal(err)
 		}
 	}
-	err := tx.wcJournal.put(wcJournalKey("overflow", 1), wcPublicationRecord{IntentHash: "y", State: wcStateSigned, Hash: "01", CreatedAt: 99})
+	err := tx.wcJournal.put(wcJournalKey("overflow", 1), wcPublicationRecord{IntentHash: "y", State: wcStateSigned, BlockJSON: json.RawMessage(`{"hash":"01"}`), Hash: "01", CreatedAt: 99})
 	if err == nil {
 		t.Fatal("a full journal must refuse new records, never evict old outcomes")
 	}
@@ -461,7 +461,7 @@ func TestWalletConnectJournalFailsClosedWhenFull(t *testing.T) {
 		t.Fatal("oldest record was evicted by the refused write")
 	}
 	// Overwriting an EXISTING key (signed -> published) must still work at cap.
-	if err := tx.wcJournal.put(wcJournalKey("t", 1), wcPublicationRecord{IntentHash: "x", State: wcStateSigned, Hash: "00", CreatedAt: 1}); err != nil {
+	if err := tx.wcJournal.put(wcJournalKey("t", 1), wcPublicationRecord{IntentHash: "x", State: wcStateSigned, BlockJSON: json.RawMessage(`{"hash":"00"}`), Hash: "00", CreatedAt: 1}); err != nil {
 		t.Fatalf("updating an existing record at cap must succeed: %v", err)
 	}
 }

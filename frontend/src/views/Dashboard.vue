@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { SendIcon, DownloadIcon, ZapIcon } from '@lucide/vue'
 import { useBalancesStore } from '../stores/balances'
@@ -13,6 +13,8 @@ import { useSentinelStore } from '../stores/sentinel'
 import { formatAmount, shortAddress } from '../lib/format'
 import { formatFiat } from '../lib/fiat'
 import { plasmaLevel } from '../lib/plasma'
+import { useNodeRefresh } from '../lib/useNodeRefresh'
+import { useWalletStore } from '../stores/wallet'
 import TxHistory from '../components/TxHistory.vue'
 import BalanceNotice from '../components/BalanceNotice.vue'
 import TokenAmount from '../components/TokenAmount.vue'
@@ -26,6 +28,21 @@ const plasma = usePlasmaStore()
 const stake = useStakeStore()
 const pillar = usePillarStore()
 const sentinel = useSentinelStore()
+
+const wallet = useWalletStore()
+
+// The shell's per-momentum refresh covers balances, plasma and delegation but
+// not staking or reward snapshots, which only their own panels load. Fetch
+// them here — on mount, on reconnect and on account switch — so the Earning
+// card is not blank until the user happens to open Staking or Rewards.
+function refreshEarning() {
+  if (!node.connected) return
+  stake.refresh()
+  pillar.refresh()
+  sentinel.refresh()
+}
+useNodeRefresh(refreshEarning)
+watch(() => wallet.activeIndex, refreshEarning)
 
 const znn = computed(() => balances.items.find((b) => b.symbol === 'ZNN'))
 const qsr = computed(() => balances.items.find((b) => b.symbol === 'QSR'))

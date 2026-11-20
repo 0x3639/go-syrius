@@ -73,6 +73,20 @@ describe('autoReceive store', () => {
     expect(s.errorCount).toBe(0)
   })
 
+  it('rolls back to the last saved value when overlapping saves both fail', async () => {
+    const s = useAutoReceiveStore() // persisted: off
+    const first = deferred()
+    const second = deferred()
+    SetAutoReceive.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise)
+    const on = s.toggle(0)
+    const off = s.toggle(0)
+    first.reject(new Error('settings write failed'))
+    second.reject(new Error('settings write failed'))
+    await Promise.all([on, off])
+    expect(s.enabled).toBe(false) // not the optimistic "on" the second toggle started from
+    expect(StartAutoReceive).not.toHaveBeenCalled()
+  })
+
   it('init resumes when enabled in settings', async () => {
     GetSettings.mockResolvedValueOnce({ autoReceive: true })
     const s = useAutoReceiveStore()

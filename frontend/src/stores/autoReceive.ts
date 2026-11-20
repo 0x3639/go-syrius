@@ -18,6 +18,10 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
     _targetAccount: -1,
     _controlTail: null as Promise<void> | null,
     _preferenceTail: null as Promise<void> | null,
+    // The value the backend last confirmed as persisted (from settings or a
+    // successful save). A failed save rolls the switch back to THIS, never to
+    // an earlier optimistic value that itself may not have been saved.
+    _savedEnabled: false,
     // Last auto-receive failure message + a counter that bumps on each error, so
     // the UI can surface every occurrence (even repeats of the same message).
     lastError: '',
@@ -54,6 +58,7 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
       this._preferenceTail = run
       try {
         await run
+        this._savedEnabled = enabled // saves are serialized, so settle order = write order
       } finally {
         if (this._preferenceTail === run) this._preferenceTail = null
       }
@@ -108,6 +113,7 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
         const settings = await Cfg.GetSettings()
         if (preferenceRequest !== this._preferenceRequest) return
         this.enabled = settings.autoReceive
+        this._savedEnabled = this.enabled
         if (this.enabled) await this.start(this._targetAccount)
         else await this.stop()
       } catch {
@@ -117,18 +123,18 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
     async toggle(activeIndex: number) {
       const preferenceRequest = ++this._preferenceRequest
       this._targetAccount = activeIndex
-      const previous = this.enabled
-      this.enabled = !previous
+      this.enabled = !this.enabled
       const saved = this.savePreference(this.enabled)
       const [saveResult] = await Promise.allSettled([saved, this.updateWorker(this.enabled ? activeIndex : null)])
-      // A failed save leaves the persisted value at `previous`: put the switch
-      // back, say so, and re-sync the worker to match. A newer toggle or init
+      // A failed save leaves the persisted value where it was: put the switch
+      // back to the last confirmed value, say so, and re-sync the worker. A newer toggle or init
       // owns the state by then, so a stale failure must not overwrite it.
       if (saveResult.status === 'rejected' && preferenceRequest === this._preferenceRequest) {
-        this.enabled = previous
+        const persisted = this._savedEnabled
+        this.enabled = persisted
         this.lastError = 'The auto-receive setting could not be saved, so it was left unchanged.'
         this.errorCount++
-        await this.updateWorker(previous ? this._targetAccount : null).catch(() => {})
+        await this.updateWorker(persisted ? this._targetAccount : null).catch(() => {})
       }
     },
     // Follow account switches: re-sweep + re-subscribe for the new account.

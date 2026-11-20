@@ -5,8 +5,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/gorilla/websocket"
 )
 
 type reconnectHandle struct {
@@ -18,7 +16,7 @@ func (h *reconnectHandle) WSURL() string   { return h.url }
 func (h *reconnectHandle) DataDir() string { return "" }
 func (h *reconnectHandle) Stop() error     { h.stops.Add(1); return nil }
 
-func nextSubscription(t *testing.T, subscribed <-chan *websocket.Conn) *websocket.Conn {
+func nextSubscription(t *testing.T, subscribed <-chan *momentumSocket) *momentumSocket {
 	t.Helper()
 	select {
 	case conn := <-subscribed:
@@ -40,7 +38,14 @@ func TestEmbeddedConnectionRecoversWhileWalletLocked(t *testing.T) {
 	n.ctx = ctx
 	t.Cleanup(cancel)
 	samples := make(chan SyncStatus, 10)
+	ticks := make(chan struct{}, 1)
 	n.emitEvent = func(_ context.Context, name string, data ...interface{}) {
+		if name == EventMomentumTick {
+			select {
+			case ticks <- struct{}{}:
+			default:
+			}
+		}
 		if name == EventNodeSync {
 			select {
 			case samples <- data[0].(SyncStatus):
@@ -74,17 +79,25 @@ func TestEmbeddedConnectionRecoversWhileWalletLocked(t *testing.T) {
 	recovering.Store(true)
 	old.Close()
 	replacement := nextSubscription(t, subscribed)
+	// Let polling advance past the injected momentum first. Delivery must not
+	// depend on observing an exact height shared with the sync poller.
+	select {
+	case sample := <-samples:
+		if sample.CurrentHeight != 400010 || sample.TargetHeight != 500000 || sample.Peers != 3 {
+			t.Fatalf("unexpected recovered sync sample: %+v", sample)
+		}
+	case <-time.After(4 * time.Second):
+		t.Fatal("recovery did not poll and publish a fresh sync sample")
+	}
 	if err := replacement.WriteJSON(map[string]any{
 		"jsonrpc": "2.0", "method": "ledger.subscription",
 		"params": map[string]any{"subscription": "test-subscription", "result": []map[string]any{{"height": 400001}}},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for n.NodeStatus().Height != 400001 && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
-	if n.NodeStatus().Height != 400001 {
+	select {
+	case <-ticks:
+	case <-time.After(3 * time.Second):
 		t.Fatal("replacement subscription did not deliver momentum")
 	}
 	if h.stops.Load() != 0 {
@@ -98,14 +111,6 @@ func TestEmbeddedConnectionRecoversWhileWalletLocked(t *testing.T) {
 	n.mu.RUnlock()
 	if !sameNode {
 		t.Fatal("recovery replaced the running node")
-	}
-	select {
-	case sample := <-samples:
-		if sample.CurrentHeight != 400010 || sample.TargetHeight != 500000 || sample.Peers != 3 {
-			t.Fatalf("unexpected recovered sync sample: %+v", sample)
-		}
-	case <-time.After(4 * time.Second):
-		t.Fatal("recovery did not poll and publish a fresh sync sample")
 	}
 	if _, err := n.currentClient().LedgerApi.GetFrontierMomentum(); err != nil {
 		t.Fatalf("restored read: %v", err)
@@ -218,5 +223,83 @@ func TestExplicitTransitionSupersedesBlockedRecovery(t *testing.T) {
 				t.Fatal("incorrect final connection state")
 			}
 		})
+	}
+}
+
+type stoppingReconnectHandle struct {
+	reconnectHandle
+	called, release chan struct{}
+}
+
+func (h *stoppingReconnectHandle) Stop() error {
+	close(h.called)
+	<-h.release
+	return nil
+}
+
+func TestShutdownInvalidatesRecoveryBeforeNodeStops(t *testing.T) {
+	probeEntered, probeRelease := make(chan struct{}), make(chan struct{})
+	url, _ := momentumTestServerWithFrontierGate(t, true, func() bool {
+		close(probeEntered)
+		<-probeRelease
+		return false
+	})
+	n := newTestNode(t)
+	n.ctx = context.Background()
+	var connected atomic.Int32
+	n.emitEvent = func(_ context.Context, name string, data ...interface{}) {
+		if name == EventNodeStatus && data[0].(NodeStatus).Connected {
+			connected.Add(1)
+		}
+	}
+	h := &stoppingReconnectHandle{reconnectHandle: reconnectHandle{url: url}, called: make(chan struct{}), release: make(chan struct{})}
+	n.mode, n.embedded = "embedded", h
+	t.Cleanup(func() {
+		select {
+		case <-probeRelease:
+		default:
+			close(probeRelease)
+		}
+		select {
+		case <-h.release:
+		default:
+			close(h.release)
+		}
+		n.Disconnect()
+	})
+	recovery := make(chan bool, 1)
+	go func() { _, retry := n.retryEmbeddedConnection(0); recovery <- retry }()
+	select {
+	case <-probeEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("probe did not start")
+	}
+	shutdown := make(chan struct{})
+	go func() {
+		(&App{Node: n, Wallet: newWalletService(n.config)}).OnShutdown(context.Background())
+		close(shutdown)
+	}()
+	select {
+	case <-h.called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown did not start stopping the node")
+	}
+	close(probeRelease)
+	select {
+	case retry := <-recovery:
+		if retry {
+			t.Fatal("shutdown left recovery active")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("candidate did not finish during node teardown")
+	}
+	if n.NodeStatus().Connected || connected.Load() != 0 {
+		t.Fatal("candidate published before shutdown's final Disconnect")
+	}
+	close(h.release)
+	select {
+	case <-shutdown:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown did not finish")
 	}
 }

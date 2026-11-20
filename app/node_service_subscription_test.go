@@ -11,24 +11,37 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// RPC replies and injected notifications share the same WebSocket writer.
+type momentumSocket struct {
+	*websocket.Conn
+	writeMu sync.Mutex
+}
+
+func (c *momentumSocket) WriteJSON(v any) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	return c.Conn.WriteJSON(v)
+}
+
 // Answer frontier reads, with an optional subscription acknowledgement. The
 // returned socket lets the test simulate remote transport loss after setup.
-func momentumTestServer(t *testing.T, acknowledge bool) (string, <-chan *websocket.Conn) {
+func momentumTestServer(t *testing.T, acknowledge bool) (string, <-chan *momentumSocket) {
 	return momentumTestServerWithFrontierGate(t, acknowledge, nil)
 }
 
-func momentumTestServerWithFrontierGate(t *testing.T, acknowledge bool, rejectFrontier func() bool) (string, <-chan *websocket.Conn) {
+func momentumTestServerWithFrontierGate(t *testing.T, acknowledge bool, rejectFrontier func() bool) (string, <-chan *momentumSocket) {
 	t.Helper()
-	subscribed := make(chan *websocket.Conn, 1)
+	subscribed := make(chan *momentumSocket, 1)
 	var socketsMu sync.Mutex
-	var sockets []*websocket.Conn
+	var sockets []*momentumSocket
 	closed := false
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		raw, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			return
 		}
+		conn := &momentumSocket{Conn: raw}
 		socketsMu.Lock()
 		if closed {
 			socketsMu.Unlock()

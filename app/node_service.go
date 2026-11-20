@@ -39,6 +39,9 @@ var remoteVerifyTimeout = 15 * time.Second
 // Bound the subscription handshake separately from the long-lived stream.
 var momentumSubscribeTimeout = 15 * time.Second
 
+// Auto-receive setup is separately cancellable by StopAutoReceive.
+var autoReceiveSubscribeTimeout = 15 * time.Second
+
 // embeddedHandle abstracts a running embedded node (real or test stub).
 type embeddedHandle interface {
 	WSURL() string
@@ -92,8 +95,9 @@ type NodeService struct {
 	// transitions need not wait for that probe. Lock order: opMu before mu.
 	opMu sync.Mutex
 
-	receiveFn func(fromHash string) (string, error)
-	autoStop  chan struct{}
+	receiveFn       func(fromHash string) (string, error)
+	autoStop        chan struct{}
+	autoSetupCancel context.CancelFunc
 
 	embedded      embeddedHandle
 	embeddedStart func(dataDir string) (embeddedHandle, error)
@@ -345,10 +349,7 @@ func (n *NodeService) disconnectLocked() {
 		close(n.syncStop)
 		n.syncStop = nil
 	}
-	if n.autoStop != nil {
-		close(n.autoStop)
-		n.autoStop = nil
-	}
+	n.stopAutoReceiveLocked()
 	if n.client != nil {
 		n.client.Stop()
 		n.client = nil
@@ -932,8 +933,16 @@ func (n *NodeService) StartAutoReceive() error {
 		n.mu.Unlock()
 		return nil // already running
 	}
+	ctx := n.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	setupCtx, cancel := context.WithTimeout(ctx, autoReceiveSubscribeTimeout)
+	defer cancel() // setup only; the established subscription outlives this context
 	stop := make(chan struct{})
 	n.autoStop = stop
+	n.autoSetupCancel = cancel
+	client := n.client
 	n.mu.Unlock()
 
 	// releaseSlot clears the reserved slot iff it's still ours, so a failed
@@ -941,12 +950,11 @@ func (n *NodeService) StartAutoReceive() error {
 	releaseSlot := func() {
 		n.mu.Lock()
 		if n.autoStop == stop {
-			n.autoStop = nil
+			n.stopAutoReceiveLocked()
 		}
 		n.mu.Unlock()
 	}
 
-	client := n.currentClient()
 	if client == nil {
 		releaseSlot()
 		return errors.New("not connected")
@@ -956,15 +964,19 @@ func (n *NodeService) StartAutoReceive() error {
 		releaseSlot()
 		return errLocked
 	}
-	ctx := n.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	sub, ch, err := client.SubscriberApi.ToUnreceivedAccountBlocksByAddress(ctx, addr)
+	sub, ch, err := client.SubscriberApi.ToUnreceivedAccountBlocksByAddress(setupCtx, addr)
 	if err != nil {
 		releaseSlot()
 		return err
 	}
+	n.mu.Lock()
+	if n.autoStop != stop {
+		n.mu.Unlock()
+		sub.Unsubscribe()
+		return context.Canceled
+	}
+	n.autoSetupCancel = nil
+	n.mu.Unlock()
 	go func() {
 		defer sub.Unsubscribe()
 		// Release the running slot on ANY exit — including an unexpected channel
@@ -1001,12 +1013,19 @@ func (n *NodeService) sweepUnreceived(client *rpc_client.RpcClient, addr types.A
 	if n.receiveFn == nil {
 		return
 	}
+	select {
+	case <-stop:
+		return
+	default:
+	}
 	first, err := client.LedgerApi.GetUnreceivedBlocksByAddress(addr, 0, 50)
 	if err != nil || first == nil || len(first.List) == 0 {
 		return
 	}
-	n.emitReceiving(true)
-	defer n.emitReceiving(false)
+	if !n.emitAutoReceiveEvent(stop, EventAutoReceiving, true) {
+		return
+	}
+	defer n.emitAutoReceiveEvent(stop, EventAutoReceiving, false)
 
 	pending := first
 	stale := 0
@@ -1026,7 +1045,7 @@ func (n *NodeService) sweepUnreceived(client *rpc_client.RpcClient, addr types.A
 				// silently stalls (it retries a few times, then gives up). Emit so
 				// the UI can flag it instead of the block just never arriving.
 				if _, err := n.receiveFn(b.Hash.String()); err != nil && n.ctx != nil {
-					n.emitEvent(n.ctx, EventAutoReceiveError, map[string]string{
+					n.emitAutoReceiveEvent(stop, EventAutoReceiveError, map[string]string{
 						"hash":  b.Hash.String(),
 						"error": err.Error(),
 					})
@@ -1053,21 +1072,39 @@ func (n *NodeService) sweepUnreceived(client *rpc_client.RpcClient, addr types.A
 	}
 }
 
-// emitReceiving notifies the frontend that auto-receive is (or is no longer)
-// actively receiving — used to show a "Receiving…" / generating-plasma indicator.
-func (n *NodeService) emitReceiving(active bool) {
-	if n.ctx != nil {
-		n.emitEvent(n.ctx, EventAutoReceiving, active)
+// Only the current worker may publish activity/errors. A retired receiveFn can
+// finish after its replacement starts, but must not overwrite the new UI state.
+func (n *NodeService) emitAutoReceiveEvent(stop <-chan struct{}, name string, value interface{}) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.autoStop != stop {
+		return false
 	}
+	if n.ctx != nil {
+		n.emitEvent(n.ctx, name, value)
+	}
+	return true
 }
 
 // StopAutoReceive stops the auto-receive subscription if running.
 func (n *NodeService) StopAutoReceive() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	n.stopAutoReceiveLocked()
+}
+
+// Call with mu held. Revoke ownership and clear the indicator together.
+func (n *NodeService) stopAutoReceiveLocked() {
+	if n.autoSetupCancel != nil {
+		n.autoSetupCancel()
+		n.autoSetupCancel = nil
+	}
 	if n.autoStop != nil {
 		close(n.autoStop)
 		n.autoStop = nil
+		if n.ctx != nil {
+			n.emitEvent(n.ctx, EventAutoReceiving, false)
+		}
 	}
 }
 

@@ -17,6 +17,7 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
     _preferenceRequest: 0,
     _targetAccount: -1,
     _controlTail: null as Promise<void> | null,
+    _preferenceTail: null as Promise<void> | null,
     // Last auto-receive failure message + a counter that bumps on each error, so
     // the UI can surface every occurrence (even repeats of the same message).
     lastError: '',
@@ -46,18 +47,34 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
         /* runtime unavailable (tests/offline) */
       }
     },
-    // Serialize backend control calls. A newer intent supersedes queued work
-    // and stale completions, while an already-dispatched start finishes before
-    // the following stop/restart. Preferences persist in the same order.
-    async updateWorker(activeIndex: number | null, persist?: boolean) {
+    // Preferences have their own queue: a slow subscription must never prevent
+    // saving an off toggle. Unlock waits for these writes before reading settings.
+    async savePreference(enabled: boolean) {
+      const run = (this._preferenceTail ?? Promise.resolve()).catch(() => {}).then(() => Cfg.SetAutoReceive(enabled))
+      this._preferenceTail = run
+      try {
+        await run
+      } finally {
+        if (this._preferenceTail === run) this._preferenceTail = null
+      }
+    },
+    // Interrupt setup immediately, then serialize completion/restart so older
+    // starts cannot reclaim the worker or overwrite the latest account choice.
+    async updateWorker(activeIndex: number | null) {
       const request = ++this._request
       this.account = -1
-      const run = (this._controlTail ?? Promise.resolve()).catch(() => {}).then(async () => {
-        if (persist !== undefined) await Cfg.SetAutoReceive(persist)
+      const previous = this._controlTail
+      const stopped = N.StopAutoReceive()
+      const saved = this._preferenceTail ?? Promise.resolve()
+      const run = Promise.allSettled([previous, stopped]).then(async ([, stopResult]) => {
+        if (stopResult.status === 'rejected') throw stopResult.reason
         if (request !== this._request) return
-        await N.StopAutoReceive()
-        // The user may turn it off or switch accounts while stopping.
-        if (request !== this._request || activeIndex === null || !this.enabled) return
+        // Stop again after an older binding settles: it may have reached Go
+        // after our interrupt. No older stop can land after the next start.
+        if (previous) await N.StopAutoReceive()
+        if (activeIndex === null) return
+        await saved
+        if (request !== this._request || !this.enabled) return
         await N.StartAutoReceive()
         if (request === this._request && this.enabled) this.account = activeIndex
       })
@@ -86,10 +103,13 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
       const preferenceRequest = ++this._preferenceRequest
       this._targetAccount = activeIndex
       try {
+        await this._preferenceTail
+        if (preferenceRequest !== this._preferenceRequest) return
         const settings = await Cfg.GetSettings()
         if (preferenceRequest !== this._preferenceRequest) return
         this.enabled = settings.autoReceive
         if (this.enabled) await this.start(this._targetAccount)
+        else await this.stop()
       } catch {
         /* offline/locked — leave as-is */
       }
@@ -98,8 +118,9 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
       this._preferenceRequest++
       this._targetAccount = activeIndex
       this.enabled = !this.enabled
+      const saved = this.savePreference(this.enabled)
       try {
-        await this.updateWorker(this.enabled ? activeIndex : null, this.enabled)
+        await Promise.all([saved, this.updateWorker(this.enabled ? activeIndex : null)])
       } catch {
         /* ignore */
       }

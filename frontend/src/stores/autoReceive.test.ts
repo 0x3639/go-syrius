@@ -96,25 +96,101 @@ describe('autoReceive store', () => {
     stopped.resolve()
     await Promise.all([unlock, off])
     expect(StartAutoReceive).not.toHaveBeenCalled()
-    expect(StopAutoReceive).toHaveBeenCalledTimes(2)
+    expect(StopAutoReceive).toHaveBeenCalledTimes(3)
     expect(s.account).toBe(-1)
     expect(s.enabled).toBe(false)
   })
 
-  it('stops an already-dispatched start before completing the off toggle', async () => {
+  it('persists off and interrupts setup before a pending start settles', async () => {
     const started = deferred()
-    StartAutoReceive.mockReturnValueOnce(started.promise)
+    let workerRunning = false
+    StartAutoReceive.mockImplementationOnce(() => started.promise.then(() => { workerRunning = true }))
+    StopAutoReceive.mockImplementation(async () => { workerRunning = false })
     const s = useAutoReceiveStore()
     s.enabled = true
     const starting = s.start(0)
     await flushPromises()
     expect(StartAutoReceive).toHaveBeenCalledTimes(1)
     const off = s.toggle(0)
-    started.resolve()
-    await Promise.all([starting, off])
+    await flushPromises()
+    expect(SetAutoReceive).toHaveBeenCalledWith(false)
     expect(StopAutoReceive).toHaveBeenCalledTimes(2)
     expect(s.enabled).toBe(false)
+    // Even if an older binding reaches Go after the interrupt, its completed
+    // start must be stopped before the off request completes.
+    started.resolve()
+    await Promise.all([starting, off])
+    expect(StopAutoReceive).toHaveBeenCalledTimes(3)
+    expect(workerRunning).toBe(false)
+    expect(s.enabled).toBe(false)
     expect(s.account).toBe(-1)
+  })
+
+  it('keeps an off preference through unlock while both setup and saving are pending', async () => {
+    let persisted = true
+    const saved = deferred()
+    GetSettings.mockImplementation(async () => ({ autoReceive: persisted }))
+    SetAutoReceive.mockImplementation(async (enabled: boolean) => {
+      await saved.promise
+      persisted = enabled
+    })
+    const started = deferred()
+    StartAutoReceive.mockReturnValueOnce(started.promise)
+    const s = useAutoReceiveStore()
+    s.enabled = true
+    const starting = s.start(0)
+    await flushPromises()
+    const off = s.toggle(0)
+    await flushPromises()
+    const unlock = s.init(0)
+    await flushPromises()
+    expect(GetSettings).not.toHaveBeenCalled()
+    expect(s.enabled).toBe(false)
+    saved.resolve()
+    await flushPromises()
+    expect(GetSettings).toHaveBeenCalledTimes(1)
+    expect(s.enabled).toBe(false)
+    started.resolve()
+    await Promise.all([starting, off, unlock])
+    expect(persisted).toBe(false)
+    expect(s.enabled).toBe(false)
+    expect(s.account).toBe(-1)
+    expect(StartAutoReceive).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not start a replacement until every earlier stop has finished', async () => {
+    const stopped = deferred()
+    const s = useAutoReceiveStore()
+    s.enabled = true
+    await s.start(0)
+    StopAutoReceive.mockReturnValueOnce(stopped.promise)
+    const first = s.followAccount(1)
+    const latest = s.followAccount(2)
+    await flushPromises()
+    expect(StartAutoReceive).toHaveBeenCalledTimes(1)
+    stopped.resolve()
+    await Promise.all([first, latest])
+    expect(StartAutoReceive).toHaveBeenCalledTimes(2)
+    expect(s.account).toBe(2)
+  })
+
+  it('keeps waiting for an older start if its interrupt fails', async () => {
+    const started = deferred()
+    StartAutoReceive.mockReturnValueOnce(started.promise)
+    const s = useAutoReceiveStore()
+    s.enabled = true
+    const first = s.start(0)
+    await flushPromises()
+    StopAutoReceive.mockRejectedValueOnce(new Error('stop failed'))
+    const failed = s.followAccount(1).catch(() => {})
+    await flushPromises()
+    const latest = s.followAccount(2)
+    await flushPromises()
+    expect(StartAutoReceive).toHaveBeenCalledTimes(1)
+    started.resolve()
+    await Promise.all([first, failed, latest])
+    expect(StartAutoReceive).toHaveBeenCalledTimes(2)
+    expect(s.account).toBe(2)
   })
 
   it.each([false, true])('serializes account changes and follows the latest account (switch back: %s)', async (switchBack) => {

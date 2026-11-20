@@ -135,6 +135,7 @@ const delegatedTo = computed(() => pillar.delegation?.name || '')
           <button class="h-11 rounded-xl bg-primary text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50" :disabled="unreceived.busyAll" @click="unreceived.receiveAll()">
             {{ unreceived.busyAll ? 'Receiving…' : 'Receive all' }}
           </button>
+          <p v-if="unreceived.error" class="text-xs text-destructive" role="alert">{{ unreceived.error }}</p>
         </section>
 
         <section class="panel-card flex flex-col gap-2.5">
@@ -158,7 +159,7 @@ const delegatedTo = computed(() => pillar.delegation?.name || '')
           <h2 class="section-title">Earning</h2>
           <div class="flex justify-between gap-3">
             <span class="text-muted-foreground">Staked</span>
-            <TokenAmount v-if="node.connected" :amount="stake.stakeInfo?.totalAmount ?? '0'" symbol="ZNN" />
+            <TokenAmount v-if="stake.available && stake.stakeInfo" :amount="stake.stakeInfo.totalAmount" symbol="ZNN" />
             <span v-else class="text-foreground">—</span>
           </div>
           <div class="flex justify-between gap-3">

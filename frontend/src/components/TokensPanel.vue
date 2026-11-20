@@ -47,7 +47,7 @@ const filtered = computed(() => {
         <div class="pl-4 font-mono tabular-nums text-foreground">
           <TokenAmount :amount="b.amount" :decimals="b.decimals ?? 8" />
         </div>
-        <button type="button" class="h-9 flex-none rounded-lg border border-input px-3.5 text-sm font-semibold text-foreground transition-colors hover:bg-foreground/[0.06]" :aria-label="`send ${b.symbol || b.zts}`" @click="router?.push('/transfer')">Send</button>
+        <button type="button" class="h-9 flex-none rounded-lg border border-input px-3.5 text-sm font-semibold text-foreground transition-colors hover:bg-foreground/[0.06]" :aria-label="`send ${b.symbol || b.zts}`" @click="router?.push({ path: '/transfer', query: { token: b.zts } })">Send</button>
       </div>
     </template>
     <p v-else-if="balances.available" class="border-t border-border/70 px-6 py-6 text-sm text-muted-foreground">{{ q.trim() ? 'No matching tokens.' : 'No tokens held.' }}</p>

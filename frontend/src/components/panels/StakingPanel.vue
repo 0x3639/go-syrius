@@ -160,7 +160,7 @@ watch(
           </Field>
         </div>
         <p class="hint">
-          Your ZNN will be locked for the selected duration and earn rewards until it matures.
+          Your ZNN is locked for the selected duration. It unlocks at maturity and keeps earning rewards until you withdraw it.
         </p>
         <Button class="h-12 w-full text-base font-bold" :disabled="!canStake" @click="doStake">Stake ZNN</Button>
       </section>

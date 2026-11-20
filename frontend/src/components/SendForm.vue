@@ -31,10 +31,10 @@ const plasma = usePlasmaStore()
 onMounted(() => { Promise.resolve().then(() => contacts.load()).catch(() => {}) })
 const quickContacts = computed(() => contacts.items.slice(0, 4))
 
-const props = defineProps<{ initialRecipient?: string }>()
+const props = defineProps<{ initialRecipient?: string; initialToken?: string }>()
 
 const recipient = ref(props.initialRecipient ?? '')
-const zts = ref('')
+const zts = ref(props.initialToken ?? '')
 const amountDecimal = ref('')
 const bookOpen = ref(false)
 
@@ -59,7 +59,9 @@ const orderedItems = computed(() =>
 watch(
   orderedItems,
   (list) => {
-    if (!zts.value && list[0]) zts.value = list[0].zts
+    // A pre-selected token that this account does not hold falls back to the default.
+    const held = list.some((b) => b.zts === zts.value)
+    if ((!zts.value || !held) && list[0]) zts.value = list[0].zts
   },
   { immediate: true },
 )

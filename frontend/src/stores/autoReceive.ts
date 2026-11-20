@@ -115,14 +115,20 @@ export const useAutoReceiveStore = defineStore('autoReceive', {
       }
     },
     async toggle(activeIndex: number) {
-      this._preferenceRequest++
+      const preferenceRequest = ++this._preferenceRequest
       this._targetAccount = activeIndex
-      this.enabled = !this.enabled
+      const previous = this.enabled
+      this.enabled = !previous
       const saved = this.savePreference(this.enabled)
-      try {
-        await Promise.all([saved, this.updateWorker(this.enabled ? activeIndex : null)])
-      } catch {
-        /* ignore */
+      const [saveResult] = await Promise.allSettled([saved, this.updateWorker(this.enabled ? activeIndex : null)])
+      // A failed save leaves the persisted value at `previous`: put the switch
+      // back, say so, and re-sync the worker to match. A newer toggle or init
+      // owns the state by then, so a stale failure must not overwrite it.
+      if (saveResult.status === 'rejected' && preferenceRequest === this._preferenceRequest) {
+        this.enabled = previous
+        this.lastError = 'The auto-receive setting could not be saved, so it was left unchanged.'
+        this.errorCount++
+        await this.updateWorker(previous ? this._targetAccount : null).catch(() => {})
       }
     },
     // Follow account switches: re-sweep + re-subscribe for the new account.

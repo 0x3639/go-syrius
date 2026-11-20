@@ -61,7 +61,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <aside class="flex min-h-0 w-56 flex-none flex-col gap-5 overflow-y-auto border-r border-sidebar-border bg-sidebar px-3.5 py-5 lg:w-64" aria-label="Main navigation">
+  <aside class="relative z-10 flex min-h-0 w-56 flex-none flex-col gap-5 border-r border-sidebar-border bg-sidebar px-3.5 py-5 lg:w-64" aria-label="Main navigation">
     <!-- Wordmark -->
     <div class="flex items-center gap-2.5 px-2">
       <img src="../assets/images/syrius-logo.png" alt="" class="h-7 w-7 rounded-md" />
@@ -71,6 +71,9 @@ onMounted(async () => {
     <!-- Active account: opens the account switcher -->
     <AccountSlotPicker variant="sidebar" />
 
+    <!-- Only this region scrolls: the picker's dropdown is wider than the
+         sidebar and must not sit inside an overflow container. -->
+    <div class="-mx-3.5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3.5">
     <div>
       <div class="px-2.5 pb-1.5 text-xs font-semibold text-muted-foreground">Wallet</div>
       <nav class="flex flex-col gap-0.5" aria-label="Wallet">
@@ -100,6 +103,7 @@ onMounted(async () => {
         </div>
       </div>
       <p v-if="appVersion" class="px-3 pt-1.5 text-center font-mono text-[11px] text-muted-foreground">{{ appVersion }}</p>
+    </div>
     </div>
   </aside>
 </template>

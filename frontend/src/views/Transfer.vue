@@ -16,6 +16,7 @@ import BalanceNotice from '../components/BalanceNotice.vue'
 // the form and the backend both re-validate it).
 const route = useRoute()
 const initialRecipient = typeof route?.query?.to === 'string' ? route.query.to : ''
+const initialToken = typeof route?.query?.token === 'string' ? route.query.token : ''
 
 const balances = useBalancesStore()
 const { items } = storeToRefs(balances)
@@ -56,7 +57,7 @@ watch(status, (s) => { if (s === 'done') toast?.show('Transaction published', 's
   <div class="page-content">
     <BalanceNotice />
     <!-- The form brings its own two-column layout (form + summary). -->
-    <SendForm v-if="status === 'idle' || status === 'error'" :initial-recipient="initialRecipient" @send="onSend" />
+    <SendForm v-if="status === 'idle' || status === 'error'" :initial-recipient="initialRecipient" :initial-token="initialToken" @send="onSend" />
     <p v-if="status === 'error'" class="text-sm text-destructive" role="alert">{{ error }}</p>
     <div v-if="status === 'preparing' || status === 'awaiting' || status === 'publishing' || status === 'done'" class="panel-card mx-auto max-w-[40rem]">
       <p v-if="status === 'preparing'" class="text-sm text-muted-foreground">Preparing transaction…</p>

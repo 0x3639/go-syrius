@@ -39,6 +39,9 @@ var remoteVerifyTimeout = 15 * time.Second
 // Bound the subscription handshake separately from the long-lived stream.
 var momentumSubscribeTimeout = 15 * time.Second
 
+// Auto-receive setup is separately cancellable by StopAutoReceive.
+var autoReceiveSubscribeTimeout = 15 * time.Second
+
 // embeddedHandle abstracts a running embedded node (real or test stub).
 type embeddedHandle interface {
 	WSURL() string
@@ -46,11 +49,27 @@ type embeddedHandle interface {
 	Stop() error
 }
 
+// nodeConnection is private until its generation is accepted for installation.
+// Preparing it performs network I/O but cannot change NodeService's live state.
+type nodeConnection struct {
+	client    *rpc_client.RpcClient
+	frontier  *api.Momentum
+	sub       *server.ClientSubscription
+	momentums <-chan []subscribe.Momentum
+}
+
+func (c *nodeConnection) close() {
+	c.client.Stop()
+	c.sub.Unsubscribe()
+}
+
 // NodeService owns the remote RPC connection and surfaces reads + status events.
 type NodeService struct {
 	ctx    context.Context
 	config *ConfigService
 	wallet *WalletService
+	// Wails by default; transport tests capture emitted status/sync samples.
+	emitEvent func(context.Context, string, ...interface{})
 
 	mu      sync.RWMutex
 	mode    string
@@ -71,15 +90,21 @@ type NodeService struct {
 	// sequence — persist mode, stop/start the embedded node, set n.mode, dial —
 	// and overlapping transitions could otherwise interleave those steps so the
 	// persisted mode, in-memory mode, embedded lifecycle, and connected URL
-	// belong to different requests. Lock order: opMu before mu, never inverse.
+	// belong to different requests. Background recovery reserves and installs
+	// under opMu, but prepares its private candidate outside it so explicit
+	// transitions need not wait for that probe. Lock order: opMu before mu.
 	opMu sync.Mutex
 
-	receiveFn func(fromHash string) (string, error)
-	autoStop  chan struct{}
+	receiveFn       func(fromHash string) (string, error)
+	autoStop        chan struct{}
+	autoSetupCancel context.CancelFunc
 
 	embedded      embeddedHandle
 	embeddedStart func(dataDir string) (embeddedHandle, error)
 	syncStop      chan struct{}
+	// Initial delay for restoring only the wallet's connection to an already
+	// running embedded node. Set once at construction (shortened by tests).
+	embeddedReconnectDelay time.Duration
 
 	// embeddedWedged latches when an embedded stop timed out: the abandoned
 	// node still owns the WS port, so starting another in-process is doomed —
@@ -102,7 +127,7 @@ type NodeService struct {
 }
 
 func newNodeService(c *ConfigService, w *WalletService) *NodeService {
-	n := &NodeService{config: c, wallet: w}
+	n := &NodeService{config: c, wallet: w, emitEvent: runtime.EventsEmit, embeddedReconnectDelay: time.Second}
 	n.embeddedStart = func(dataDir string) (embeddedHandle, error) {
 		return embeddednode.Start(dataDir)
 	}
@@ -123,19 +148,29 @@ func (n *NodeService) setNode(url string) error {
 	n.emitStatusLocked(false)
 	gen := n.connGen
 	n.mu.Unlock()
+	return n.dialNode(url, gen)
+}
 
+// dialNode connects a candidate for an already-reserved generation. It must
+// never create a new intent: shutdown may supersede it before dialing begins.
+func (n *NodeService) dialNode(url string, gen uint64) error {
+	candidate, err := n.prepareNodeConnection(url)
+	if err != nil {
+		n.emitDisconnectedIfCurrent(gen)
+		return err
+	}
+	return n.installPreparedConnection(candidate, url, gen)
+}
+
+func (n *NodeService) prepareNodeConnection(url string) (*nodeConnection, error) {
 	client, err := rpc_client.NewRpcClient(url)
 	if err != nil {
-		// A dial can take seconds; only emit if this call still owns the
-		// connection intent — never over a newer connection's status.
-		n.emitDisconnectedIfCurrent(gen)
-		return fmt.Errorf("connect: %s", redactURLUserinfo(err.Error(), url))
+		return nil, fmt.Errorf("connect: %s", redactURLUserinfo(err.Error(), url))
 	}
 	m, err := verifyFrontierWithTimeout(client, remoteVerifyTimeout)
 	if err != nil {
 		client.Stop()
-		n.emitDisconnectedIfCurrent(gen)
-		return fmt.Errorf("node unreachable: %s", redactURLUserinfo(err.Error(), url))
+		return nil, fmt.Errorf("node unreachable: %s", redactURLUserinfo(err.Error(), url))
 	}
 	n.mu.RLock()
 	subCtx := n.ctx
@@ -148,16 +183,18 @@ func (n *NodeService) setNode(url string) error {
 	cancel() // the context controls setup only, not the established stream
 	if err != nil {
 		client.Stop()
-		n.emitDisconnectedIfCurrent(gen)
-		return fmt.Errorf("subscribe to momentums: %w", err)
+		return nil, fmt.Errorf("subscribe to momentums: %w", err)
 	}
+	return &nodeConnection{client: client, frontier: m, sub: sub, momentums: ch}, nil
+}
+
+func (n *NodeService) installPreparedConnection(candidate *nodeConnection, url string, gen uint64) error {
 	stop := make(chan struct{})
-	if !n.installConnection(client, url, m.Height, m.ChainIdentifier, gen, stop) {
-		client.Stop()
-		sub.Unsubscribe()
+	if !n.installConnection(candidate.client, url, candidate.frontier.Height, candidate.frontier.ChainIdentifier, gen, stop) {
+		candidate.close()
 		return errors.New("connection attempt superseded by a newer request")
 	}
-	n.startMomentumLoop(gen, sub, ch, stop)
+	n.startMomentumLoop(gen, candidate.sub, candidate.momentums, stop)
 	return nil
 }
 
@@ -173,6 +210,9 @@ func (n *NodeService) degradeConnection(gen uint64) bool {
 	}
 	n.disconnectLocked()
 	n.emitStatusLocked(false)
+	if n.mode == "embedded" && n.embedded != nil && !n.embeddedStopping && !n.embeddedWedged {
+		go n.reconnectEmbedded(n.connGen)
+	}
 	return true
 }
 
@@ -210,7 +250,7 @@ func (n *NodeService) emitStatusLocked(connected bool) {
 		mode = "remote"
 	}
 	st := NodeStatus{Mode: mode, Connected: connected && n.client != nil, Height: n.height, ChainID: n.chainID}
-	runtime.EventsEmit(n.ctx, EventNodeStatus, st)
+	n.emitEvent(n.ctx, EventNodeStatus, st)
 }
 
 // verifyFrontierWithTimeout runs the reachability RPC with a hard deadline. On
@@ -284,7 +324,7 @@ func (n *NodeService) startMomentumLoop(gen uint64, sub *server.ClientSubscripti
 				height := n.height
 				ctx := n.ctx
 				if ctx != nil {
-					runtime.EventsEmit(ctx, EventMomentumTick, height)
+					n.emitEvent(ctx, EventMomentumTick, height)
 				}
 				n.emitStatusLocked(true)
 				n.mu.Unlock()
@@ -309,10 +349,7 @@ func (n *NodeService) disconnectLocked() {
 		close(n.syncStop)
 		n.syncStop = nil
 	}
-	if n.autoStop != nil {
-		close(n.autoStop)
-		n.autoStop = nil
-	}
+	n.stopAutoReceiveLocked()
 	if n.client != nil {
 		n.client.Stop()
 		n.client = nil
@@ -364,7 +401,7 @@ func (n *NodeService) emitStatus(connected bool) {
 		mode = "remote"
 	}
 	st := NodeStatus{Mode: mode, Connected: connected && !clientNil, Height: height, ChainID: chainID}
-	runtime.EventsEmit(ctx, EventNodeStatus, st)
+	n.emitEvent(ctx, EventNodeStatus, st)
 }
 
 // SetNodeMode persists the node mode and connects to that mode's URL. The mode
@@ -477,7 +514,8 @@ func (n *NodeService) startEmbedded() error {
 	n.mu.Unlock()
 	n.emitStatus(false)
 
-	if h == nil {
+	startedHere := h == nil
+	if startedHere {
 		dir, err := n.config.dataDir()
 		if err != nil {
 			return err
@@ -496,7 +534,16 @@ func (n *NodeService) startEmbedded() error {
 		n.appNapBegin("embedded Zenon node running")
 	}
 	if cerr := n.setNode(h.WSURL()); cerr != nil {
-		n.stopEmbedded() // tear down the just-started node so Retry can start fresh
+		if startedHere {
+			n.stopEmbedded() // only tear down a node this attempt started
+		} else {
+			// A busy RPC endpoint must not stop an existing chain sync. Retry
+			// the wallet connection in the background without restarting the node.
+			n.mu.RLock()
+			gen := n.connGen
+			n.mu.RUnlock()
+			go n.reconnectEmbedded(gen)
+		}
 		return cerr
 	}
 	n.startSyncPoller()
@@ -589,6 +636,9 @@ func (n *NodeService) stopEmbedded() {
 	h := n.embedded
 	n.embedded = nil
 	if h != nil {
+		// Invalidate recovery and any candidate dial before stopping the node.
+		// OnShutdown calls this without opMu, so a reconnect may be in flight.
+		n.disconnectLocked()
 		// Same critical section as the nil-out: there must be no instant in
 		// which the handle is gone and neither flag is set.
 		n.embeddedStopping = true
@@ -631,7 +681,7 @@ func (n *NodeService) publishSync(gen uint64, stop <-chan struct{}, st SyncStatu
 		return false
 	}
 	if n.ctx != nil {
-		runtime.EventsEmit(n.ctx, EventNodeSync, st)
+		n.emitEvent(n.ctx, EventNodeSync, st)
 	}
 	if st.CurrentHeight > n.height {
 		n.height = st.CurrentHeight
@@ -883,8 +933,16 @@ func (n *NodeService) StartAutoReceive() error {
 		n.mu.Unlock()
 		return nil // already running
 	}
+	ctx := n.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	setupCtx, cancel := context.WithTimeout(ctx, autoReceiveSubscribeTimeout)
+	defer cancel() // setup only; the established subscription outlives this context
 	stop := make(chan struct{})
 	n.autoStop = stop
+	n.autoSetupCancel = cancel
+	client := n.client
 	n.mu.Unlock()
 
 	// releaseSlot clears the reserved slot iff it's still ours, so a failed
@@ -892,12 +950,11 @@ func (n *NodeService) StartAutoReceive() error {
 	releaseSlot := func() {
 		n.mu.Lock()
 		if n.autoStop == stop {
-			n.autoStop = nil
+			n.stopAutoReceiveLocked()
 		}
 		n.mu.Unlock()
 	}
 
-	client := n.currentClient()
 	if client == nil {
 		releaseSlot()
 		return errors.New("not connected")
@@ -907,15 +964,19 @@ func (n *NodeService) StartAutoReceive() error {
 		releaseSlot()
 		return errLocked
 	}
-	ctx := n.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	sub, ch, err := client.SubscriberApi.ToUnreceivedAccountBlocksByAddress(ctx, addr)
+	sub, ch, err := client.SubscriberApi.ToUnreceivedAccountBlocksByAddress(setupCtx, addr)
 	if err != nil {
 		releaseSlot()
 		return err
 	}
+	n.mu.Lock()
+	if n.autoStop != stop {
+		n.mu.Unlock()
+		sub.Unsubscribe()
+		return context.Canceled
+	}
+	n.autoSetupCancel = nil
+	n.mu.Unlock()
 	go func() {
 		defer sub.Unsubscribe()
 		// Release the running slot on ANY exit — including an unexpected channel
@@ -952,12 +1013,19 @@ func (n *NodeService) sweepUnreceived(client *rpc_client.RpcClient, addr types.A
 	if n.receiveFn == nil {
 		return
 	}
+	select {
+	case <-stop:
+		return
+	default:
+	}
 	first, err := client.LedgerApi.GetUnreceivedBlocksByAddress(addr, 0, 50)
 	if err != nil || first == nil || len(first.List) == 0 {
 		return
 	}
-	n.emitReceiving(true)
-	defer n.emitReceiving(false)
+	if !n.emitAutoReceiveEvent(stop, EventAutoReceiving, true) {
+		return
+	}
+	defer n.emitAutoReceiveEvent(stop, EventAutoReceiving, false)
 
 	pending := first
 	stale := 0
@@ -977,7 +1045,7 @@ func (n *NodeService) sweepUnreceived(client *rpc_client.RpcClient, addr types.A
 				// silently stalls (it retries a few times, then gives up). Emit so
 				// the UI can flag it instead of the block just never arriving.
 				if _, err := n.receiveFn(b.Hash.String()); err != nil && n.ctx != nil {
-					runtime.EventsEmit(n.ctx, EventAutoReceiveError, map[string]string{
+					n.emitAutoReceiveEvent(stop, EventAutoReceiveError, map[string]string{
 						"hash":  b.Hash.String(),
 						"error": err.Error(),
 					})
@@ -1004,21 +1072,39 @@ func (n *NodeService) sweepUnreceived(client *rpc_client.RpcClient, addr types.A
 	}
 }
 
-// emitReceiving notifies the frontend that auto-receive is (or is no longer)
-// actively receiving — used to show a "Receiving…" / generating-plasma indicator.
-func (n *NodeService) emitReceiving(active bool) {
-	if n.ctx != nil {
-		runtime.EventsEmit(n.ctx, EventAutoReceiving, active)
+// Only the current worker may publish activity/errors. A retired receiveFn can
+// finish after its replacement starts, but must not overwrite the new UI state.
+func (n *NodeService) emitAutoReceiveEvent(stop <-chan struct{}, name string, value interface{}) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.autoStop != stop {
+		return false
 	}
+	if n.ctx != nil {
+		n.emitEvent(n.ctx, name, value)
+	}
+	return true
 }
 
 // StopAutoReceive stops the auto-receive subscription if running.
 func (n *NodeService) StopAutoReceive() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	n.stopAutoReceiveLocked()
+}
+
+// Call with mu held. Revoke ownership and clear the indicator together.
+func (n *NodeService) stopAutoReceiveLocked() {
+	if n.autoSetupCancel != nil {
+		n.autoSetupCancel()
+		n.autoSetupCancel = nil
+	}
 	if n.autoStop != nil {
 		close(n.autoStop)
 		n.autoStop = nil
+		if n.ctx != nil {
+			n.emitEvent(n.ctx, EventAutoReceiving, false)
+		}
 	}
 }
 

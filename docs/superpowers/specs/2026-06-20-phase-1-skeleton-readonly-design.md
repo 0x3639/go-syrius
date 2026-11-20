@@ -85,7 +85,7 @@ Each `app/*_service.go` has one responsibility and a small, well-defined method 
 - `Disconnect() error` · `NodeStatus() NodeStatus`.
 - On momentum subscription tick: emit `momentum:tick{height}` and an updated `node:status`.
 - Reads (active address, from WalletService): `GetBalances() ([]TokenBalance, error)` (`GetAccountInfoByAddress` → BalanceInfoMap), `GetTransactions(page, count int) ([]TxRecord, error)` (`GetAccountBlocksByPage`).
-- Connection drops surface as `node:status{Connected:false}`. As of the November 2026 node update, recovery is explicit: Reconnect/Retry opens a new client and restores both reads and the momentum subscription on the configured endpoint.
+- Connection drops surface as `node:status{Connected:false}`. Remote recovery is explicit: Reconnect/Retry opens a new client and restores both reads and the momentum subscription on the configured endpoint. Embedded mode also retries its local RPC connection automatically while the node is running, including while the wallet is locked; this does not restart the node or reset chain data.
 
 ### DTOs (secret-free)
 
@@ -114,7 +114,7 @@ Each `app/*_service.go` has one responsibility and a small, well-defined method 
 - Wrong password → clear inline error on the unlock screen; no stack/secret leakage.
 - No wallet present → empty state with an Import CTA.
 - Invalid keystore import → validation error naming the problem (bad version/cipher/kdf or unreadable).
-- Node unreachable / dropped → StatusBar shows disconnected; reads return a surfaced error; use Reconnect/Retry to restore reads and the momentum subscription; no unattended reconnect is promised.
+- Node unreachable / dropped → StatusBar shows disconnected; reads return a surfaced error. Remote connections use Reconnect/Retry; a running embedded node's wallet connection retries automatically with backoff, restoring reads, the momentum subscription and sync polling. Explicit disconnect, mode changes and shutdown supersede those retries.
 
 ## Testing
 

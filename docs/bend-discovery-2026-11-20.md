@@ -153,3 +153,22 @@ Follow-up local validation passed: the full gate under `umask 077` (76 laws,
 suite, tagged Go vet, and journal/lifecycle race checks. The original deeper-run
 counts above describe the initial version; the current catalog reflects the
 added storage cases and fault checks.
+
+### Raw amount validation follow-up
+
+CodeRabbit's next review identified a remaining coercion in the SDK:
+`nom.AccountBlock.UnmarshalJSON` uses `common.StringToBigInt`, which silently
+maps malformed amount strings to zero. The new cases reproduced successful
+loads and writes for `"bad"`, missing/null/empty amounts, fractional strings, and
+negative amounts. For a malformed record already marked published, acknowledgement
+also succeeded and erased the record. Zero and large valid amounts passed.
+
+Journal validation now parses the original amount as a nonnegative integer
+before invoking the SDK decoder. It preserves original block JSON and legacy
+ownership behavior. Each write/ack regression starts from the original corrupt
+bytes, independently checking refusal and preservation. The corruption suite
+now has 32 cases, and a new Go overlay fault removes this guard to verify the
+Bend comparison detects it. The 76 laws remain unchanged; the default gate now
+has 889 comparisons and 41 deliberate faults (19 model, 22 Go).
+The full local gate, Go regression suite, tagged Go vet, and targeted journal
+comparisons passed after the fix, including both bounded fuzz searches.

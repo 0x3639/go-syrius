@@ -8,7 +8,7 @@ A start-to-finish plan to reimplement the Zenon `syrius` wallet (currently Flutt
 > retention, lifecycle invalidation, token identity, corrupt storage refusal,
 > and public recovery histories. `test/bend/run.sh` checks the models with Bend 2.0.40 and the
 > independent verdict kernel, compares real Go behavior over finite cases and
-> bounded exhaustive sequences, and requires 19 model faults and 21 Go faults
+> bounded exhaustive sequences, and requires 19 model faults and 22 Go faults
 > to be detected. `.github/workflows/bend.yml` runs the same gate for PRs and
 > pushes to main, with configurable manual runs. Seeded histories, real SDK/RPC
 > lifecycle checkpoints, parser fuzzing, and race checks extend discovery beyond
@@ -22,6 +22,9 @@ A start-to-finish plan to reimplement the Zenon `syrius` wallet (currently Flutt
 > account-block decoder; preserve large JSON numbers in fuzz comparisons; check
 > the receive session after the consent read. The schema and guard changes have
 > regression coverage without changing the 76 formal laws.
+> A second review identified the SDK's malformed-amount-to-zero fallback; raw
+> journal amounts now require nonnegative integer parsing before SDK decoding,
+> with zero/large valid amounts and corrupt-file preservation regression cases.
 
 > **Embedded connection recovery (2026-11-18, hardened 2026-11-19):** Wallet lock leaves the embedded node syncing. A lost wallet RPC connection to a running embedded node now retries automatically with backoff, restoring reads, momentum events and sync polling even while locked. Retry failures preserve the running node and its data; explicit disconnect, mode changes and shutdown supersede recovery without waiting for a background connection probe. Remote connections retain manual Reconnect/Retry. Enabled auto-receive is re-armed on unlock after a connection recovery. Starts remain ordered, while stops cancel pending subscription setup (also bounded by a 15-second deadline). Preferences save independently of worker setup; unlock waits for queued saves before reading them. Retired workers cannot overwrite current activity or errors, and teardown clears the receiving indicator.
 >

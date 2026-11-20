@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -218,6 +219,18 @@ func validateWCRecord(key string, rec *wcPublicationRecord) error {
 	}
 	if rec.IntentHash == "" || rec.Hash == "" {
 		return fmt.Errorf("missing publication identity for %q", key)
+	}
+	// The SDK silently turns missing or malformed amount strings into zero.
+	// Validate the original field first, preserving genuine zero-value calls.
+	var encoded struct {
+		Amount string `json:"amount"`
+	}
+	if err := json.Unmarshal(rec.BlockJSON, &encoded); err != nil {
+		return fmt.Errorf("invalid journaled amount for %q: %w", key, err)
+	}
+	amount, ok := new(big.Int).SetString(encoded.Amount, 10)
+	if !ok || amount.Sign() < 0 {
+		return fmt.Errorf("invalid journaled amount for %q", key)
 	}
 	var block nom.AccountBlock
 	if err := json.Unmarshal(rec.BlockJSON, &block); err != nil || block.Hash.String() != rec.Hash {

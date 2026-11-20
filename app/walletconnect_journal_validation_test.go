@@ -74,6 +74,16 @@ func journalCorruptionCases(t testing.TB) []journalCorruptionCase {
 		{"malformed-chain", changed(`"chainIdentifier":1`, `"chainIdentifier":"bad"`), false},
 		{"malformed-nonce", changed(`"nonce":"0000000000000000"`, `"nonce":"bad"`), false},
 		{"missing-block-hash", changed(`"hash":"`+rec.Hash+`"`, `"ignoredHash":"`+rec.Hash+`"`), false},
+		{"malformed-amount", changed(`"amount":"1"`, `"amount":"bad"`), false},
+		{"malformed-published-amount", strings.Replace(changed(`"amount":"1"`, `"amount":"bad"`), `"state":"signed"`, `"state":"published"`, 1), false},
+		{"empty-amount", changed(`"amount":"1"`, `"amount":""`), false},
+		{"missing-amount", changed(`"amount":"1"`, `"ignoredAmount":"1"`), false},
+		{"null-amount", changed(`"amount":"1"`, `"amount":null`), false},
+		{"numeric-amount", changed(`"amount":"1"`, `"amount":1`), false},
+		{"fractional-amount", changed(`"amount":"1"`, `"amount":"1.5"`), false},
+		{"negative-amount", changed(`"amount":"1"`, `"amount":"-1"`), false},
+		{"zero-amount", changed(`"amount":"1"`, `"amount":"0"`), true},
+		{"large-amount", changed(`"amount":"1"`, `"amount":"900719925474099312345678901234567890"`), true},
 	}
 }
 
@@ -93,15 +103,25 @@ func TestWCJournalCorruptStorageIsPreserved(t *testing.T) {
 				t.Errorf("load accepted=%v, want %v: %v", err == nil, tc.valid, err)
 			}
 			if !tc.valid {
-				if j.put("topic#1", journalTestRecord(t, 1)) == nil {
-					t.Error("put accepted corrupt storage")
-				}
-				if j.deletePublished("topic#1") == nil {
-					t.Error("ack accepted corrupt storage")
-				}
-				raw, err := os.ReadFile(path)
-				if err != nil || string(raw) != tc.body {
-					t.Errorf("corrupt journal was changed: %v", err)
+				for _, action := range []struct {
+					name string
+					run  func() error
+				}{
+					{"put", func() error { return j.put("topic#1", journalTestRecord(t, 1)) }},
+					{"ack", func() error { return j.deletePublished("topic#1") }},
+				} {
+					// Test each operation against the original corrupt bytes, even
+					// when the other operation accidentally succeeds and rewrites it.
+					if err := os.WriteFile(path, []byte(tc.body), 0600); err != nil {
+						t.Fatal(err)
+					}
+					if action.run() == nil {
+						t.Errorf("%s accepted corrupt storage", action.name)
+					}
+					raw, err := os.ReadFile(path)
+					if err != nil || string(raw) != tc.body {
+						t.Errorf("%s changed corrupt journal: %v", action.name, err)
+					}
 				}
 			}
 		})

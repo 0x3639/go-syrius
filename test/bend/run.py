@@ -58,6 +58,7 @@ GO_FAULTS = (
     ("journal-foreign-owner", "app/walletconnect_journal.go", 'if (rec.Topic != "" && rec.Topic != topic) || (rec.RequestID != 0 && rec.RequestID != id) {', 'if false && ((rec.Topic != "" && rec.Topic != topic) || (rec.RequestID != 0 && rec.RequestID != id)) {', "TestBendCorruptJournal"),
     ("journal-duplicate-fields", "app/walletconnect_journal.go", "if seen[key] {", "if false && seen[key] {", "TestBendCorruptJournal"),
     ("journal-block-schema", "app/walletconnect_journal.go", "if err := json.Unmarshal(rec.BlockJSON, &block); err != nil || block.Hash.String() != rec.Hash {", "if err := json.Unmarshal(rec.BlockJSON, &block); false && (err != nil || block.Hash.String() != rec.Hash) {", "TestBendCorruptJournal"),
+    ("journal-raw-amount", "app/walletconnect_journal.go", "if !ok || amount.Sign() < 0 {", "if false && (!ok || amount.Sign() < 0) {", "TestBendCorruptJournal"),
     ("recovery-changes-amount", "app/walletconnect.go", "if block.Hash != hash {", "block.Amount = big.NewInt(42)\n\tif block.Hash != hash {", "TestBendRecovery"),
 )
 

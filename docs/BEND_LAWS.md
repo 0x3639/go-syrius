@@ -76,7 +76,7 @@ must have a corresponding proof definition.
 3. **Model faults:** 19 type-correct model mutations must break named laws.
 4. **Wallet comparisons:** Go calls real wallet methods, executes Bend on the
    corresponding inputs, and compares results. There is no substitute Go model.
-5. **Wallet faults:** 21 changes to copies of real Go source must cause a named
+5. **Wallet faults:** 22 changes to copies of real Go source must cause a named
    comparison failure. `go test -overlay` substitutes each copy during compilation;
    the working source files are never edited by these experiments.
 6. **Parser fuzzing:** Go mutates journal JSON and bridge calldata/amount/token
@@ -109,7 +109,7 @@ constant cases are computed examples, not universal claims about the whole app.
 | Pending slot (10) | An occupied slot cannot be replaced; stale cancellation/cleanup cannot clear it; a publishing latch refuses matching/all cancellation; a successful cancel followed by hold allocates the next identity | `holdPending`, `CancelPending`, `clearPendingIf`; `TestBendPending` compares state after every operation and tests busy cancellation separately |
 | Journal (10) | Acknowledging unresolved signed data fails without loss; publishing retains payload; only published outcomes can be removed; restart preserves state; repeated publish/ack behave as specified | `wcJournal.put/markPublished/deletePublished/get`; `TestBendJournal` reopens the actual disk journal and checks all retained fields and signed-block JSON content |
 | Lifecycle (6) | Lock/account change invalidates every later modeled continuation, including unlock; revoked consent and locked state block publication | `TestBendLifecycle` drives real SDK preparation/signing against a loopback RPC server. Lock/unlock/consent changes occur at the last pre-signing RPC; account selection is represented by its generation increment. Both send and receive are compared |
-| Input trust (6) | Metadata must exist, identify the requested token and have bounded decimals; corrupt storage cannot be treated as empty | `TestBendMetadataIdentity` exercises SDK token-response decoding; `TestBendCorruptJournal` checks 22 storage fixtures, rejected writes/acks and preservation of corrupt bytes |
+| Input trust (6) | Metadata must exist, identify the requested token and have bounded decimals; corrupt storage cannot be treated as empty | `TestBendMetadataIdentity` exercises SDK token-response decoding; `TestBendCorruptJournal` checks 32 storage fixtures, rejected writes/acks and preservation of corrupt bytes |
 | Public recovery (8) | Any modeled history without positive evidence retains uncertainty and the exact payload; revoked consent prevents rebroadcast, found evidence needs no consent, failed saves preserve duplicate protection | `TestBendRecovery` starts with a lost publication reply, then drives public reconcile/ack/lookup and service restart against the disk journal, with node/signing seams and injected save failures |
 
 The policy model's Boolean inputs mean predicates on real values (for example,
@@ -135,12 +135,12 @@ these alphabets/bounds is sampled or skipped. Longer sequences and different
 operations remain outside this exhaustive check. Fixtures for in-flight
 publication/cancellation are separate interleavings, not all possible schedules.
 
-The added families contribute **196 comparisons** with the default random budget:
+The added families contribute **206 comparisons** with the default random budget:
 98 lifecycle histories (9 fixed + 40 seeded histories for each of send/receive),
-30 metadata cases, 22 corrupt/valid storage cases, and 46 recovery histories
+30 metadata cases, 32 corrupt/valid storage cases, and 46 recovery histories
 (6 fixed + 40 seeded). Recovery traces compare every intermediate return value,
 broadcast count, stored state, lookup outcome and retained block content.
-Totals are **879** at depth 3 and **2,800** at depth 4 with `BEND_RANDOM=40`.
+Totals are **889** at depth 3 and **2,810** at depth 4 with `BEND_RANDOM=40`.
 Random histories reach 24 steps independently of `BEND_DEPTH`; increasing depth
 does not automatically expand that sample. The lifecycle and recovery proofs
 include induction over arbitrary model lists, while Go execution remains bounded.
@@ -202,7 +202,10 @@ broadcast and save failures. The input model assumes classification into missing
 valid and corrupt; concrete JSON fixtures and fuzzing test the Go classification.
 Validation rejects duplicate record fields (including aliases recognized by Go),
 checks ownership and saved-hash consistency, and decodes the retained block with
-the actual `nom.AccountBlock` schema while preserving its original JSON.
+the actual `nom.AccountBlock` schema while preserving its original JSON. Raw
+amounts must parse as nonnegative integer strings before SDK decoding, which
+would otherwise silently turn malformed strings into zero. Zero and large valid
+integers remain accepted by this storage validation.
 This is not a cryptographic integrity check, full on-chain semantic validation,
 or proof of all possible corruption patterns.
 JSON formatting may change on disk; retained signed-block content must not.

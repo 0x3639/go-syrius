@@ -47,22 +47,22 @@ function onSelect(n: number) {
         @click="onSelect(s.n)"
       >
         <span
-          class="grid h-6 w-6 shrink-0 place-items-center rounded-full border text-xs font-medium"
+          class="grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 text-sm font-bold"
           :class="s.n < current
             ? 'border-primary bg-primary text-primary-foreground'
             : s.n === current
               ? 'border-primary text-primary'
               : 'border-border text-muted-foreground'"
         >
-          <CheckIcon v-if="s.n < current" :size="12" />
+          <CheckIcon v-if="s.n < current" :size="14" />
           <template v-else>{{ s.n }}</template>
         </span>
         <span
-          class="whitespace-nowrap text-xs"
-          :class="s.n === current ? 'font-medium text-foreground' : 'text-muted-foreground'"
+          class="whitespace-nowrap text-sm"
+          :class="s.n === current ? 'font-semibold text-foreground' : 'text-muted-foreground'"
         >{{ s.label }}</span>
       </component>
-      <span v-if="i < props.steps.length - 1" class="mx-1 hidden h-px w-6 bg-border sm:block" />
+      <span v-if="i < props.steps.length - 1" class="mx-1 hidden h-0.5 w-8 rounded bg-border sm:block" />
     </li>
   </ol>
 </template>

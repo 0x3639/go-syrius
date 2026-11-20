@@ -2,6 +2,7 @@
 import { storeToRefs } from 'pinia'
 import { useToast } from 'nom-ui'
 import { watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useBalancesStore } from '../stores/balances'
 import { useTxStore } from '../stores/tx'
 import { toBase } from '../lib/format'
@@ -10,6 +11,11 @@ import SendForm from '../components/SendForm.vue'
 import TxModal from '../components/TxModal.vue'
 import TxResult from '../components/TxResult.vue'
 import BalanceNotice from '../components/BalanceNotice.vue'
+
+// Address book → Send hands the recipient over in ?to= (display intent only;
+// the form and the backend both re-validate it).
+const route = useRoute()
+const initialRecipient = typeof route?.query?.to === 'string' ? route.query.to : ''
 
 const balances = useBalancesStore()
 const { items } = storeToRefs(balances)
@@ -49,10 +55,11 @@ watch(status, (s) => { if (s === 'done') toast?.show('Transaction published', 's
 <template>
   <div class="page-content">
     <BalanceNotice />
-    <div class="panel-card">
-      <SendForm v-if="status === 'idle' || status === 'error'" @send="onSend" />
+    <!-- The form brings its own two-column layout (form + summary). -->
+    <SendForm v-if="status === 'idle' || status === 'error'" :initial-recipient="initialRecipient" @send="onSend" />
+    <p v-if="status === 'error'" class="text-sm text-destructive" role="alert">{{ error }}</p>
+    <div v-if="status === 'preparing' || status === 'awaiting' || status === 'publishing' || status === 'done'" class="panel-card mx-auto max-w-[40rem]">
       <p v-if="status === 'preparing'" class="text-sm text-muted-foreground">Preparing transaction…</p>
-      <p v-if="status === 'error'" class="text-sm text-destructive" role="alert">{{ error }}</p>
       <TxModal v-if="status === 'awaiting' || status === 'publishing'" />
       <TxResult v-if="status === 'done'" @close="tx.reset()" />
     </div>

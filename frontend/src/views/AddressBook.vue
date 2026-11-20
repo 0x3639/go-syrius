@@ -4,9 +4,16 @@ import { storeToRefs } from 'pinia'
 import { Input, Button } from 'nom-ui'
 import { shortAddress } from '../lib/format'
 import { useContactsStore, type Contact } from '../stores/contacts'
-import { CheckIcon, XIcon, PencilIcon } from '@lucide/vue'
+import { CheckIcon, XIcon, PencilIcon, SearchIcon } from '@lucide/vue'
+import { useRouter } from 'vue-router'
 
+const router = useRouter()
 const contacts = useContactsStore()
+
+// Jump to Send with this contact pre-filled as the recipient.
+function sendTo(a: string) {
+  router?.push({ path: '/transfer', query: { to: a } })
+}
 const { items } = storeToRefs(contacts)
 
 const search = ref('')
@@ -68,40 +75,54 @@ onMounted(() => contacts.load())
 
 <template>
   <div class="page-content">
-        <!-- Add -->
-        <div class="space-y-2 rounded-lg border border-border bg-background/40 p-3">
-          <p class="text-xs font-medium text-muted-foreground">Add address</p>
-          <div class="flex flex-col gap-2 sm:flex-row">
-            <Input v-model="name" aria-label="contact name" placeholder="Name" class="sm:w-48" />
-            <Input v-model="address" aria-label="contact address" placeholder="z1…" class="flex-1 font-mono" />
-            <Button :disabled="!name.trim() || !isValidAddr(address.trim())" aria-label="save contact" @click="save">Save</Button>
+    <div class="page-split">
+      <!-- List -->
+      <section class="panel-list">
+        <div class="flex flex-wrap items-center gap-3 px-6 py-4">
+          <h2 class="section-title flex-1">Contacts <span class="font-normal text-muted-foreground">· {{ items.length }}</span></h2>
+          <div class="relative w-full max-w-72">
+            <SearchIcon :size="15" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input v-model="search" aria-label="search addresses" placeholder="Search by name or address" class="pl-9" />
           </div>
-          <p v-if="err" class="text-xs text-destructive">{{ err }}</p>
         </div>
-
-        <!-- Search -->
-        <Input v-model="search" aria-label="search addresses" placeholder="Search by name or address…" />
-
-        <!-- List -->
-        <div class="max-h-[26rem] divide-y divide-border overflow-y-auto rounded-lg border border-border">
-          <p v-if="filtered.length === 0" class="px-4 py-6 text-center text-sm text-muted-foreground">
+        <div class="max-h-[34rem] overflow-y-auto">
+          <p v-if="filtered.length === 0" class="border-t border-border/70 px-6 py-8 text-center text-sm text-muted-foreground">
             {{ items.length === 0 ? 'No saved addresses yet.' : 'No matches.' }}
           </p>
-          <div v-for="c in filtered" :key="c.address" class="group flex items-center gap-3 px-4 py-3">
+          <div v-for="c in filtered" :key="c.address" class="list-row group">
             <template v-if="renamingAddr === c.address">
               <Input v-model="renameDraft" :aria-label="`rename ${c.name}`" class="flex-1" @keyup.enter="saveRename(c)" @keyup.esc="cancelRename" />
-              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-primary/40 text-primary" :aria-label="`save rename ${c.name}`" @click="saveRename(c)"><CheckIcon :size="16" /></button>
-              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-border text-muted-foreground" aria-label="cancel rename" @click="cancelRename"><XIcon :size="16" /></button>
+              <button class="grid h-9 w-9 flex-none place-items-center rounded-lg border border-primary/40 text-primary" :aria-label="`save rename ${c.name}`" @click="saveRename(c)"><CheckIcon :size="16" /></button>
+              <button class="grid h-9 w-9 flex-none place-items-center rounded-lg border border-border text-muted-foreground" aria-label="cancel rename" @click="cancelRename"><XIcon :size="16" /></button>
             </template>
             <template v-else>
+              <span class="avatar-dot text-sm" aria-hidden="true">{{ c.name.charAt(0).toUpperCase() }}</span>
               <div class="min-w-0 flex-1">
                 <div class="truncate font-semibold text-foreground">{{ c.name }}</div>
-                <div class="truncate font-mono text-xs text-muted-foreground">{{ shortAddress(c.address) }}</div>
+                <div class="truncate font-mono text-xs text-muted-foreground" :title="c.address">{{ shortAddress(c.address) }}</div>
               </div>
-              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-transparent text-muted-foreground group-hover:border-border group-hover:text-foreground" title="Rename" :aria-label="`rename ${c.name}`" @click="startRename(c)"><PencilIcon :size="16" /></button>
-              <button class="grid h-8 w-8 flex-none place-items-center rounded border border-transparent text-muted-foreground hover:text-destructive group-hover:border-border" title="Delete" :aria-label="`delete ${c.name}`" @click="remove(c.address)"><XIcon :size="16" /></button>
+              <button class="h-9 flex-none rounded-lg bg-primary/15 px-3.5 text-sm font-bold text-primary transition-colors hover:bg-primary/25" :aria-label="`send to ${c.name}`" @click="sendTo(c.address)">Send</button>
+              <button class="grid h-9 w-9 flex-none place-items-center rounded-lg border border-input text-muted-foreground transition-colors hover:text-foreground" title="Rename" :aria-label="`rename ${c.name}`" @click="startRename(c)"><PencilIcon :size="15" /></button>
+              <button class="grid h-9 w-9 flex-none place-items-center rounded-lg border border-input text-muted-foreground transition-colors hover:text-destructive" title="Delete" :aria-label="`delete ${c.name}`" @click="remove(c.address)"><XIcon :size="15" /></button>
             </template>
           </div>
         </div>
+      </section>
+
+      <!-- Add -->
+      <section class="panel-card flex flex-col gap-3.5">
+        <h2 class="section-title">Add a contact</h2>
+        <label class="field-label flex flex-col gap-1.5">Name
+          <Input v-model="name" aria-label="contact name" placeholder="e.g. Exchange deposit" />
+        </label>
+        <label class="field-label flex flex-col gap-1.5">Address
+          <Input v-model="address" aria-label="contact address" placeholder="z1…" class="font-mono" />
+        </label>
+        <p class="hint">The address is checked before it is saved.</p>
+        <Button class="h-11" :disabled="!name.trim() || !isValidAddr(address.trim())" aria-label="save contact" @click="save">Save contact</Button>
+        <p v-if="err" class="text-xs text-destructive">{{ err }}</p>
+        <p class="hint border-t border-border pt-3">Contacts are stored on this device only.</p>
+      </section>
+    </div>
   </div>
 </template>

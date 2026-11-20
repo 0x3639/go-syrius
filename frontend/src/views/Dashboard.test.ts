@@ -26,7 +26,7 @@ describe('Dashboard', () => {
     usePriceStore().available = true
     const w = setup()
     expect(w.text()).toContain('Disconnected')
-    expect(w.text()).toContain('BALANCE UNAVAILABLE')
+    expect(w.text()).toContain('Balance unavailable')
     expect(w.text()).not.toContain('$0.00')
     expect(w.get('[aria-label="ZNN balance"]').text()).toBe('—')
   })
@@ -36,7 +36,7 @@ describe('Dashboard', () => {
     price.znnUsd = 0.118422; price.qsrUsd = 0.02343554; price.available = true
     const w = setup()
     await w.vm.$nextTick()
-    expect(w.text()).toContain('TOTAL PORTFOLIO VALUE')
+    expect(w.text()).toContain('Total portfolio value')
     expect(w.text()).toContain('$') // a formatted fiat total
   })
 
@@ -47,8 +47,8 @@ describe('Dashboard', () => {
     expect(w.text()).toContain('ZNN')
     expect(w.text()).not.toContain('≈ $')
     // The hero must not claim a portfolio total it can't compute.
-    expect(w.text()).toContain('ZNN BALANCE')
-    expect(w.text()).not.toContain('TOTAL PORTFOLIO VALUE')
+    expect(w.text()).toContain('ZNN balance')
+    expect(w.text()).not.toContain('Total portfolio value')
   })
 
   it('has no View all button (history pages in place)', () => {

@@ -106,39 +106,44 @@ async function update(t: app.TokenInfo) {
   <div class="page-content">
     <!-- Every token the active address HOLDS (any issuer) — this is the only
          place third-party ZTS balances are visible (Dashboard shows ZNN/QSR). -->
-    <section class="panel-card space-y-2">
-      <h2 class="text-sm text-muted-foreground">Held balances</h2>
+    <section class="panel-list">
       <TokensPanel />
     </section>
 
-    <details class="panel-card">
-      <summary class="disclosure-title">Create a token · 1 ZNN fee</summary>
-      <div class="mt-4 space-y-3">
-      <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <input class="rounded-md border border-input bg-transparent px-2 py-1 text-sm" placeholder="name" v-model="iName" aria-label="issue name" />
-        <input class="rounded-md border border-input bg-transparent px-2 py-1 text-sm" placeholder="symbol (A-Z0-9)" v-model="iSymbol" aria-label="issue symbol" />
-        <input class="rounded-md border border-input bg-transparent px-2 py-1 text-sm" placeholder="domain (optional)" v-model="iDomain" aria-label="issue domain" />
-        <input class="rounded-md border border-input bg-transparent px-2 py-1 text-sm" type="number" min="0" max="18" placeholder="decimals" v-model.number="iDecimals" aria-label="issue decimals" />
-        <input class="rounded-md border border-input bg-transparent px-2 py-1 text-sm" placeholder="total supply (base units)" v-model="iTotal" aria-label="issue total" />
-        <input class="rounded-md border border-input bg-transparent px-2 py-1 text-sm" placeholder="max supply (base units)" v-model="iMax" aria-label="issue max" />
+    <details class="panel-card border-dashed">
+      <summary class="cursor-pointer">
+        <span class="section-title">Issue your own ZTS token</span>
+        <span class="hint mt-1 block">Choose a name, symbol, supply and decimals. Creating a token costs a one-time fee of 1 ZNN.</span>
+      </summary>
+      <div class="mt-5 space-y-4">
+      <div class="grid grid-cols-1 gap-3.5 @2xl:grid-cols-2">
+        <label class="field-label flex flex-col gap-1.5">Name<input class="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" placeholder="My Token" v-model="iName" aria-label="issue name" /></label>
+        <label class="field-label flex flex-col gap-1.5">Symbol<input class="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" placeholder="A-Z and 0-9" v-model="iSymbol" aria-label="issue symbol" /></label>
+        <label class="field-label flex flex-col gap-1.5">Domain (optional)<input class="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" placeholder="example.com" v-model="iDomain" aria-label="issue domain" /></label>
+        <label class="field-label flex flex-col gap-1.5">Decimals<input class="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" type="number" min="0" max="18" placeholder="8" v-model.number="iDecimals" aria-label="issue decimals" /></label>
+        <label class="field-label flex flex-col gap-1.5">Initial supply (base units)<input class="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary font-mono" placeholder="0" v-model="iTotal" aria-label="issue total" /></label>
+        <label class="field-label flex flex-col gap-1.5">Maximum supply (base units)<input class="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary font-mono" placeholder="0" v-model="iMax" aria-label="issue max" /></label>
       </div>
-      <div class="flex gap-4 text-xs">
-        <label><input type="checkbox" v-model="iMintable" /> mintable</label>
-        <label><input type="checkbox" v-model="iBurnable" /> burnable</label>
-        <label><input type="checkbox" v-model="iUtility" /> utility</label>
+      <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm text-foreground">
+        <label class="flex items-center gap-2"><input type="checkbox" v-model="iMintable" /> Mintable</label>
+        <label class="flex items-center gap-2"><input type="checkbox" v-model="iBurnable" /> Burnable</label>
+        <label class="flex items-center gap-2"><input type="checkbox" v-model="iUtility" /> Utility</label>
       </div>
-      <Button @click="issue" aria-label="issue token">Issue token</Button>
+      <Button class="h-11" @click="issue" aria-label="issue token">Create token · 1 ZNN</Button>
       </div>
     </details>
 
-    <section class="panel-card space-y-2">
+    <section class="panel-card space-y-3">
       <div class="flex flex-wrap items-center gap-2 pb-1">
-        <h2 class="text-sm text-muted-foreground">
-          {{ showingSearch ? `Search results (${tableTokens.length})` : 'Token management' }}
-        </h2>
+        <div class="min-w-0">
+          <h2 class="section-title">
+            {{ showingSearch ? `Search results (${tableTokens.length})` : 'Tokens you issued' }}
+          </h2>
+          <p v-if="!showingSearch" class="hint mt-0.5">You own these and can mint, burn or update them. Search to look up any token on the network.</p>
+        </div>
         <div class="ml-auto flex items-center gap-2">
           <input
-            class="min-w-0 w-full max-w-64 rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
+            class="min-w-0 w-full max-w-64 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
             placeholder="zts1…, name, or symbol" v-model="searchQuery" aria-label="token search"
             @keydown.enter="doSearch"
           />

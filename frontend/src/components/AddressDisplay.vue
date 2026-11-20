@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import QRCode from 'qrcode'
 import logoUrl from '../assets/images/syrius-logo.png'
 import { CheckIcon, CopyIcon } from '@lucide/vue'
 
 const props = defineProps<{ address: string }>()
+
+// The first and last characters are what people actually compare, so they
+// are picked out in the brand colour. The <code> still holds the full address.
+const head = computed(() => props.address.slice(0, 6))
+const middle = computed(() => props.address.slice(6, -5))
+const tail = computed(() => (props.address.length > 11 ? props.address.slice(-5) : ''))
 
 const dataUrl = ref('')
 const copied = ref(false)
@@ -86,26 +92,27 @@ watch(
 </script>
 
 <template>
-  <div class="flex flex-col items-center gap-4 rounded bg-card p-4">
+  <div class="flex flex-col items-center gap-5">
     <img
       v-if="dataUrl"
       :src="dataUrl"
       alt="address QR"
-      class="h-52 w-52 rounded-lg border border-border"
+      class="h-56 w-56 rounded-2xl border border-border"
     />
-    <!-- Full address on a single line (never wrapped) + copy. -->
-    <div class="flex w-full items-center justify-center gap-2">
-      <code class="whitespace-nowrap font-mono text-sm text-foreground">{{ props.address }}</code>
-      <button
-        type="button"
-        :aria-label="`copy address ${props.address}`"
-        title="Copy address"
-        class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
-        @click="copy"
-      >
-        <CheckIcon v-if="copied" :size="14" />
-        <CopyIcon v-else :size="14" />
-      </button>
+    <!-- Full address on a single line (never wrapped); scrolls if the card is narrow. -->
+    <div class="w-full overflow-x-auto rounded-xl border border-border bg-background px-4 py-3.5 text-center">
+      <code class="whitespace-nowrap font-mono text-sm text-foreground"><span class="text-primary">{{ head }}</span>{{ middle }}<span class="text-primary">{{ tail }}</span></code>
     </div>
+    <button
+      type="button"
+      :aria-label="`copy address ${props.address}`"
+      class="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
+      @click="copy"
+    >
+      <CheckIcon v-if="copied" :size="16" />
+      <CopyIcon v-else :size="16" />
+      {{ copied ? 'Copied' : 'Copy address' }}
+    </button>
+    <p class="hint text-center">Works for ZNN, QSR and any ZTS token. Check the first and last characters before sharing.</p>
   </div>
 </template>

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { ChevronDownIcon, PlusIcon, CheckIcon, XIcon, PencilIcon, CopyIcon, WalletIcon } from '@lucide/vue'
+import { ChevronDownIcon, PlusIcon, CheckIcon, XIcon, PencilIcon, CopyIcon, WalletIcon, ChevronsUpDownIcon } from '@lucide/vue'
 import { shortAddress } from '../lib/format'
 import { useWalletStore, type AccountInfo } from '../stores/wallet'
 import { ClipboardSetText } from '../../wailsjs/runtime/runtime'
 
-const props = defineProps<{ variant?: 'pill' }>()
+const props = defineProps<{ variant?: 'pill' | 'sidebar' }>()
 
 const wallet = useWalletStore()
 
@@ -98,6 +98,24 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
         <WalletIcon :size="15" class="text-muted-foreground" />
         <span class="font-mono text-xs">{{ shortAddress(activeAddr) }}</span>
         <ChevronDownIcon :size="14" class="text-muted-foreground" :class="open ? 'rotate-180' : ''" />
+      </button>
+    </template>
+
+    <!-- Sidebar entry point: full-width account card (name + address) -->
+    <template v-else-if="props.variant === 'sidebar'">
+      <button
+        type="button"
+        class="flex w-full items-center gap-2.5 rounded-xl border border-sidebar-border bg-sidebar-accent/60 px-3 py-2.5 text-left transition-colors hover:bg-sidebar-accent"
+        aria-label="Select account"
+        :aria-expanded="open"
+        @click="toggle"
+      >
+        <span class="grid h-8 w-8 flex-none place-items-center rounded-full bg-primary/15 text-sm font-bold text-primary">{{ activeLabel.charAt(0).toUpperCase() }}</span>
+        <span class="flex min-w-0 flex-1 flex-col leading-tight">
+          <span class="truncate text-sm font-semibold text-sidebar-foreground">{{ activeLabel }}</span>
+          <span class="truncate font-mono text-xs text-muted-foreground">{{ shortAddress(activeAddr) }}</span>
+        </span>
+        <ChevronsUpDownIcon :size="15" class="flex-none text-muted-foreground" />
       </button>
     </template>
 

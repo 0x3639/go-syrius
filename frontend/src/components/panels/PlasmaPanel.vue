@@ -10,8 +10,11 @@ import { formatAmount, formatAmountExact, shortAddress, toBase } from '../../lib
 import { useBalancesStore } from '../../stores/balances'
 import Field from '../Field.vue'
 import AmountInput from '../AmountInput.vue'
+import { useWalletStore } from '../../stores/wallet'
+import { plasmaLevel } from '../../lib/plasma'
 
 const plasma = usePlasmaStore()
+const wallet = useWalletStore()
 const tx = useTxStore()
 
 const { info, fusionEntries } = storeToRefs(plasma)
@@ -36,6 +39,16 @@ const canFuse = computed(() => {
       && base >= 1000000000n && base % 100000000n === 0n && base <= BigInt(available.value)
   } catch { return false }
 })
+
+// Level meter: the same thresholds as the top-bar bolt, worded for people.
+const level = computed(() => plasmaLevel(info.value?.currentPlasma ?? 0))
+const levelOk = computed(() => level.value === 'High' || level.value === 'Medium')
+const levelPercent = computed(() => {
+  const max = info.value?.maxPlasma ?? 0
+  return max > 0 ? Math.max(0, Math.min(100, ((info.value?.currentPlasma ?? 0) / max) * 100)) : 0
+})
+const ownAddress = computed(() => wallet.activeAddress())
+const forSelf = computed(() => !!ownAddress.value && beneficiary.value === ownAddress.value)
 
 useNodeRefresh(() => plasma.refresh())
 
@@ -81,53 +94,76 @@ watch(
 
 <template>
   <div class="space-y-5">
-    <p v-if="info" class="text-sm text-muted-foreground">
-      Current plasma {{ info.currentPlasma.toLocaleString('en-US') }} / {{ info.maxPlasma.toLocaleString('en-US') }} · QSR fused
-      {{ formatAmount(info.qsrFused, 8) }} QSR
-    </p>
-
-    <section class="space-y-3 panel-card">
-      <h2 class="text-sm font-medium text-foreground">Fuse Plasma</h2>
-      <Field label="Beneficiary Address">
-        <Input v-model="beneficiary" placeholder="z1…" aria-label="beneficiary" />
-      </Field>
-      <div class="space-y-1">
-        <AmountInput v-model="amount" label="Amount (QSR)" :max="maxFusion" />
-        <p class="text-xs text-muted-foreground">{{ availableLabel }}</p>
-        <p class="text-xs text-muted-foreground">Minimum 10 QSR, in whole QSR increments.</p>
+    <section v-if="info" class="panel-card flex flex-wrap items-center gap-x-8 gap-y-4">
+      <div class="min-w-0 flex-[2] basis-72 space-y-2.5">
+        <div class="flex items-center gap-2.5">
+          <h2 class="section-title">This account's plasma</h2>
+          <span class="status-pill" :class="levelOk ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'">{{ level }}</span>
+        </div>
+        <div class="h-2.5 overflow-hidden rounded-full bg-foreground/10" aria-hidden="true">
+          <div class="h-full rounded-full" :class="levelOk ? 'bg-success' : 'bg-warning'" :style="{ width: `${levelPercent}%` }"></div>
+        </div>
+        <p class="hint">{{ levelOk ? 'Enough for instant transactions.' : 'Not enough for an instant send. The wallet falls back to a short proof-of-work.' }}</p>
       </div>
-      <p v-if="estimate > 0" class="text-xs text-muted-foreground">≈ {{ estimate.toLocaleString('en-US') }} plasma</p>
-      <Button class="w-full" :disabled="!canFuse" @click="fuse">Fuse Plasma</Button>
+      <div class="flex-1 basis-36">
+        <div class="hint">Current plasma</div>
+        <div class="font-mono text-xl text-foreground">{{ info.currentPlasma.toLocaleString('en-US') }} <span class="text-xs text-muted-foreground">/ {{ info.maxPlasma.toLocaleString('en-US') }}</span></div>
+      </div>
+      <div class="flex-1 basis-36">
+        <div class="hint">QSR fused</div>
+        <div class="font-mono text-xl text-foreground">{{ formatAmount(info.qsrFused, 8) }} QSR</div>
+      </div>
     </section>
 
-    <section class="space-y-2 panel-card">
-      <h2 class="text-sm font-medium text-foreground">Fusion entries</h2>
-      <div
-        v-for="e in fusionEntries"
-        :key="e.id"
-        class="flex items-center justify-between text-sm"
-      >
-        <span class="font-mono" :title="e.beneficiary">
-          {{ formatAmount(e.qsrAmount, 8) }} QSR → {{ shortAddress(e.beneficiary) }}
-          <span v-if="!e.isRevocable" class="block text-xs text-muted-foreground">Locked until momentum {{ e.expirationHeight.toLocaleString('en-US') }}</span>
-        </span>
-        <Button
-          variant="outline"
-          :disabled="!e.isRevocable"
-          aria-label="unfuse QSR"
-          @click="cancel(e.id)"
-        >Unfuse</Button>
-      </div>
-      <p v-if="fusionEntries.length === 0" class="text-xs text-muted-foreground">
-        No fusion entries.
-      </p>
-    </section>
+    <div class="page-halves">
+      <section class="panel-card space-y-5">
+        <h2 class="section-title">Fuse QSR into plasma</h2>
+        <div class="space-y-2">
+          <Field label="Who gets the plasma?">
+            <Input v-model="beneficiary" placeholder="z1…" aria-label="beneficiary" class="font-mono" />
+          </Field>
+          <button
+            v-if="ownAddress"
+            type="button"
+            class="choice py-1.5 text-xs font-semibold"
+            :class="forSelf ? 'choice-on' : ''"
+            :aria-pressed="forSelf"
+            @click="beneficiary = ownAddress"
+          >This account</button>
+        </div>
+        <div class="space-y-1.5">
+          <AmountInput v-model="amount" label="Amount (QSR)" symbol="QSR" :max="maxFusion" />
+          <p class="hint">{{ availableLabel }}</p>
+          <p class="hint">Minimum 10 QSR, in whole QSR increments.</p>
+        </div>
+        <p v-if="estimate > 0" class="hint">≈ {{ estimate.toLocaleString('en-US') }} plasma</p>
+        <Button class="h-12 w-full text-base font-bold" :disabled="!canFuse" @click="fuse">Fuse Plasma</Button>
+        <p class="hint text-center">Your QSR stays yours. Unfuse an entry to get it back.</p>
+      </section>
+
+      <section class="panel-list">
+        <h2 class="section-title px-6 py-4">Your fusions</h2>
+        <div v-for="e in fusionEntries" :key="e.id" class="list-row justify-between text-sm">
+          <span class="min-w-0 font-mono" :title="e.beneficiary">
+            {{ formatAmount(e.qsrAmount, 8) }} QSR → {{ shortAddress(e.beneficiary) }}
+            <span v-if="!e.isRevocable" class="block font-sans text-xs text-muted-foreground">Locked until momentum {{ e.expirationHeight.toLocaleString('en-US') }}</span>
+          </span>
+          <Button
+            variant="outline"
+            :disabled="!e.isRevocable"
+            aria-label="unfuse QSR"
+            @click="cancel(e.id)"
+          >Unfuse</Button>
+        </div>
+        <p v-if="fusionEntries.length === 0" class="border-t border-border/70 px-6 py-6 text-sm text-muted-foreground">
+          No fusion entries.
+        </p>
+      </section>
+    </div>
 
     <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>
 
-    <p v-if="tx.status === 'preparing'" class="text-muted-foreground">
-      Preparing transaction…
-    </p>
+    <p v-if="tx.status === 'preparing'" class="text-muted-foreground">Preparing transaction…</p>
     <p v-if="tx.status === 'error'" class="text-destructive" role="alert">{{ tx.error }}</p>
   </div>
 </template>

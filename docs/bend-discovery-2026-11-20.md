@@ -121,3 +121,35 @@ the workflow takes effect after these changes are pushed.
 The deliberate fault checks show that the gate detects the tested mistakes.
 They do not establish that all defects have been found. See
 [BEND_LAWS.md](BEND_LAWS.md) for the complete contract and coverage limits.
+
+## PR #22 review and Linux CI follow-up
+
+The first hosted run passed all 76 proofs, then stopped at the first model mutant:
+the checker reported `no such file` for a source inside an owner-only temporary
+directory. The container runs as a different non-root UID. Local macOS file
+sharing had hidden this Linux permission failure. Generated public Bend source
+directories now grant traversal and their files grant read access; the checker
+still uses a read-only mount. A restrictive-umask regression covers Python
+staging, and a Linux Docker-volume experiment reproduced the failure with two
+different non-root users and passed after applying the permission changes.
+
+The review also exposed duplicate record fields and incomplete block validation.
+Before the follow-up fix, duplicate `state`/`State` fields and malformed chain or
+nonce fields passed loading and could be overwritten by a subsequent put. The
+loader now rejects duplicate record fields, including case-insensitive aliases,
+and validates retained JSON with `nom.AccountBlock`. The 22 storage cases also
+run in ordinary Go tests, checking that refusals preserve the original bytes.
+Journal-only fixtures now use the real block schema.
+
+The fuzz comparator now uses `json.Valid` and `UseNumber` so valid JSON such as
+`1e400` and integers above floating-point precision survive comparison. A full
+schema-valid journal with these extension fields is both a fuzz seed and an
+ordinary regression case. Receive's final wallet-session check now follows the
+possibly blocking consent read, immediately before submission. It still does
+not atomically cancel RPC submission when Lock runs concurrently.
+
+Follow-up local validation passed: the full gate under `umask 077` (76 laws,
+879 comparisons, 19 model faults, 21 Go faults, both fuzz targets), the full Go
+suite, tagged Go vet, and journal/lifecycle race checks. The original deeper-run
+counts above describe the initial version; the current catalog reflects the
+added storage cases and fault checks.

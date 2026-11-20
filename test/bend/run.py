@@ -56,6 +56,8 @@ GO_FAULTS = (
     ("metadata-token-identity", "app/decimals.go", "if tok.TokenStandard != zts {", "if false && tok.TokenStandard != zts {", "TestBendMetadataIdentity"),
     ("journal-unknown-state", "app/walletconnect_journal.go", "if rec.State != wcStateSigned && rec.State != wcStatePublished {", "if false && rec.State != wcStateSigned && rec.State != wcStatePublished {", "TestBendCorruptJournal"),
     ("journal-foreign-owner", "app/walletconnect_journal.go", 'if (rec.Topic != "" && rec.Topic != topic) || (rec.RequestID != 0 && rec.RequestID != id) {', 'if false && ((rec.Topic != "" && rec.Topic != topic) || (rec.RequestID != 0 && rec.RequestID != id)) {', "TestBendCorruptJournal"),
+    ("journal-duplicate-fields", "app/walletconnect_journal.go", "if seen[key] {", "if false && seen[key] {", "TestBendCorruptJournal"),
+    ("journal-block-schema", "app/walletconnect_journal.go", "if err := json.Unmarshal(rec.BlockJSON, &block); err != nil || block.Hash.String() != rec.Hash {", "if err := json.Unmarshal(rec.BlockJSON, &block); false && (err != nil || block.Hash.String() != rec.Hash) {", "TestBendCorruptJournal"),
     ("recovery-changes-amount", "app/walletconnect.go", "if block.Hash != hash {", "block.Amount = big.NewInt(42)\n\tif block.Hash != hash {", "TestBendRecovery"),
 )
 
@@ -103,6 +105,9 @@ class Gate:
         output_root.mkdir(parents=True, exist_ok=True)
         self.out = Path(tempfile.mkdtemp(prefix="run-", dir=output_root))
         (HERE / ".scratch").mkdir(exist_ok=True)
+        # Public test sources must be traversable by the fixed, non-root
+        # checker UID on Linux. Keep logs/Go overlays private inside it.
+        (HERE / ".scratch").chmod(0o755)
         self.image = os.environ.get("BEND_IMAGE", "go-syrius-bend:2.0.40")
         self.verdict_image = os.environ.get("BEND_VERDICT_IMAGE", "go-syrius-bend:2.0.40-verdict")
         self.env = dict(os.environ, GOWORK="off", GOTOOLCHAIN="auto", BEND_IMAGE=self.image, BEND_DEPTH=depth, BEND_SEED=seed, BEND_RANDOM=random_count)
@@ -171,8 +176,10 @@ class Gate:
         for name, family, old, new in MODEL_FAULTS:
             with tempfile.TemporaryDirectory(prefix="mutant-", dir=HERE / ".scratch") as directory:
                 dst = Path(directory)
+                dst.chmod(0o755)
                 for src in (HERE / family).glob("*.bend"):
                     shutil.copyfile(src, dst / src.name)
+                    (dst / src.name).chmod(0o644)
                 model = dst / "model.bend"
                 model.write_text(replace_once(model.read_text(), old, new))
                 relative = dst.relative_to(HERE).as_posix()

@@ -1,10 +1,12 @@
 package app
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"math/big"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/zenon-network/go-zenon/chain/nom"
@@ -17,46 +19,72 @@ func FuzzWCJournalDecode(f *testing.F) {
 		`{}`, `null`, `{"topic#1":null}`, `{"topic#1":{}}`,
 		`{"topic#1":{"intentHash":"intent","state":"signed","hash":"hash","blockJson":{"hash":"hash"}}}`,
 		`{"topic#1":{"topic":"other","requestId":1,"intentHash":"intent","state":"published","hash":"hash","blockJson":{"hash":"hash"}}}`,
+		`{"topic#1":{"intentHash":"intent","state":"signed","hash":"hash","blockJson":{"hash":"hash","n":1e400}}}`,
 	} {
 		f.Add([]byte(seed))
 	}
-	f.Fuzz(func(t *testing.T, raw []byte) {
-		if len(raw) > 64*1024 {
-			t.Skip()
+	f.Add(journalLargeNumberFixture(f))
+	f.Fuzz(checkWCJournalRoundTrip)
+}
+
+func journalLargeNumberFixture(t testing.TB) []byte {
+	t.Helper()
+	rec := journalTestRecord(t, 1)
+	rec.BlockJSON = json.RawMessage(strings.TrimSuffix(string(rec.BlockJSON), "}") + `,"n":1e400,"precise":9007199254740993}`)
+	raw, err := json.Marshal(map[string]wcPublicationRecord{"topic#1": rec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func TestWCJournalLargeNumbersRoundTrip(t *testing.T) {
+	raw := journalLargeNumberFixture(t)
+	if _, err := decodeWCJournal(raw); err != nil {
+		t.Fatal(err)
+	}
+	checkWCJournalRoundTrip(t, raw)
+}
+
+func checkWCJournalRoundTrip(t *testing.T, raw []byte) {
+	if len(raw) > 64*1024 {
+		t.Skip()
+	}
+	records, err := decodeWCJournal(raw)
+	if err != nil {
+		return
+	}
+	if records == nil || len(records) > wcJournalMaxRecords {
+		t.Fatal("accepted unusable journal")
+	}
+	// Accepted storage must survive the exact write/read cycle used by the
+	// application, without losing entries, ownership, or block JSON content.
+	encoded, err := json.Marshal(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := decodeWCJournal(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !json.Valid(raw) || !json.Valid(encoded) {
+		t.Fatal("decoder accepted non-JSON")
+	}
+	for key, rec := range records {
+		other := again[key]
+		var a, b any
+		left := json.NewDecoder(bytes.NewReader(rec.BlockJSON))
+		right := json.NewDecoder(bytes.NewReader(other.BlockJSON))
+		left.UseNumber()
+		right.UseNumber()
+		if left.Decode(&a) != nil || right.Decode(&b) != nil || !reflect.DeepEqual(a, b) {
+			t.Fatal("journal round trip changed signed payload")
 		}
-		records, err := decodeWCJournal(raw)
-		if err != nil {
-			return
+		rec.BlockJSON, other.BlockJSON = nil, nil
+		if !reflect.DeepEqual(rec, other) {
+			t.Fatal("journal round trip changed record identity")
 		}
-		if records == nil || len(records) > wcJournalMaxRecords {
-			t.Fatal("accepted unusable journal")
-		}
-		// Accepted storage must survive the exact write/read cycle used by the
-		// application, without losing entries, ownership, or block JSON content.
-		encoded, err := json.Marshal(records)
-		if err != nil {
-			t.Fatal(err)
-		}
-		again, err := decodeWCJournal(encoded)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var left, right any
-		if json.Unmarshal(raw, &left) != nil || json.Unmarshal(encoded, &right) != nil {
-			t.Fatal("decoder accepted non-JSON")
-		}
-		for key, rec := range records {
-			other := again[key]
-			var a, b any
-			if json.Unmarshal(rec.BlockJSON, &a) != nil || json.Unmarshal(other.BlockJSON, &b) != nil || !reflect.DeepEqual(a, b) {
-				t.Fatal("journal round trip changed signed payload")
-			}
-			rec.BlockJSON, other.BlockJSON = nil, nil
-			if !reflect.DeepEqual(rec, other) {
-				t.Fatal("journal round trip changed record identity")
-			}
-		}
-	})
+	}
 }
 
 func FuzzWalletConnectIntent(f *testing.F) {

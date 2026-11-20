@@ -138,9 +138,13 @@ func decodeWCJournal(raw []byte) (map[string]wcPublicationRecord, error) {
 		if len(m) >= wcJournalMaxRecords {
 			return nil, fmt.Errorf("journal exceeds its record limit")
 		}
-		var rec wcPublicationRecord
-		if err := dec.Decode(&rec); err != nil {
+		var rawRecord json.RawMessage
+		if err := dec.Decode(&rawRecord); err != nil {
 			return nil, err
+		}
+		rec, err := decodeWCRecord(rawRecord)
+		if err != nil {
+			return nil, fmt.Errorf("invalid record %q: %w", key, err)
 		}
 		if err := validateWCRecord(key, &rec); err != nil {
 			return nil, err
@@ -155,6 +159,47 @@ func decodeWCJournal(raw []byte) (map[string]wcPublicationRecord, error) {
 		return nil, fmt.Errorf("unexpected trailing journal data")
 	}
 	return m, nil
+}
+
+// Unmarshalling a struct silently chooses the last repeated field. Check the
+// record first so "signed" cannot be shadowed by "published" before an ack.
+func decodeWCRecord(raw []byte) (wcPublicationRecord, error) {
+	var rec wcPublicationRecord
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	start, err := dec.Token()
+	if err != nil || start != json.Delim('{') {
+		return rec, fmt.Errorf("expected a record object")
+	}
+	seen := make(map[string]bool)
+	for dec.More() {
+		token, err := dec.Token()
+		if err != nil {
+			return rec, err
+		}
+		key, ok := token.(string)
+		if !ok {
+			return rec, fmt.Errorf("invalid record field")
+		}
+		// encoding/json also accepts case-insensitive aliases of struct fields.
+		for _, field := range []string{"topic", "requestId", "intentHash", "state", "blockJson", "hash", "createdAt"} {
+			if strings.EqualFold(key, field) {
+				key = field
+				break
+			}
+		}
+		if seen[key] {
+			return rec, fmt.Errorf("duplicate record field %q", key)
+		}
+		seen[key] = true
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return rec, err
+		}
+	}
+	// The regular decoder checks the closing delimiter, field types and trailing
+	// data, retaining BlockJSON instead of normalizing its signed contents.
+	err = json.Unmarshal(raw, &rec)
+	return rec, err
 }
 
 func validateWCRecord(key string, rec *wcPublicationRecord) error {
@@ -174,10 +219,8 @@ func validateWCRecord(key string, rec *wcPublicationRecord) error {
 	if rec.IntentHash == "" || rec.Hash == "" {
 		return fmt.Errorf("missing publication identity for %q", key)
 	}
-	var block struct {
-		Hash string `json:"hash"`
-	}
-	if err := json.Unmarshal(rec.BlockJSON, &block); err != nil || block.Hash != rec.Hash {
+	var block nom.AccountBlock
+	if err := json.Unmarshal(rec.BlockJSON, &block); err != nil || block.Hash.String() != rec.Hash {
 		return fmt.Errorf("missing or inconsistent journaled block for %q", key)
 	}
 	return nil

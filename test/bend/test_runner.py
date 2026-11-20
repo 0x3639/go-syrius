@@ -1,9 +1,34 @@
 """The gate must never count a broken experiment as detecting a wallet fault."""
 import unittest
+import os
+from pathlib import Path
+import shutil
+import tempfile
 from unittest.mock import patch
-from run import bounded_setting, classify_go_fault, proof_passed, replace_once
+from run import Gate, HERE, MODEL_FAULTS, bounded_setting, classify_go_fault, proof_passed, replace_once
 
 class RunnerTests(unittest.TestCase):
+    def test_public_mutants_remain_readable_with_private_umask(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copytree(HERE / 'policy', root / 'policy')
+            old_mask = os.umask(0o077)
+            try:
+                with patch('run.HERE', root), patch('run.MODEL_FAULTS', MODEL_FAULTS[:1]), patch.dict('os.environ', {'OUT': str(root / 'logs')}):
+                    gate = Gate()
+                    def check_source(_name, path, verdict=False):
+                        target = root / path
+                        for parent in (root / '.scratch', target.parent):
+                            self.assertEqual(parent.stat().st_mode & 0o777, 0o755)
+                        for source in target.parent.glob('*.bend'):
+                            self.assertEqual(source.stat().st_mode & 0o777, 0o644)
+                        return (0, 'ALL PROOFS CHECK' if target.name == 'model.bend' else 'SOME PROOFS FAIL\nLocation: Laws.effect_requires_sender')
+                    with patch.object(gate, 'bend', side_effect=check_source):
+                        gate.model_faults()
+                    self.assertEqual(list((root / '.scratch').glob('mutant-*')), [])
+            finally:
+                os.umask(old_mask)
+
     def test_seed_and_budget_validation(self):
         with patch.dict('os.environ', {}, clear=True):
             self.assertEqual(bounded_setting('BEND_SEED', 1, 2**63 - 1), '1')

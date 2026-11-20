@@ -216,28 +216,7 @@ func TestBendMetadataIdentity(t *testing.T) {
 }
 
 func TestBendCorruptJournal(t *testing.T) {
-	valid := `{"topic":"topic","requestId":1,"intentHash":"intent","hash":"hash","state":"signed","blockJson":{"hash":"hash"}}`
-	entry := `"topic#1":` + valid
-	cases := []struct {
-		name, body string
-		valid      bool
-	}{
-		{"missing", "", true}, {"empty-object", "{}", true},
-		{"null-document", "null", false}, {"truncated", "{", false},
-		{"null-record", `{"topic#1":null}`, false},
-		{"empty-record", `{"topic#1":{}}`, false},
-		{"unknown-state", `{"topic#1":{"topic":"topic","requestId":1,"intentHash":"intent","hash":"hash","state":"maybe"}}`, false},
-		{"unknown-state-with-payload", "{" + strings.Replace(entry, `"state":"signed"`, `"state":"maybe"`, 1) + "}", false},
-		{"valid-record", "{" + entry + "}", true},
-		{"legacy-ownership", `{"topic#1":` + strings.ReplaceAll(strings.ReplaceAll(valid, `"topic":"topic",`, ""), `"requestId":1,`, "") + "}", true},
-		{"duplicate-key", "{" + entry + "," + entry + "}", false},
-		{"foreign-topic", "{" + strings.Replace(entry, `"topic":"topic"`, `"topic":"other"`, 1) + "}", false},
-		{"foreign-request", "{" + strings.Replace(entry, `"requestId":1`, `"requestId":2`, 1) + "}", false},
-		{"noncanonical-key", "{" + strings.Replace(entry, `topic#1`, `topic#01`, 1) + "}", false},
-		{"missing-payload", "{" + strings.Replace(entry, `,"blockJson":{"hash":"hash"}`, "", 1) + "}", false},
-		{"different-payload-hash", "{" + strings.Replace(entry, `"blockJson":{"hash":"hash"}`, `"blockJson":{"hash":"other"}`, 1) + "}", false},
-		{"trailing-document", "{" + entry + "}{}", false},
-	}
+	cases := journalCorruptionCases(t)
 	var observations []bendObservation
 	for _, tc := range cases {
 		dir := t.TempDir()
@@ -257,10 +236,7 @@ func TestBendCorruptJournal(t *testing.T) {
 		}
 		observations = append(observations, bendObservation{tc.name, "P.mark(I.usable(I." + state + "{}))", bendBit(err == nil)})
 		if !tc.valid {
-			var rec wcPublicationRecord
-			if err := json.Unmarshal([]byte(valid), &rec); err != nil {
-				t.Fatal(err)
-			}
+			rec := journalTestRecord(t, 1)
 			// A read error must not be followed by erasure or fresh publication.
 			if j.put("topic#1", rec) == nil || j.deletePublished("topic#1") == nil {
 				t.Errorf("BEND_MISMATCH %s: write/ack accepted corrupted storage", tc.name)

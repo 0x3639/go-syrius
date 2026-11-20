@@ -570,15 +570,17 @@ func (t *TxService) Receive(fromHash string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if addr, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != gen || addr != published.Address {
-		return "", errors.New("wallet locked or changed; not receiving")
-	}
 	currentClient, currentChain := t.node.connectionSnapshot()
 	if currentClient != client || currentChain != cid || published.ChainIdentifier != cid {
 		return "", errors.New("node connection changed during receive; nothing was published")
 	}
 	if err := t.guardChain(published.ChainIdentifier); err != nil {
 		return "", err
+	}
+	// Settings reads can block. Check the session after that work, directly at
+	// the submission boundary; this does not cancel an RPC already submitted.
+	if addr, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != gen || addr != published.Address {
+		return "", errors.New("wallet locked or changed; not receiving")
 	}
 	if err := client.LedgerApi.PublishRawTransaction(published); err != nil {
 		return "", err

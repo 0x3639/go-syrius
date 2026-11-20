@@ -60,11 +60,19 @@ func compareBend(t *testing.T, observations []bendObservation) {
 	if err = os.MkdirAll(scratch, 0700); err != nil {
 		t.Fatal(err)
 	}
+	// Only public synthetic test sources live here. The Linux checker has a
+	// different UID, so explicitly grant read/traverse access, even under umask 077.
+	if err = os.Chmod(scratch, 0755); err != nil {
+		t.Fatal(err)
+	}
 	dir, err := os.MkdirTemp(scratch, "trace-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	if err = os.Chmod(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
 	var src strings.Builder
 	src.WriteString("import Base\nimport ../../policy/model.bend as P\nimport ../../pending/model.bend as H\nimport ../../journal/model.bend as J\nimport ../../lifecycle/model.bend as L\nimport ../../input/model.bend as I\nimport ../../recovery/model.bend as R\n\n")
 	// Split expressions into defs to avoid deeply nested source terms.
@@ -80,6 +88,9 @@ func compareBend(t *testing.T, observations []bendObservation) {
 	}
 	src.WriteString("]\n")
 	if err = os.WriteFile(filepath.Join(dir, "main.bend"), []byte(src.String()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(filepath.Join(dir, "main.bend"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	image := os.Getenv("BEND_IMAGE")
@@ -273,8 +284,9 @@ func TestBendJournal(t *testing.T) {
 	names := []string{"Write{1n}", "Write{2n}", "Publish{}", "Ack{}", "Restart{}"}
 	records := map[string]wcPublicationRecord{}
 	for i := 1; i <= 2; i++ {
-		hash := fmt.Sprintf("block-%d", i)
-		records[hash] = wcPublicationRecord{Topic: "bend-topic", RequestID: 1, IntentHash: fmt.Sprintf("intent-%d", i), State: wcStateSigned, BlockJSON: json.RawMessage(fmt.Sprintf(`{"hash":"block-%d","amount":"%d","token":"ZNN","from":"sender-%d"}`, i, i, i)), Hash: hash, CreatedAt: int64(i)}
+		rec := journalTestRecord(t, i)
+		rec.Topic, rec.RequestID = "bend-topic", 1
+		records[rec.Hash] = rec
 	}
 	bendSequences(t, len(names), func(seq []int) {
 		p := filepath.Join(dir, wcJournalFile)
@@ -289,7 +301,7 @@ func TestBendJournal(t *testing.T) {
 			var err error
 			switch op {
 			case 0, 1:
-				err = journal.put(key, records[fmt.Sprintf("block-%d", op+1)])
+				err = journal.put(key, records[fmt.Sprintf("%064x", op+1)])
 			case 2:
 				err = journal.markPublished(key)
 			case 3:
@@ -321,7 +333,7 @@ func TestBendJournal(t *testing.T) {
 				if !reflect.DeepEqual(rec, want) {
 					t.Fatal("BEND_MISMATCH journal changed payload or ownership")
 				}
-				state = string(rec.State) + ":" + strings.TrimPrefix(rec.Hash, "block-")
+				state = fmt.Sprintf("%s:%d", rec.State, rec.CreatedAt)
 			}
 			actual.WriteString(bendBit(err == nil) + ":" + state + ";")
 		}

@@ -40,6 +40,9 @@ Checks run with no network, a non-root image user, a read-only filesystem and
 model mount, dropped capabilities, no new privileges, and CPU-process/memory
 limits. Only `test/bend` is mounted, never wallet data or host credentials.
 Temporary generated traces and faulty copies live under its ignored `.scratch/`.
+Generated public Bend sources are explicitly readable/traversable by the checker
+UID, including on Linux and with a restrictive host umask. Logs and Go overlays
+remain in private subdirectories; the mount stays read-only.
 Go uses synthetic test wallets and temporary data directories; the new tests
 never contact a live node or move funds.
 
@@ -73,7 +76,7 @@ must have a corresponding proof definition.
 3. **Model faults:** 19 type-correct model mutations must break named laws.
 4. **Wallet comparisons:** Go calls real wallet methods, executes Bend on the
    corresponding inputs, and compares results. There is no substitute Go model.
-5. **Wallet faults:** 19 changes to copies of real Go source must cause a named
+5. **Wallet faults:** 21 changes to copies of real Go source must cause a named
    comparison failure. `go test -overlay` substitutes each copy during compilation;
    the working source files are never edited by these experiments.
 6. **Parser fuzzing:** Go mutates journal JSON and bridge calldata/amount/token
@@ -106,7 +109,7 @@ constant cases are computed examples, not universal claims about the whole app.
 | Pending slot (10) | An occupied slot cannot be replaced; stale cancellation/cleanup cannot clear it; a publishing latch refuses matching/all cancellation; a successful cancel followed by hold allocates the next identity | `holdPending`, `CancelPending`, `clearPendingIf`; `TestBendPending` compares state after every operation and tests busy cancellation separately |
 | Journal (10) | Acknowledging unresolved signed data fails without loss; publishing retains payload; only published outcomes can be removed; restart preserves state; repeated publish/ack behave as specified | `wcJournal.put/markPublished/deletePublished/get`; `TestBendJournal` reopens the actual disk journal and checks all retained fields and signed-block JSON content |
 | Lifecycle (6) | Lock/account change invalidates every later modeled continuation, including unlock; revoked consent and locked state block publication | `TestBendLifecycle` drives real SDK preparation/signing against a loopback RPC server. Lock/unlock/consent changes occur at the last pre-signing RPC; account selection is represented by its generation increment. Both send and receive are compared |
-| Input trust (6) | Metadata must exist, identify the requested token and have bounded decimals; corrupt storage cannot be treated as empty | `TestBendMetadataIdentity` exercises SDK token-response decoding; `TestBendCorruptJournal` checks 17 storage fixtures, rejected writes/acks and preservation of corrupt bytes |
+| Input trust (6) | Metadata must exist, identify the requested token and have bounded decimals; corrupt storage cannot be treated as empty | `TestBendMetadataIdentity` exercises SDK token-response decoding; `TestBendCorruptJournal` checks 22 storage fixtures, rejected writes/acks and preservation of corrupt bytes |
 | Public recovery (8) | Any modeled history without positive evidence retains uncertainty and the exact payload; revoked consent prevents rebroadcast, found evidence needs no consent, failed saves preserve duplicate protection | `TestBendRecovery` starts with a lost publication reply, then drives public reconcile/ack/lookup and service restart against the disk journal, with node/signing seams and injected save failures |
 
 The policy model's Boolean inputs mean predicates on real values (for example,
@@ -132,12 +135,12 @@ these alphabets/bounds is sampled or skipped. Longer sequences and different
 operations remain outside this exhaustive check. Fixtures for in-flight
 publication/cancellation are separate interleavings, not all possible schedules.
 
-The added families contribute **191 comparisons** with the default random budget:
+The added families contribute **196 comparisons** with the default random budget:
 98 lifecycle histories (9 fixed + 40 seeded histories for each of send/receive),
-30 metadata cases, 17 corrupt/valid storage cases, and 46 recovery histories
+30 metadata cases, 22 corrupt/valid storage cases, and 46 recovery histories
 (6 fixed + 40 seeded). Recovery traces compare every intermediate return value,
 broadcast count, stored state, lookup outcome and retained block content.
-Totals are **874** at depth 3 and **2,795** at depth 4 with `BEND_RANDOM=40`.
+Totals are **879** at depth 3 and **2,800** at depth 4 with `BEND_RANDOM=40`.
 Random histories reach 24 steps independently of `BEND_DEPTH`; increasing depth
 does not automatically expand that sample. The lifecycle and recovery proofs
 include induction over arbitrary model lists, while Go execution remains bounded.
@@ -169,7 +172,7 @@ ordinary Go/frontend CI jobs. They must not be advertised as Bend-proven:
 | Keystores and derived addresses remain syrius-compatible | `internal/compat/keystore_compat_test.go`, wallet round trips and frozen entropy vectors; real-file acceptance is skipped when the private fixture is absent |
 | Confirmation displays exact amount and decoded built effect | `app/tx_effect_test.go`, `app/tx_methods_test.go`, strict custom-token decimal tests, confirmation component tests; frontend `format.test.ts` round-trips 247 boundary/large-value cases across decimals 0–18 and rejects extra nonzero precision |
 | Untrusted requests are revalidated in Go, including NoM calls | `app/nom_service_test.go`, `app/nom_accelerator_test.go`, bridge envelope/ABI/method tests in `app/walletconnect_test.go`; malformed formats and all ABI space are not exhaustively modeled |
-| Lock/account switch invalidates signing; inactivity lock is backend-enforced | `app/tx_service_test.go`, `app/wallet_autolock_test.go`, selection/lock race tests; publication fixtures also change generation during signing |
+| Lock/account switch is rechecked before publication; inactivity lock is backend-enforced | `app/tx_service_test.go`, `app/wallet_autolock_test.go`, selection/lock race tests; publication fixtures change generation during preparation. The SDK may already have signed using a copied key; the final check blocks stale submission when it observes the change |
 | Ambiguous network failures retain a signed block; retries reconcile or rebroadcast that block | `app/walletconnect_journal_test.go` persistence-before-broadcast, exact rebroadcast, intent matching across request IDs/topics, full-journal refusal, chain gates and replay without live wallet access |
 | Stale node workers cannot replace a newer connection or stop the syncing node | `app/node_service_reconnect_test.go` blocked-recovery interleavings, shutdown supersession and locked-wallet recovery; `app/node_service_autoreceive_lifecycle_test.go` worker lifecycle |
 | Old account/connection responses cannot overwrite current UI state | Store/router tests, including balances, unreceived, wallet, and node; successful empty responses stay distinct from unavailable data |
@@ -197,13 +200,18 @@ Cross-key duplicate prevention and capacity have separate regression tests.
 The added recovery model covers one already-journaled request and selected read,
 broadcast and save failures. The input model assumes classification into missing,
 valid and corrupt; concrete JSON fixtures and fuzzing test the Go classification.
-Validation checks record schema, ownership and saved-hash consistency; it is not
-a cryptographic integrity check or proof of all possible corruption patterns.
+Validation rejects duplicate record fields (including aliases recognized by Go),
+checks ownership and saved-hash consistency, and decodes the retained block with
+the actual `nom.AccountBlock` schema while preserving its original JSON.
+This is not a cryptographic integrity check, full on-chain semantic validation,
+or proof of all possible corruption patterns.
 JSON formatting may change on disk; retained signed-block content must not.
 
 The lifecycle checkpoint exercises one specific ordering during RPC preparation
 without sleeps. It does not prove every thread interleaving or cancel SDK signing
-already underway; the fix blocks stale publication at the final boundary. Go
+already underway. The wallet session check follows the possibly blocking consent
+read, directly before publication; it does not atomically coordinate Lock with
+RPC submission or cancel a request already submitted. Go
 fuzzing has separate randomness/corpus from `BEND_SEED`; its time budget is a
 search limit, not a coverage guarantee.
 

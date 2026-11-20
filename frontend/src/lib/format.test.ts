@@ -37,6 +37,18 @@ describe('formatAmountExact', () => {
     expect(formatAmountExact('5045401869374', 8)).toBe('50454.01869374')
     expect(formatAmountExact('150000000', 8)).toBe('1.5')
   })
+  it('round-trips integer units at every protocol precision, including values beyond floating-point range', () => {
+    // BEND_LAWS.md: executable UI contract, not a Bend proof of TypeScript.
+    const values = [0n, 1n, 9n, 10n, 99n, 100n, 2n ** 53n - 1n, 2n ** 53n + 1n, 2n ** 128n - 1n, 2n ** 256n - 1n]
+    for (let decimals = 0; decimals <= 18; decimals++) {
+      const scale = 10n ** BigInt(decimals)
+      for (const base of [...values, scale - 1n, scale, scale + 1n]) {
+        expect(toBase(formatAmountExact(base.toString(), decimals), decimals)).toBe(base.toString())
+      }
+      // A nonzero digit beyond the token precision must never be truncated.
+      expect(() => toBase(`1.${'0'.repeat(decimals)}1`, decimals)).toThrow('decimal places')
+    }
+  })
 })
 
 describe('isValidPillarName', () => {

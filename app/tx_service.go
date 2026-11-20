@@ -538,7 +538,8 @@ func (t *TxService) Receive(fromHash string) (string, error) {
 	// are queue-driven and can wait for an in-flight publish to finish.
 	t.publishMu.Lock()
 	defer t.publishMu.Unlock()
-	client := t.node.currentClient()
+	gen := t.wallet.sessionGen()
+	client, connectedChain := t.node.connectionSnapshot()
 	if client == nil {
 		return "", errors.New("not connected")
 	}
@@ -553,8 +554,8 @@ func (t *TxService) Receive(fromHash string) (string, error) {
 	// the send path), so a network mismatch fails fast without publishing onto
 	// the wrong chain.
 	cid := t.configuredChainID()
-	if cid != t.node.currentChainID() {
-		return "", fmt.Errorf("configured Chain ID (%d) does not match the connected node's chain (%d); set the correct Chain ID in Settings or connect to a matching node", cid, t.node.currentChainID())
+	if cid != connectedChain {
+		return "", fmt.Errorf("configured Chain ID (%d) does not match the connected node's chain (%d); set the correct Chain ID in Settings or connect to a matching node", cid, connectedChain)
 	}
 	kp, err := t.wallet.signingKeyPair()
 	if err != nil {
@@ -562,8 +563,26 @@ func (t *TxService) Receive(fromHash string) (string, error) {
 	}
 	template := client.LedgerApi.ReceiveTemplate(hash)
 	template.ChainIdentifier = cid
-	published, err := zenon.NewZenon(client).Send(template, kp)
+	// Keep preparation and broadcast separate: receiving uses a copied signing
+	// key too, so lock/account changes during RPC or PoW do not cancel it inside
+	// the SDK. Revalidate the signing scope and consent before publication.
+	published, err := zenon.NewZenon(client).PrepareBlock(template, kp)
 	if err != nil {
+		return "", err
+	}
+	currentClient, currentChain := t.node.connectionSnapshot()
+	if currentClient != client || currentChain != cid || published.ChainIdentifier != cid {
+		return "", errors.New("node connection changed during receive; nothing was published")
+	}
+	if err := t.guardChain(published.ChainIdentifier); err != nil {
+		return "", err
+	}
+	// Settings reads can block. Check the session after that work, directly at
+	// the submission boundary; this does not cancel an RPC already submitted.
+	if addr, ok := t.wallet.activeAddress(); !ok || t.wallet.sessionGen() != gen || addr != published.Address {
+		return "", errors.New("wallet locked or changed; not receiving")
+	}
+	if err := client.LedgerApi.PublishRawTransaction(published); err != nil {
 		return "", err
 	}
 	h := published.Hash.String()

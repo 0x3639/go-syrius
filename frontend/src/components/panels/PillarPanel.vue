@@ -35,12 +35,12 @@ watch(
 <template>
   <div>
     <Tabs v-model="sub">
-      <TabsList class="w-full justify-start">
+      <TabsList class="justify-start">
         <TabsTrigger value="Delegate">Delegate</TabsTrigger>
         <TabsTrigger value="Run a Pillar">Run a Pillar</TabsTrigger>
       </TabsList>
-      <TabsContent value="Delegate"><PillarDelegate /></TabsContent>
-      <TabsContent value="Run a Pillar">
+      <TabsContent class="mt-5" value="Delegate"><PillarDelegate /></TabsContent>
+      <TabsContent class="mt-5" value="Run a Pillar">
         <PillarActive v-if="ownsPillar" />
         <PillarLaunch v-else />
       </TabsContent>

@@ -81,7 +81,7 @@ watch(
             v-if="votablePillars.length > 1"
             v-model="selectedPillar"
             aria-label="vote pillar"
-            class="rounded border border-border bg-muted px-2 py-1 text-foreground outline-none focus:ring-2 focus:ring-primary"
+            class="select-field h-9 w-auto min-w-40"
           >
             <option v-for="n in votablePillars" :key="n" :value="n">{{ n }}</option>
           </select>

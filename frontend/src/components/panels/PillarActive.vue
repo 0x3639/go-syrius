@@ -101,7 +101,7 @@ watch(
   <section v-if="myPillar" class="space-y-3 panel-card">
     <div class="flex items-center gap-2">
       <CircleCheckIcon class="text-primary" :size="18" />
-      <h2 class="text-sm font-medium text-foreground">Your Pillar</h2>
+      <h2 class="section-title">Your Pillar</h2>
       <span class="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">{{ myPillar.name }}</span>
     </div>
 

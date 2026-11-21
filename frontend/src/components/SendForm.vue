@@ -179,7 +179,7 @@ function onSend() {
             <select
               v-model="zts"
               aria-label="Other token"
-              class="w-full bg-transparent text-xs text-muted-foreground outline-none"
+              class="select-inline"
             >
               <option v-if="!otherSelected" :value="zts" disabled>Choose…</option>
               <option v-for="b in otherTokens" :key="b.zts" :value="b.zts">

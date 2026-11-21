@@ -213,7 +213,7 @@ function hide() { revealed.value = '' }
               >{{ t }}</button>
             </div>
           </div>
-          <label class="flex items-center gap-2 text-foreground">
+          <label class="flex flex-wrap items-center gap-2 text-sm text-foreground">
             <input
               type="checkbox"
               aria-label="show startup animation"
@@ -323,11 +323,11 @@ function hide() { revealed.value = '' }
 
         <section class="panel-card space-y-3">
           <h2 class="section-title">Auto-lock</h2>
-          <label class="flex items-center gap-2 text-foreground">
+          <label class="flex flex-wrap items-center gap-2 text-sm text-foreground">
             Lock the wallet after
             <select
               aria-label="auto-lock timeout"
-              class="rounded border border-border bg-background px-2 py-1 text-sm"
+              class="select-field h-9 w-auto min-w-32"
               :value="String(autoLockMinutes)"
               @change="applyAutoLock(Number(($event.target as HTMLSelectElement).value))"
             >
@@ -360,7 +360,7 @@ function hide() { revealed.value = '' }
           <p v-if="chainErr" class="text-destructive text-sm" role="alert">{{ chainErr }}</p>
 
           <div class="mt-4 border-t border-border pt-4 space-y-2">
-            <label class="flex items-center gap-2 text-foreground">
+            <label class="flex flex-wrap items-center gap-2 text-sm text-foreground">
               <input
                 type="checkbox"
                 aria-label="enable mainnet transactions"

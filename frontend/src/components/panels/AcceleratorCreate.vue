@@ -74,10 +74,10 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-5 p-4">
-    <section class="space-y-2 panel-card">
-      <h3 class="text-sm font-medium text-foreground">Post an AZ (create project · 1 ZNN fee)</h3>
-      <div class="grid grid-cols-2 gap-2">
+  <div class="space-y-5">
+    <section class="space-y-3 panel-card">
+      <h3 class="section-title">Post an AZ (create project · 1 ZNN fee)</h3>
+      <div class="grid grid-cols-1 gap-3 @2xl:grid-cols-2">
         <Field label="Name"><Input v-model="cName" placeholder="name" aria-label="create name" /></Field>
         <Field label="URL"><Input v-model="cUrl" placeholder="url" aria-label="create url" /></Field>
         <Field label="ZNN needed (base units)"><Input v-model="cZnn" placeholder="ZNN needed" aria-label="create znn" /></Field>
@@ -87,8 +87,8 @@ watch(
       <Button aria-label="create project" @click="createProject">Create project</Button>
     </section>
 
-    <section class="space-y-2 panel-card">
-      <h3 class="text-sm font-medium text-foreground">Request a phase payout</h3>
+    <section class="space-y-3 panel-card">
+      <h3 class="section-title">Request a phase payout</h3>
       <p class="text-xs text-muted-foreground">
         Pick one of your approved projects and submit a phase requesting its payout — pillars vote and
         approved phases pay out automatically. "Update phase" edits your current (still-voting) phase
@@ -98,7 +98,7 @@ watch(
         <select
           v-model="phProjectId"
           aria-label="project id"
-          class="w-full rounded border border-border bg-muted px-3 py-2 text-foreground outline-none focus:ring-2 focus:ring-primary"
+          class="select-field"
         >
           <option value="" disabled>Select an approved project…</option>
           <option v-for="p in myProjects" :key="p.id" :value="p.id">{{ p.name }}</option>
@@ -108,7 +108,7 @@ watch(
         No approved projects of yours yet. Create one above and wait for pillars to approve it before
         requesting a phase payout.
       </p>
-      <div class="grid grid-cols-2 gap-2">
+      <div class="grid grid-cols-1 gap-3 @2xl:grid-cols-2">
         <Field label="Phase name"><Input v-model="phName" placeholder="name" aria-label="phase name" /></Field>
         <Field label="URL"><Input v-model="phUrl" placeholder="url" aria-label="phase url" /></Field>
         <Field label="ZNN payout (base units)"><Input v-model="phZnn" placeholder="ZNN needed" aria-label="phase znn" /></Field>

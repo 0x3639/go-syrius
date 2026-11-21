@@ -22,5 +22,21 @@
   .status-pill { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold; }
   .choice { @apply rounded-lg border border-input bg-background px-3.5 py-2.5 text-left text-sm text-foreground transition-colors hover:border-muted-foreground/50; }
   .choice-on { @apply border-primary bg-primary/[0.08] hover:border-primary; }
+  /* Dropdowns. Native <select> ignores padding/height on macOS WebKit unless
+     its appearance is reset, which is why unstyled ones render tiny. Reset it
+     and draw our own chevron so every dropdown matches the text inputs. */
+  .select-field {
+    @apply h-11 w-full cursor-pointer appearance-none rounded-lg border border-input bg-background pl-3.5 pr-10 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5M7 9l5-5 5 5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+  }
+  /* Borderless variant for a dropdown that sits inside another control. */
+  .select-inline {
+    @apply w-full cursor-pointer appearance-none bg-transparent pr-5 text-xs text-muted-foreground outline-none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right center;
+  }
   .disclosure-title { @apply cursor-pointer text-sm font-medium text-foreground; }
 }

@@ -15,6 +15,8 @@ export const useStakeStore = defineStore('stake', {
     stale: false,
     _epoch: -1,
     _request: 0,
+    // Id of the request in flight that can still land (0 = none).
+    _active: 0,
   }),
   getters: {
     available: (s) => s.status === 'ready' && useNodeStore().connected,
@@ -27,6 +29,16 @@ export const useStakeStore = defineStore('stake', {
       this.reward = null
       this.status = 'idle'
       this.stale = false
+      this._active = 0 // an in-flight request can no longer land
+    },
+    // Periodic reload. Starting a new request supersedes the one in flight, so
+    // on a node slower than the tick interval every response would be
+    // discarded and no snapshot would ever land. A periodic caller therefore
+    // lets the current request finish. resync() and refresh() still supersede:
+    // they are asked for when newer data is known to exist.
+    refreshIfIdle() {
+      if (this._active) return Promise.resolve()
+      return this.refresh()
     },
     // The ZNN balance moved, so the held snapshot may describe ZNN that is
     // now spendable (or the reverse). Mark it stale at once, then reload; only
@@ -40,6 +52,7 @@ export const useStakeStore = defineStore('stake', {
       if (this._epoch !== epoch) this.invalidate()
       const request = ++this._request
       if (this.status !== 'ready') this.status = 'loading'
+      this._active = request
       try {
         const [stakeInfo, reward] = await Promise.all([Nom.GetStakeList(), Nom.GetUncollectedReward()])
         if (epoch !== currentRequestEpoch() || request !== this._request) return
@@ -53,6 +66,8 @@ export const useStakeStore = defineStore('stake', {
         this.reward = null
         this.status = 'error'
         this.stale = false
+      } finally {
+        if (this._active === request) this._active = 0
       }
     },
   },

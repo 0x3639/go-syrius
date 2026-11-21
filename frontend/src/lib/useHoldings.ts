@@ -63,6 +63,17 @@ export function useHoldings() {
   const price = usePriceStore()
   const node = useNodeStore()
 
+  // Whether the committed figures of a protocol row can be trusted right now,
+  // from the CURRENT state of the reads behind them. Staking feeds ZNN;
+  // collateral feeds ZNN and QSR. A failed read wins over a pending one.
+  const failed = (s: { status: string }) => s.status === 'error'
+  const waitingOn = (s: { status: string; stale: boolean }) => s.stale || s.status === 'idle' || s.status === 'loading'
+  function committedStatus(zts: string) {
+    const unknown = failed(collateral) || (zts === ZNN_ZTS && failed(stake))
+    const pending = !unknown && (waitingOn(collateral) || (zts === ZNN_ZTS && waitingOn(stake)))
+    return { committedUnknown: unknown, committedPending: pending }
+  }
+
   const liveRows = computed<Holding[]>(() => {
     const byZts = new Map<string, Holding>()
     const row = (zts: string, symbol: string, decimals: number): Holding => {
@@ -115,14 +126,7 @@ export function useHoldings() {
       }
       // Say so when a figure above is missing because its read failed or has
       // not landed, rather than letting the row read as "nothing committed".
-      const znnRow = row(ZNN_ZTS, 'ZNN', 8)
-      const qsrRow = row(QSR_ZTS, 'QSR', 8)
-      const failed = (s: { status: string }) => s.status === 'error'
-      const waitingOn = (s: { status: string; stale: boolean }) => s.stale || s.status === 'idle' || s.status === 'loading'
-      znnRow.committedUnknown = failed(stake) || failed(collateral)
-      qsrRow.committedUnknown = failed(collateral)
-      znnRow.committedPending = !znnRow.committedUnknown && (waitingOn(stake) || waitingOn(collateral))
-      qsrRow.committedPending = !qsrRow.committedUnknown && waitingOn(collateral)
+      for (const zts of [ZNN_ZTS, QSR_ZTS]) Object.assign(row(zts, PROTOCOL[zts].symbol, 8), committedStatus(zts))
     }
     for (const r of byZts.values()) {
       r.committedTotal = sumBase(r.committed.map((c) => c.amount))
@@ -144,10 +148,14 @@ export function useHoldings() {
   watch([liveRows, settling], () => { if (!settling.value) settledRows.value = liveRows.value }, { immediate: true, flush: 'sync' })
   const rows = computed<Holding[]>(() => {
     if (!settling.value || !settledRows.value) return liveRows.value
-    return settledRows.value.map((r) => ({
-      ...r,
-      committedPending: !r.committedUnknown && ((r.zts === ZNN_ZTS && (stake.stale || collateral.stale)) || (r.zts === QSR_ZTS && collateral.stale)),
-    }))
+    // The held AMOUNTS are the earlier picture, but their status is today's:
+    // a read that has failed since must show as failed, and every held
+    // protocol row is at least pending, because the whole picture is.
+    return settledRows.value.map((r) => {
+      if (!r.protocol) return r
+      const s = committedStatus(r.zts)
+      return { ...r, committedUnknown: s.committedUnknown, committedPending: !s.committedUnknown }
+    })
   })
 
   /** Fiat total, or null without a price feed or loaded balances. */

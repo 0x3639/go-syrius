@@ -45,10 +45,17 @@ watch(() => wallet.activeIndex, refreshEarning)
 // a momentum later, so that one reload reads "nothing locked" and nothing
 // would correct it. The same tick also retries a read that failed. These are
 // plain refreshes: they do not mark the snapshot stale, so nothing flickers.
-watch(() => node.height, () => {
-  if (!node.connected) return
-  stake.refresh()
-  collateral.refresh()
+//
+// Two limits keep this cheap. While an embedded node is still syncing its
+// height climbs every couple of seconds and the chain it describes is not the
+// settled one, so reloads wait until sync ends (the syncing flag is watched
+// too, so the first reload happens as soon as it does). And refreshIfIdle
+// lets a reload in flight finish instead of superseding it, so a node slower
+// than the tick interval still lands a snapshot.
+watch(() => [node.height, node.syncing] as const, () => {
+  if (!node.connected || node.syncing) return
+  stake.refreshIfIdle()
+  collateral.refreshIfIdle()
 })
 
 // Holdings add staked ZNN to the spendable balance. The balance refreshes on

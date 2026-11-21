@@ -254,6 +254,50 @@ describe('Dashboard', () => {
       expect(coll).not.toHaveBeenCalled()
     })
 
+    it('pauses the per-momentum reload while the node is still syncing, then catches up', async () => {
+      const w = setup(mode)
+      const node = useNodeStore()
+      const coll = useCollateralStore().refresh as any
+      node.syncing = true
+      coll.mockClear()
+      node.height = 100; await w.vm.$nextTick()
+      node.height = 101; await w.vm.$nextTick()
+      expect(coll).not.toHaveBeenCalled()
+      node.syncing = false
+      await w.vm.$nextTick()
+      expect(coll).toHaveBeenCalledTimes(1) // as soon as sync ends, without waiting for a tick
+    })
+
+    it('shows a read that failed during a reload, even on rows it is still holding', async () => {
+      const price = usePriceStore(); price.znnUsd = 1; price.qsrUsd = 0.1; price.available = true
+      const stake = useStakeStore(); const c = useCollateralStore()
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      // A balance change marks both stale; staking stays in flight, collateral fails.
+      ;(stake.refresh as any).mockImplementation(() => new Promise<void>(() => {}))
+      ;(c.refresh as any).mockImplementation(() => { c.status = 'error'; c.stale = false })
+      useBalancesStore().items = useBalancesStore().items.map((b) => b.symbol === 'ZNN' ? { ...b, amount: '1' } : b)
+      await w.vm.$nextTick()
+      expect(stake.stale).toBe(true) // the picture is still held
+      for (const zts of ['zts1znnxxxxxxxxxxxxx9z4ulx', 'zts1qsrxxxxxxxxxxxxxmrhjll']) {
+        expect(w.get(`[data-zts="${zts}"]`).find('[data-testid="committed-unknown"]').exists()).toBe(true)
+      }
+      expect(w.get('[data-testid="estimate-scope"]').text()).toMatch(/could not (all )?be checked/)
+    })
+
+    it('marks every held protocol row as updating, not only the one whose read is stale', async () => {
+      const stake = useStakeStore()
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      ;(stake.refresh as any).mockImplementation(() => new Promise<void>(() => {}))
+      useBalancesStore().items = useBalancesStore().items.map((b) => b.symbol === 'ZNN' ? { ...b, amount: '1' } : b)
+      await w.vm.$nextTick()
+      expect(useCollateralStore().stale).toBe(false)
+      for (const zts of ['zts1znnxxxxxxxxxxxxx9z4ulx', 'zts1qsrxxxxxxxxxxxxxmrhjll']) {
+        expect(w.get(`[data-zts="${zts}"]`).find('[data-testid="committed-pending"]').exists()).toBe(true)
+      }
+    })
+
     it('says it could not check locked amounts instead of showing none', async () => {
       const price = usePriceStore(); price.znnUsd = 1; price.qsrUsd = 0.1; price.available = true
       useCollateralStore().status = 'error'
@@ -265,8 +309,9 @@ describe('Dashboard', () => {
         expect(cell.text()).not.toBe('—')
       }
       const scope = w.get('[data-testid="estimate-scope"]').text()
-      expect(scope).toContain('could not be checked')
+      expect(scope).toMatch(/could not (all )?be checked/)
       expect(scope).not.toContain('including staked, fused and locked amounts')
+      expect(scope).not.toContain('collateral and deposits')
     })
 
     it('a failed staking read marks ZNN only, and keeps what is known', async () => {

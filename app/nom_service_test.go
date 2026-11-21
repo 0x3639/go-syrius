@@ -625,3 +625,19 @@ func TestTokenFlagsSummary(t *testing.T) {
 		t.Fatalf("mint only: %q", got)
 	}
 }
+
+// Holdings count the QSR an address fused itself (owner side). The total must
+// come from the list's own sum, which covers every entry, not from the page of
+// entries that happens to be returned.
+func TestOwnedFusionTotal(t *testing.T) {
+	if got := ownedFusionTotal(nil); got != "0" {
+		t.Fatalf("nil list = %q, want 0", got)
+	}
+	if got := ownedFusionTotal(&embedded.FusionEntryList{}); got != "0" {
+		t.Fatalf("missing amount = %q, want 0", got)
+	}
+	list := &embedded.FusionEntryList{QsrAmount: big.NewInt(12345000000), Count: 80, List: []*embedded.FusionEntry{{}}}
+	if got := ownedFusionTotal(list); got != "12345000000" {
+		t.Fatalf("total = %q, want the list total regardless of page size", got)
+	}
+}

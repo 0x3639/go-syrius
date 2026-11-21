@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useModeSwitch } from '../lib/useModeSwitch'
 import { TriangleAlertIcon } from '@lucide/vue'
 import { ref, computed, onMounted } from 'vue'
 import { Input, Button } from 'nom-ui'
@@ -12,6 +13,7 @@ import { SetAutoLockMinutes } from '../../wailsjs/go/app/WalletService'
 const node = useNodeStore()
 const wallet = useWalletStore()
 const ui = useUiStore()
+const switchMode = useModeSwitch()
 
 const nodeMode = ref('remote')
 const remoteUrl = ref('')
@@ -211,6 +213,23 @@ function hide() { revealed.value = '' }
                 :aria-pressed="ui.theme === t"
                 @click="ui.theme !== t && ui.toggleTheme()"
               >{{ t }}</button>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="min-w-0 flex-1">
+              <p class="field-label">Layout</p>
+              <p class="hint">Everyday keeps to holding, sending, receiving and earning. Advanced adds pillars, sentinels, token issuance and Accelerator-Z. Switching keeps your account and network.</p>
+            </div>
+            <div class="flex gap-1 rounded-xl bg-background p-1" role="group" aria-label="Layout mode">
+              <button
+                v-for="m in (['everyday', 'advanced'] as const)"
+                :key="m"
+                type="button"
+                class="h-8.5 rounded-lg px-4 text-sm font-semibold capitalize transition-colors"
+                :class="ui.mode === m ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:text-foreground'"
+                :aria-pressed="ui.mode === m"
+                @click="switchMode(m)"
+              >{{ m }}</button>
             </div>
           </div>
           <label class="flex flex-wrap items-center gap-2 text-sm text-foreground">

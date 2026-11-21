@@ -3,7 +3,7 @@ import * as N from '../../wailsjs/go/app/NodeService'
 import { currentRequestEpoch } from '../lib/requestEpoch'
 import * as Tx from '../../wailsjs/go/app/TxService'
 
-export type Unreceived = { fromHash: string; fromAddress: string; token: string; amount: string; decimals: number }
+export type Unreceived = { fromHash: string; fromAddress: string; token: string; zts?: string; amount: string; decimals: number }
 
 export const useUnreceivedStore = defineStore('unreceived', {
   state: () => ({

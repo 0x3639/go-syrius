@@ -58,6 +58,11 @@ type Settings struct {
 	AccountCounts map[string]int `json:"accountCounts"`
 	// Contacts is the address book (saved name → address entries).
 	Contacts []Contact `json:"contacts"`
+	// UIMode selects the shell layout: "everyday" (holders) or "advanced"
+	// (operators). Layout only — it never changes what the backend permits.
+	UIMode string `json:"uiMode"`
+	// PinnedActions are the shortcut ids pinned on the Advanced overview.
+	PinnedActions []string `json:"pinnedActions"`
 }
 
 // Contact is a saved address-book entry.
@@ -257,7 +262,12 @@ type WalletConnectPrepareResult struct {
 
 // PlasmaInfo is the active address's plasma snapshot.
 type PlasmaInfo struct {
-	QsrFused      string `json:"qsrFused"`
+	// QsrFused is the QSR fused FOR this address (beneficiary side): what
+	// its plasma comes from, whoever owns the fusion.
+	QsrFused string `json:"qsrFused"`
+	// QsrFusedOwned is the QSR this address has fused and can cancel (owner
+	// side), to itself or to others. This is what the address still owns.
+	QsrFusedOwned string `json:"qsrFusedOwned"`
 	CurrentPlasma uint64 `json:"currentPlasma"`
 	MaxPlasma     uint64 `json:"maxPlasma"`
 }
@@ -297,9 +307,13 @@ type RewardInfo struct {
 type UnreceivedBlock struct {
 	FromHash    string `json:"fromHash"`
 	FromAddress string `json:"fromAddress"`
-	Token       string `json:"token"`
-	Amount      string `json:"amount"`
-	Decimals    int    `json:"decimals"`
+	// Token is display text: the symbol when the node reports token info,
+	// otherwise the token standard. Zts is always the token standard and is
+	// the identity to match against balances (symbols are not unique).
+	Token    string `json:"token"`
+	Zts      string `json:"zts"`
+	Amount   string `json:"amount"`
+	Decimals int    `json:"decimals"`
 }
 
 // PillarSummary is one pillar in the delegation picker list.

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
+import { useModeSwitch } from '../lib/useModeSwitch'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'nom-ui'
 import {
   SunIcon, MoonIcon, ZapIcon, ArrowDownCircleIcon, RocketIcon, LockIcon,
-  Building2Icon, LinkIcon,
+  Building2Icon, LinkIcon, GlobeIcon,
 } from '@lucide/vue'
 import { useWalletStore } from '../stores/wallet'
 import { usePlasmaStore } from '../stores/plasma'
@@ -35,6 +36,22 @@ const walletConnect = useWalletConnectStore()
 const plasmaLvl = computed(() => plasmaLevel(plasma.info?.currentPlasma ?? 0))
 const plasmaAvailable = computed(() => node.connected && plasma.info !== null)
 const plasmaColor = computed(() => plasmaAvailable.value ? plasmaColorClass(plasmaLvl.value) : 'text-muted-foreground')
+
+const switchMode = useModeSwitch()
+
+// The chain the connected node reports. Named for the two known networks so a
+// mainnet session is never mistaken for a test one.
+const network = computed(() => {
+  if (!node.connected || !node.chainId) return null
+  const name = node.chainId === 1 ? 'Mainnet' : node.chainId === 73404 ? 'Testnet' : 'Custom network'
+  return { name, chainId: node.chainId }
+})
+
+watch(() => ui.modeNotice, (m) => {
+  if (!m) return
+  toast?.show(m, 'info')
+  ui.clearModeNotice()
+})
 
 function gotoVotes() {
   router.push({ path: '/network/accelerator', query: { sub: 'Vote' } })
@@ -67,7 +84,23 @@ async function lockWallet() {
       <p v-if="subtitle" class="mt-0.5 text-sm text-muted-foreground">{{ subtitle }}</p>
     </div>
 
+    <div class="flex items-center gap-0.5 rounded-xl border border-border bg-card p-1" role="group" aria-label="Wallet mode">
+      <span class="px-2 text-xs font-semibold text-muted-foreground" aria-hidden="true">Mode</span>
+      <button v-for="m in (['everyday', 'advanced'] as const)" :key="m" type="button"
+        :aria-pressed="ui.mode === m"
+        class="h-8.5 rounded-md px-3 text-sm capitalize transition-colors"
+        :class="ui.mode === m ? 'bg-foreground font-semibold text-background' : 'font-medium text-muted-foreground hover:text-foreground'"
+        @click="switchMode(m)">{{ m }}</button>
+    </div>
+
     <div class="flex flex-wrap items-center gap-1 rounded-xl border border-border bg-card p-1">
+      <span v-if="network" class="flex h-8.5 items-center gap-1.5 px-2.5 text-sm font-medium text-foreground"
+        :title="`Connected node chain: ${network.chainId}`" data-testid="network-chip">
+        <GlobeIcon :size="15" class="text-muted-foreground" />{{ network.name }}
+        <span class="font-mono text-xs text-muted-foreground">chain {{ network.chainId }}</span>
+      </span>
+      <span v-if="network" class="mx-1 h-5 w-px bg-border"></span>
+
       <button type="button" aria-label="Toggle theme"
         class="grid h-8.5 w-8.5 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
         @click="ui.toggleTheme()">
@@ -82,15 +115,18 @@ async function lockWallet() {
         <ZapIcon :size="16" />
       </button>
 
+      <!-- (The pillar and vote shortcuts further down are operator tools:
+           Advanced only. Everyday reports a waiting vote on Home instead.) -->
+      <!-- Opens the waiting payments. It never changes auto-receive: that is
+           an explicit switch on the Receive screen. -->
       <button type="button"
-        :aria-label="autoReceive.enabled ? 'Auto-receive on' : 'Auto-receive off'"
+        :aria-label="unreceived.items.length > 0 ? `${unreceived.items.length} incoming payment(s) waiting` : 'Incoming payments'"
         :title="unreceived.items.length > 0
-          ? `${unreceived.items.length} transaction(s) to receive`
-          : autoReceive.enabled ? 'Auto-receive: on' : 'Auto-receive: off'"
-        :aria-pressed="autoReceive.enabled"
+          ? `${unreceived.items.length} payment(s) waiting — open Receive`
+          : autoReceive.enabled ? 'No payments waiting · auto-receive is on' : 'No payments waiting'"
         class="relative grid h-8.5 w-8.5 place-items-center rounded-md transition-colors"
-        :class="`hover:bg-foreground/[0.06] ${autoReceive.enabled ? 'text-primary' : 'text-muted-foreground'}`"
-        @click="autoReceive.toggle(wallet.activeIndex)">
+        :class="`hover:bg-foreground/[0.06] ${unreceived.items.length > 0 ? 'text-primary' : 'text-muted-foreground'}`"
+        @click="router.push('/receive')">
         <ArrowDownCircleIcon :size="16" />
         <span v-if="unreceived.items.length > 0"
           class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.625rem] font-semibold text-primary-foreground">
@@ -109,14 +145,14 @@ async function lockWallet() {
         <LinkIcon :size="16" />
       </button>
 
-      <button v-if="pillar.ownsPillar" type="button" aria-label="Your pillar"
+      <button v-if="pillar.ownsPillar && ui.mode === 'advanced'" type="button" aria-label="Your pillar"
         :title="`Operating pillar: ${pillar.myPillar?.name ?? ''}`"
         class="grid h-8.5 w-8.5 place-items-center rounded-md text-success transition-colors hover:bg-foreground/[0.06]"
         @click="router.push('/network/pillars')">
         <Building2Icon :size="16" />
       </button>
 
-      <button v-if="pillar.ownsPillar" type="button" aria-label="Accelerator votes"
+      <button v-if="pillar.ownsPillar && ui.mode === 'advanced'" type="button" aria-label="Accelerator votes"
         :title="accelerator.needsVoteCount > 0 ? `${accelerator.needsVoteCount} AZ item(s) to vote on` : 'Accelerator votes'"
         class="relative grid h-8.5 w-8.5 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
         @click="gotoVotes">

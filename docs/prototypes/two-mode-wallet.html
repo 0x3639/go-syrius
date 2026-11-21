@@ -1,0 +1,667 @@
+<title>go-syrius Two-Mode Prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Layout: a review page holding desktop window frames. Each frame is a fixed-size
+   wallet window scaled to fit its column; the wallet inside responds to the
+   window's own width (container queries), not the page's. Palette, type and
+   radii are go-syrius's existing nom-ui tokens. */
+:root{
+  --page:hsl(0 0% 95%); --bg:hsl(0 0% 100%); --card:hsl(0 0% 100%); --fg:hsl(0 0% 12%);
+  --mut:hsl(0 0% 40%); --border:hsl(0 0% 88%); --side:hsl(0 0% 98%); --side-acc:hsl(0 0% 93%);
+  --primary:hsl(145 100% 42%); --on-primary:hsl(0 0% 8%); --ptext:hsl(145 90% 25%); --ptint:hsl(145 100% 42% / .11);
+  --warn:hsl(30 95% 33%); --wtint:hsl(38 92% 50% / .14); --danger:hsl(352 80% 43%); --dtint:hsl(352 84% 53% / .10);
+  --info:hsl(214 100% 42%); --itint:hsl(214 100% 46% / .10); --hover:hsl(0 0% 0% / .055); --scrim:hsl(0 0% 0% / .45);
+  --sans:"Space Grotesk",ui-sans-serif,system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --page:hsl(0 0% 4.5%); --bg:hsl(0 0% 8%); --card:hsl(0 0% 10.5%); --fg:hsl(0 0% 98%);
+  --mut:hsl(0 0% 66%); --border:hsl(0 0% 20%); --side:hsl(0 0% 9.5%); --side-acc:hsl(0 0% 16%);
+  --ptext:hsl(145 100% 45%); --ptint:hsl(145 100% 42% / .13);
+  --warn:hsl(38 95% 60%); --wtint:hsl(38 95% 55% / .14); --danger:hsl(352 92% 68%); --dtint:hsl(352 86% 58% / .14);
+  --info:hsl(214 100% 70%); --itint:hsl(214 100% 62% / .14); --hover:hsl(0 0% 100% / .07); --scrim:hsl(0 0% 0% / .62); color-scheme:dark } }
+:root[data-theme="dark"]{
+  --page:hsl(0 0% 4.5%); --bg:hsl(0 0% 8%); --card:hsl(0 0% 10.5%); --fg:hsl(0 0% 98%);
+  --mut:hsl(0 0% 66%); --border:hsl(0 0% 20%); --side:hsl(0 0% 9.5%); --side-acc:hsl(0 0% 16%);
+  --ptext:hsl(145 100% 45%); --ptint:hsl(145 100% 42% / .13);
+  --warn:hsl(38 95% 60%); --wtint:hsl(38 95% 55% / .14); --danger:hsl(352 92% 68%); --dtint:hsl(352 86% 58% / .14);
+  --info:hsl(214 100% 70%); --itint:hsl(214 100% 62% / .14); --hover:hsl(0 0% 100% / .07); --scrim:hsl(0 0% 0% / .62); color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.5}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.pg{max-width:1680px;margin:0 auto;padding-block:28px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:44px}
+.pg h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin:0;text-wrap:balance}
+.pg h2.sec{font-size:20px;font-weight:600;letter-spacing:-.01em;margin:0}
+.lead{max-width:68ch;color:var(--mut);margin:6px 0 0}
+.secth{display:flex;flex-direction:column;gap:2px;margin-bottom:14px}
+.ctl{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:12px 14px;background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:12px}
+.ctl .grp{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.ctl .cap{font-size:12px;font-weight:600;color:var(--mut);margin-right:2px}
+.pbtn{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font-size:13px;font-weight:500}
+.pbtn:hover{background:var(--hover)} .pbtn[aria-pressed="true"]{border-color:var(--primary);background:var(--ptint);color:var(--ptext);font-weight:600}
+.ctl label{display:inline-flex;align-items:center;gap:6px;font-size:13px}
+.ctl input[type=checkbox]{accent-color:var(--primary);width:15px;height:15px}
+.guide{font-size:14px;color:var(--fg);padding:10px 14px;border-radius:10px;background:var(--ptint);margin-bottom:12px;min-height:42px}
+.guide b{color:var(--ptext)}
+.cmp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+@media (max-width:1000px){.cmp{grid-template-columns:minmax(0,1fr)}}
+.cmp h3{font-size:14px;font-weight:600;margin:0 0 8px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.cmp h3 span{font-weight:400;color:var(--mut);font-size:13px}
+.stage{overflow:hidden;border-radius:12px}
+.note{font-size:13px;color:var(--mut);margin:10px 0 0;max-width:80ch}
+.twrap{overflow-x:auto;background:var(--card);border:1px solid var(--border);border-radius:12px}
+table.sum{border-collapse:collapse;width:100%;min-width:760px;font-size:13.5px}
+.sum th,.sum td{text-align:left;padding:9px 14px;border-top:1px solid var(--border);vertical-align:top}
+.sum thead th{border-top:0;font-size:12px;color:var(--mut);font-weight:600}
+.sum tr.g th{background:var(--side-acc);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.tag{display:inline-block;border-radius:99px;padding:1px 9px;font-size:12px;font-weight:600;white-space:nowrap}
+.tag.re{background:var(--ptint);color:var(--ptext)} .tag.nw{background:var(--itint);color:var(--info)} .tag.ch{background:var(--wtint);color:var(--warn)}
+.pos{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.pos div{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;font-size:14px}
+.pos b{display:block;margin-bottom:4px}
+.pos p{margin:0;color:var(--mut)}
+
+/* ───────── wallet window ───────── */
+.win{position:relative;display:flex;flex-direction:column;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:12px;overflow:hidden;font-size:14px;line-height:1.45;container:win / inline-size;transform-origin:0 0}
+.win .body{display:flex;flex-direction:column;flex:1;min-height:0}
+.tbar{flex:none;height:30px;display:flex;align-items:center;gap:7px;padding:0 12px;background:var(--side);border-bottom:1px solid var(--border);font-size:12px;color:var(--mut)}
+.tbar i{width:11px;height:11px;border-radius:50%;background:var(--border)} .tbar span{margin:0 auto;transform:translateX(-27px)}
+.shell{display:flex;flex:1;min-height:0}
+.side{flex:none;width:236px;display:flex;flex-direction:column;gap:16px;padding:16px 12px;background:var(--side);border-right:1px solid var(--border);min-height:0;overflow-y:auto}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px;font-weight:700;font-size:16px;letter-spacing:-.01em}
+.brand .mk{width:26px;height:26px;border-radius:7px;background:var(--primary);color:var(--on-primary);display:grid;place-items:center;font-size:13px;font-weight:700}
+.acct{position:relative}
+.acctbtn{width:100%;display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;border:1px solid var(--border);background:var(--card);text-align:left}
+.acctbtn:hover{background:var(--hover)}
+.av{flex:none;width:34px;height:34px;border-radius:50%;background:var(--ptint);color:var(--ptext);display:grid;place-items:center;font-size:12px;font-weight:700}
+.av.b{background:var(--itint);color:var(--info)}
+.acctbtn .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .acctbtn .sub{font-family:var(--mono);font-size:11.5px;color:var(--mut)}
+.menu{position:absolute;z-index:5;left:0;top:calc(100% + 6px);width:280px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:6px;box-shadow:0 12px 32px hsl(0 0% 0% / .25)}
+.menu button{width:100%;display:flex;gap:10px;align-items:center;padding:8px;border:0;background:none;border-radius:8px;text-align:left}
+.menu button:hover{background:var(--hover)} .menu small{display:block;color:var(--mut);font-size:12px}
+.quick{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.navs{display:flex;flex-direction:column;gap:2px}
+.navh{font-size:12px;font-weight:600;color:var(--mut);padding:0 10px 5px}
+.nav{display:flex;align-items:center;gap:12px;height:38px;padding:0 10px;border:0;border-radius:8px;background:none;color:var(--mut);font-weight:500;text-align:left;width:100%}
+.nav:hover{background:var(--hover);color:var(--fg)} .nav.on{background:var(--side-acc);color:var(--fg);font-weight:600} .nav.on .ic{color:var(--ptext)}
+.nav .lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{background:var(--primary);color:var(--on-primary);border-radius:99px;padding:0 6px;font-size:11.5px;font-weight:700;line-height:19px;min-width:19px;text-align:center}
+.badge.w{background:var(--wtint);color:var(--warn)}
+.nodec{margin-top:auto;display:flex;flex-direction:column;gap:7px;padding:10px 12px;border:0;border-radius:10px;background:var(--side-acc);text-align:left;width:100%;font-size:12px}
+.nodec .r{display:flex;justify-content:space-between;gap:8px;align-items:center} .nodec .st{display:flex;gap:6px;align-items:center;font-weight:600}
+.nodec .bar{height:4px;border-radius:9px;background:var(--hover);overflow:hidden} .nodec .bar i{display:block;height:100%;border-radius:9px}
+.ok{color:var(--ptext)} .wn{color:var(--warn)} .dg{color:var(--danger)} .mut{color:var(--mut)} .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.col{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:16px 28px 10px}
+.ttl{flex:1 1 220px;min-width:0} .ttl h1{font-size:23px;font-weight:600;letter-spacing:-.02em;margin:0;outline-offset:4px} .ttl p{margin:1px 0 0;color:var(--mut);font-size:13px}
+.cluster{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.seg{display:flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+.seglbl{font-size:12px;font-weight:600;color:var(--mut);padding:0 6px 0 7px}
+.seg button{height:28px;padding:0 11px;border:0;border-radius:7px;background:none;font-size:13px;font-weight:500;color:var(--mut)}
+.seg button:hover{color:var(--fg)} .seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg);font-weight:600}
+.chip{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 11px;border:1px solid var(--border);border-radius:10px;background:var(--card);font-size:13px;font-weight:500;white-space:nowrap}
+.chip:hover{background:var(--hover)} .chip.p{border-color:transparent;background:var(--ptint);color:var(--ptext);font-weight:600}
+.chip.w{border-color:transparent;background:var(--wtint);color:var(--warn);font-weight:600} .chip.d{border-color:transparent;background:var(--dtint);color:var(--danger);font-weight:600}
+.main{flex:1;min-height:0;overflow-y:auto;padding:8px 28px 28px;display:flex;flex-direction:column;gap:16px;outline:0}
+.banner{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:11px 16px;border-radius:12px;font-size:13.5px}
+.banner.w{background:var(--wtint)} .banner.d{background:var(--dtint)} .banner.i{background:var(--itint)} .banner .gr{flex:1 1 260px;min-width:0}
+.banner b{display:block}
+.split{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(290px,1fr);gap:16px;align-items:start}
+.halves{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:16px;align-items:start}
+.split.adv{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)} .halves.form{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)} .halves.eq{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;min-width:0}
+.card.flush{padding:0;overflow:hidden} .card.acc{border-color:hsl(145 100% 42% / .35);background:var(--ptint)}
+.card h2{font-size:15.5px;font-weight:600;margin:0}
+.hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px 12px} .hd h2{flex:1}
+.hint{font-size:12.5px;color:var(--mut);line-height:1.5;margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:11px;border:1px solid var(--border);background:transparent;font-size:14px;font-weight:600;white-space:nowrap}
+.btn:hover{background:var(--hover)} .btn.pri{background:var(--primary);border-color:var(--primary);color:var(--on-primary);font-weight:700} .btn.pri:hover{opacity:.9;background:var(--primary)}
+.btn.sm{height:32px;padding:0 12px;font-size:13px;border-radius:9px} .btn.dgr{color:var(--danger);border-color:var(--danger)} .btn:disabled{opacity:.45;cursor:not-allowed}
+.lnk{border:0;background:none;padding:0;color:var(--ptext);font-weight:600;font-size:13.5px;display:inline-flex;gap:5px;align-items:center} .lnk:hover{text-decoration:underline}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:99px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill.ok{background:var(--ptint)} .pill.wn{background:var(--wtint)} .pill.dg{background:var(--dtint)} .pill.n{background:var(--hover);color:var(--mut)} .pill.in{background:var(--itint);color:var(--info)}
+/* attention list */
+.todo{display:flex;flex-direction:column}
+.todo li{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:12px 0;border-top:1px solid var(--border)} .todo{list-style:none;margin:10px 0 0;padding:0}
+.todo .tx{flex:1 1 150px;min-width:0} .todo .tx b{display:block;font-weight:600} .todo .tx span{font-size:12.5px;color:var(--mut)}
+.dot{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center} .dot.ok{background:var(--ptint)} .dot.wn{background:var(--wtint)} .dot.dg{background:var(--dtint)} .dot.in{background:var(--itint);color:var(--info)}
+.clear{display:flex;gap:10px;align-items:center;margin-top:10px;font-size:13.5px}
+/* hero + assets */
+.hero{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;padding:20px}
+.hero .v{flex:1 1 300px;min-width:0} .hero .big{font-family:var(--mono);font-size:38px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1.15}
+.hero .acts{display:flex;gap:10px}
+table.as{width:100%;border-collapse:collapse}
+.as th{font-size:12px;font-weight:600;color:var(--mut);text-align:right;padding:8px 12px;border-top:1px solid var(--border)} .as th:first-child{text-align:left;padding-left:20px}
+.as td{padding:11px 12px;border-top:1px solid var(--border);text-align:right;vertical-align:top;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.as td:first-child{text-align:left;padding-left:20px;font-family:var(--sans);white-space:normal} .as td:last-child,.as th:last-child{padding-right:20px}
+.as .tk{display:flex;gap:11px;align-items:center} .as .tk b{font-weight:600;display:block} .as small{display:block;font-family:var(--sans);font-size:12px;color:var(--mut);font-weight:400}
+.as td small{white-space:normal} .as td:nth-child(4){min-width:140px} .tw{overflow-x:auto} .as .z{color:var(--mut)} .as tfoot td{font-family:var(--sans);font-size:12.5px;color:var(--mut);white-space:normal;text-align:left;padding-left:20px}
+.as.dense td{padding-top:8px;padding-bottom:8px;font-size:13px} .as.dense .av{width:28px;height:28px;font-size:10.5px}
+.nar{display:none}
+.kv{display:flex;justify-content:space-between;gap:14px;padding:6px 0;font-size:13.5px} .kv>span:first-child{color:var(--mut);flex:none} .kv>span:last-child{text-align:right;min-width:0}
+.rows>.row{display:flex;gap:12px;align-items:center;padding:12px 20px;border-top:1px solid var(--border)} .row .g{flex:1;min-width:0} .row .g small{display:block;color:var(--mut);font-size:12.5px}
+.addr{font-family:var(--mono);font-size:13px;overflow-wrap:anywhere} .addr span{display:inline-block;margin-right:.38em}
+.empty{padding:18px 20px;border-top:1px solid var(--border);display:flex;gap:12px;align-items:flex-start}
+/* advanced */
+.act{width:100%;border-collapse:collapse} .act td{padding:9px 12px;border-top:1px solid var(--border);vertical-align:middle;font-size:13.5px} .act td:first-child{padding-left:20px;width:1%} .act td:last-child{padding-right:20px;text-align:right;white-space:nowrap}
+.act small{display:block;color:var(--mut);font-size:12.5px}
+.pins{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pinl{font-size:12px;font-weight:600;color:var(--mut);display:inline-flex;gap:5px;align-items:center;margin-right:2px}
+.pinpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:4px 16px;margin-top:10px} .pinpick label{display:flex;gap:8px;align-items:center;font-size:13.5px;padding:3px 0} .pinpick input{accent-color:var(--primary)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.tile{display:flex;flex-direction:column;gap:3px;text-align:left;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--card);min-width:0}
+.tile:hover{background:var(--hover)} .tile .th{display:flex;gap:7px;align-items:center;font-size:12.5px;font-weight:600;color:var(--mut)} .tile .th .pill{margin-left:auto}
+.tile .fg{font-family:var(--mono);font-weight:700;font-size:15px;font-variant-numeric:tabular-nums} .tile .sb{font-size:12.5px;color:var(--mut)}
+.unused{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:12.5px;color:var(--mut);margin-top:10px}
+.unused button{border:1px dashed var(--border);background:none;border-radius:99px;padding:3px 11px;font-size:12.5px;color:var(--mut)} .unused button:hover{color:var(--fg);background:var(--hover)}
+.tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.tool{display:flex;gap:12px;text-align:left;padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--card)} .tool:hover{background:var(--hover)}
+.tool b{display:block;font-weight:600} .tool span.d{font-size:12.5px;color:var(--mut);display:block} .tool .s{font-size:12.5px;color:var(--ptext);font-weight:600;display:block;margin-top:3px}
+.tool.adv{border-style:dashed}
+/* forms */
+.fld{display:flex;flex-direction:column;gap:6px} .fld label,.flbl{font-size:13.5px;font-weight:500}
+.inp{height:44px;border-radius:10px;border:1px solid var(--border);background:var(--bg);padding:0 13px;width:100%;font-size:14px} .inp.mono{font-size:13px}
+.err{color:var(--danger);font-size:13px;margin:0}
+.sw{flex:none;width:50px;height:28px;border-radius:99px;border:0;padding:2px;display:flex;background:var(--border)} .sw i{width:24px;height:24px;border-radius:50%;background:var(--bg);transition:transform .15s} .sw[aria-checked="true"]{background:var(--primary)} .sw[aria-checked="true"] i{transform:translateX(22px)}
+.choice{display:flex;gap:10px;align-items:flex-start;text-align:left;padding:11px 13px;border:1px solid var(--border);border-radius:11px;background:var(--bg);flex:1 1 220px} .choice[aria-pressed="true"]{border-color:var(--primary);background:var(--ptint)}
+.choice b{display:block} .choice span{font-size:12.5px;color:var(--mut)}
+.qr{width:164px;height:164px;background:#fff;border-radius:10px;padding:10px;flex:none}
+.log{font-family:var(--mono);font-size:12px;line-height:1.75;color:var(--mut);margin:0;white-space:pre-wrap}
+.chk{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--border);font-size:13.5px} .chk small{display:block;color:var(--mut);font-size:12.5px}
+/* dialog */
+.ov{position:absolute;inset:0;z-index:20;background:var(--scrim);display:grid;place-items:center;padding:24px}
+.dlg{width:min(620px,100%);max-height:100%;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 24px 64px hsl(0 0% 0% / .4)}
+.dlg h2{font-size:19px;font-weight:600;margin:0;letter-spacing:-.01em} .dlg .amt{font-family:var(--mono);font-size:26px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.rv{border:1px solid var(--border);border-radius:12px;padding:4px 14px} .rv .kv{padding:9px 0;border-top:1px solid var(--border)} .rv .kv:first-child{border-top:0}
+.rv h3{font-size:12px;font-weight:600;color:var(--mut);margin:10px 0 2px}
+.dact{display:flex;gap:10px} .dact .btn{flex:1}
+.spin{width:16px;height:16px;border-radius:50%;border:2px solid var(--itint);border-top-color:var(--info);animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}} @media (prefers-reduced-motion:reduce){.spin{animation:none}.sw i{transition:none}}
+.toast{position:absolute;z-index:30;left:50%;bottom:18px;transform:translateX(-50%);max-width:80%;background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13.5px;font-weight:500;box-shadow:0 8px 24px hsl(0 0% 0% / .3)}
+.lockscr{position:absolute;inset:30px 0 0;z-index:25;background:var(--bg);display:grid;place-items:center;text-align:center;padding:24px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+
+/* narrower windows */
+@container win (max-width:1100px){
+  .side{width:208px} .top{padding-left:22px;padding-right:22px} .main{padding-left:22px;padding-right:22px}
+  .split{grid-template-columns:minmax(0,1fr)} .split>aside{display:contents} .split>aside>.card:first-child{order:-1} .hero .big{font-size:32px}
+}
+@container win (max-width:900px){
+  .side{width:62px;padding:14px 8px;align-items:stretch} .side .lbl,.brand span,.navh,.acctbtn .tx,.nodec .hid{display:none}
+  .brand{justify-content:center;padding:0} .acctbtn{justify-content:center;border:0;background:none;padding:4px} .quick{grid-template-columns:1fr} .quick .btn{padding:0}
+  .nav{justify-content:center;padding:0;position:relative} .nav .badge{position:absolute;top:1px;right:3px;font-size:10px;line-height:15px;min-width:15px;padding:0 4px}
+  .nodec{align-items:center;padding:10px 4px} .nodec .r{justify-content:center} .menu{left:calc(100% + 6px);top:0}
+  .top{padding:14px 18px 8px} .main{padding:6px 18px 22px} .ttl p{display:none} .seglbl{display:none}
+  .chip .lbl{display:none} .chip{padding:0 10px}
+  .split,.halves,.split.adv,.halves.form,.halves.eq{grid-template-columns:minmax(0,1fr)}
+  .wide{display:none} .nar{display:block} .hero .big{font-size:28px}
+}
+</style>
+
+<div class="pg">
+  <header>
+    <h1>go-syrius: Everyday and Advanced</h1>
+    <p class="lead">Two layouts over one wallet, one visual identity and one transaction review. Everything here is fictional: accounts, addresses, balances, prices and transactions are simulated and nothing leaves this page.</p>
+  </header>
+
+  <section aria-labelledby="s1">
+    <div class="secth"><h2 class="sec" id="s1">Home, side by side</h2>
+      <p class="lead">Same account, same balances, same moment. Everyday answers what you own and what needs doing. Advanced answers what this account operates and what is waiting on it.</p></div>
+    <div class="ctl"><div class="grp" role="group" aria-label="Account shown in both windows"><span class="cap">Account</span>
+      <button class="pbtn" id="cmpA0" aria-pressed="true">Holder account</button>
+      <button class="pbtn" id="cmpA1" aria-pressed="false">Pillar operator, vote pending</button></div></div>
+    <div class="cmp">
+      <div><h3>Everyday <span>for holders</span></h3><div class="stage" data-w="1160" data-h="800"><div class="win" id="cmpE" inert aria-label="Everyday Home preview"></div></div></div>
+      <div><h3>Advanced <span>for active users and node operators</span></h3><div class="stage" data-w="1160" data-h="800"><div class="win" id="cmpX" inert aria-label="Advanced overview preview"></div></div></div>
+    </div>
+    <p class="note">These two are previews of a 1160 × 800 window, scaled to fit. Use the working window below to click through.</p>
+  </section>
+
+  <section aria-labelledby="s2">
+    <div class="secth"><h2 class="sec" id="s2">Clickable prototype</h2>
+      <p class="lead">The mode switch is in the window's top bar. The controls in this grey strip belong to the prototype, not the wallet.</p></div>
+    <div class="ctl">
+      <div class="grp" role="group" aria-label="Journey"><span class="cap">Journeys</span>
+        <button class="pbtn" id="j1">Receive a payment</button>
+        <button class="pbtn" id="j2">Review a send</button>
+        <button class="pbtn" id="j3">Open a pending pillar vote</button>
+        <button class="pbtn" id="j0">Reset</button></div>
+      <div class="grp"><span class="cap">Simulate</span>
+        <label><input type="checkbox" id="scFail"> Incoming lookup fails</label>
+        <label><input type="checkbox" id="scStall"> Embedded sync stalled</label>
+        <label><input type="checkbox" id="scGate"> Mainnet consent not given</label></div>
+      <div class="grp" role="group" aria-label="Window size"><span class="cap">Window</span>
+        <button class="pbtn" data-size="1280x800" aria-pressed="true">1280 × 800</button>
+        <button class="pbtn" data-size="1024x720" aria-pressed="false">1024 × 720</button>
+        <button class="pbtn" data-size="820x640" aria-pressed="false">820 × 640</button></div>
+    </div>
+    <div class="guide" id="guide" aria-live="polite">Pick a journey, or click around. Switch <b>Mode</b> at any point: the account, network and any unfinished send stay as they are.</div>
+    <div class="stage" id="protoStage" data-w="1280" data-h="800"><div class="win" id="proto"></div></div>
+    <p class="note">At 820 wide the sidebar becomes an icon rail, top-bar chips drop to icon and count, and two-column screens stack. From 1024 down, the attention card moves above holdings so it stays in the first screenful.</p>
+  </section>
+
+  <section aria-labelledby="s3">
+    <div class="secth"><h2 class="sec" id="s3">Where I'd adjust the brief</h2>
+      <p class="lead">You asked me to check the split rather than take it as given. Everyday stays small on purpose; these are the calls I made.</p></div>
+    <div class="pos">
+      <div><b>Operator tools are named in Everyday, not opened</b><p>More tools lists Pillars, Sentinels, token issuance, Accelerator-Z and node management under "Advanced mode only". Choosing one switches mode after saying so. Holders never see launch forms, but can find out they exist.</p></div>
+      <div><b>Delegating stays in Earn</b><p>Picking a pillar to delegate to is a holder action, so it sits with staking and rewards. Running a pillar is not, so registration, pillar stats and voting are Advanced.</p></div>
+      <div><b>Held tokens always show</b><p>Hiding token issuance must not hide tokens you hold. Home lists every asset, with "No price" where there is none.</p></div>
+      <div><b>Obligations cross the line</b><p>A pillar owner in Everyday still sees one line about a waiting vote, and a stalled node still warns that balances may be stale. Both lead into Advanced rather than rebuilding the tool.</p></div>
+      <div><b>Plasma is a tool, not a home tile</b><p>Holders only need to know if the next transaction is instant. Everyday shows that inside the review and puts fusion under More tools.</p></div>
+      <div><b>The incoming count never toggles anything</b><p>Today the top-bar icon carrying the count switches auto-receive. Here the count opens the payments, and auto-receive is a labelled switch on Receive and in Settings.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s4">
+    <div class="secth"><h2 class="sec" id="s4">What shows where, and what it costs</h2></div>
+    <div class="twrap"><table class="sum">
+      <thead><tr><th>Element</th><th>Everyday</th><th>Advanced</th><th>Build</th><th>Based on</th></tr></thead>
+      <tbody>
+        <tr class="g"><th colspan="5">Always visible</th></tr>
+        <tr><td>Active account and switcher</td><td>Sidebar</td><td>Sidebar</td><td><span class="tag re">Reuse</span></td><td>AccountSlotPicker</td></tr>
+        <tr><td>Mode switch</td><td>Top bar, Settings</td><td>Top bar, Settings</td><td><span class="tag nw">New</span></td><td>New preference in ConfigService; two nav sets in Sidebar</td></tr>
+        <tr><td>Network chip (name and chain)</td><td>Top bar</td><td>Top bar</td><td><span class="tag nw">New</span></td><td>Chain id is only in Settings today</td></tr>
+        <tr><td>Lock</td><td>Top bar</td><td>Top bar</td><td><span class="tag re">Reuse</span></td><td>TopBar</td></tr>
+        <tr><td>Send and Receive</td><td>Sidebar buttons, Home</td><td>Sidebar nav</td><td><span class="tag re">Reuse</span></td><td>Transfer, Receive views</td></tr>
+        <tr><td>Node status</td><td>Sidebar card</td><td>Sidebar card, Node tile</td><td><span class="tag re">Reuse</span></td><td>Sidebar sync card</td></tr>
+        <tr><td>All held assets split into spendable, waiting, committed</td><td>Home table</td><td>Holdings table with ZTS ids</td><td><span class="tag nw">New</span></td><td>Dashboard shows ZNN and QSR only; data is in balances, unreceived, stake, plasma stores</td></tr>
+        <tr><td>Fiat estimate with stated scope</td><td>Home</td><td>Holdings footer</td><td><span class="tag ch">Change</span></td><td>Dashboard total, price store; scope line is new</td></tr>
+        <tr class="g"><th colspan="5">Appears when relevant</th></tr>
+        <tr><td>Incoming-payment count that opens the payments</td><td>Top bar, Home</td><td>Top bar, Needs action</td><td><span class="tag ch">Change</span></td><td>TopBar icon currently toggles auto-receive</td></tr>
+        <tr><td>"Couldn't check" as its own state, with last-checked time</td><td>Home, Receive</td><td>Needs action, Receive</td><td><span class="tag nw">New</span></td><td>unreceived store has an error string but the list still reads "Nothing is waiting"</td></tr>
+        <tr><td>Active bridge sessions and disconnect</td><td>Top bar chip</td><td>Top bar chip, sidebar, tile</td><td><span class="tag re">Reuse</span></td><td>WalletConnect view; chip replaces the icon</td></tr>
+        <tr><td>Pending pillar vote</td><td>One line on Home, opens Advanced</td><td>Needs action, top bar, Pillars badge</td><td><span class="tag ch">Change</span></td><td>TopBar rocket badge, AcceleratorVote</td></tr>
+        <tr><td>Stalled sync warning</td><td>Banner in plain words</td><td>Banner, Needs action</td><td><span class="tag ch">Change</span></td><td>Sidebar status and Settings line exist</td></tr>
+        <tr><td>Stalled sync diagnostics</td><td>Via Advanced</td><td>Node page</td><td><span class="tag nw">New</span></td><td>Needs peer history and node events from NodeService</td></tr>
+        <tr><td>Mainnet consent reached from the review, with a way back</td><td>Review dialog</td><td>Review dialog</td><td><span class="tag nw">New</span></td><td>Consent lives in Settings; TxService refuses with "mainnet sending is disabled"</td></tr>
+        <tr><td>Rewards ready, unfinished send</td><td>Home</td><td>Needs action</td><td><span class="tag ch">Change</span></td><td>Dashboard Earning card, RewardsPanel</td></tr>
+        <tr class="g"><th colspan="5">Under More tools (Everyday) or the sidebar (Advanced)</th></tr>
+        <tr><td>Earn: staking, delegation, rewards</td><td>Earn page</td><td>Staking, Pillars, Rewards</td><td><span class="tag ch">Change</span></td><td>New page composing StakingPanel, PillarDelegate, RewardsPanel</td></tr>
+        <tr><td>Plasma fusion, address book, bridge sessions</td><td>More tools</td><td>Sidebar</td><td><span class="tag re">Reuse</span></td><td>PlasmaPanel, AddressBook, WalletConnect</td></tr>
+        <tr><td>Pillars, Sentinels, token issuance, Accelerator-Z, node management</td><td>Listed as Advanced only</td><td>Sidebar and tiles</td><td><span class="tag re">Reuse</span></td><td>Existing panels, Tokens view, Settings node section</td></tr>
+        <tr><td>More tools index</td><td>Sidebar</td><td>Not needed</td><td><span class="tag nw">New</span></td><td>New view</td></tr>
+        <tr><td>Operator overview and pinned actions</td><td>Not shown</td><td>Overview</td><td><span class="tag nw">New</span></td><td>New view; pins need a saved preference</td></tr>
+        <tr><td>Shared transaction review</td><td>Dialog</td><td>Same dialog</td><td><span class="tag ch">Change</span></td><td>TxModal and NomConfirm: same fields, adds network row and consent gate</td></tr>
+      </tbody></table></div>
+  </section>
+</div>
+
+<script>
+(()=>{
+const ZNN='zts1znnxxxxxxxxxxxxx9z4ulx', QSR='zts1qsrxxxxxxxxxxxxxmrhjll';
+const RECIP='z1qzg5m8c2evx7nu9ky4h0wd3ts6rja2pf5l8q7x';
+const AZ='z1qxemdeddedxaccelerat0rxxxxxxxxxxp4tk22', PILLARC='z1qxemdeddedxpyllarxxxxxxxxxxxxxxxsy3fmg', STAKEC='z1qxemdeddedxstakexxxxxxxxxxxxxxxxjv8v62';
+const NETS={mainnet:{name:'Mainnet',chain:1},testnet:{name:'Testnet',chain:73404}};
+const H_OK=8419330,H_STALL=8412077;
+const P={home:'<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',activity:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',send:'<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',down:'<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',zap:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',layers:'<path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5M3 17l9 5 9-5"/>',pillar:'<path d="M4 21h16M6 21V7l6-4 6 4v14M10 21v-4h4v4M9 9h.01M15 9h.01M9 13h.01M15 13h.01"/>',shield:'<path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10z"/>',rocket:'<path d="M5 15c-1.5 1.3-2 5-2 5s3.7-.5 5-2M12 15l-3-3c1-4 4-9 11-10 0 6-4 10-8 13zM9 12H4s.5-3 2-4 5 0 5 0M12 15v5s3-.5 4-2 0-5 0-5"/>',coins:'<circle cx="8" cy="8" r="6"/><path d="M18.1 10.4A6 6 0 1 1 10.4 18"/>',gift:'<path d="M3 8h18v4H3zM12 8v13M5 12v9h14v-9M12 8S10.5 3 8 3a2.5 2.5 0 0 0 0 5M12 8s1.5-5 4-5a2.5 2.5 0 0 1 0 5"/>',link:'<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',server:'<rect x="3" y="3" width="18" height="8" rx="2"/><rect x="3" y="13" width="18" height="8" rx="2"/><path d="M7 7h.01M7 17h.01"/>',book:'<path d="M4 19.5V5a2 2 0 0 1 2-2h14v18H6a2 2 0 0 1-2-1.5zM4 19.5A2 2 0 0 1 6 17h14"/>',lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',alert:'<path d="M12 3 2 20h20zM12 10v4M12 17h.01"/>',check:'<path d="m5 12 5 5 9-10"/>',grid:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>',pin:'<path d="M12 17v5M8 3h8l-1 6 3 4H6l3-4z"/>',chev:'<path d="m9 6 6 6-6 6"/>',updown:'<path d="m7 15 5 5 5-5M7 9l5-5 5 5"/>',refresh:'<path d="M3 12a9 9 0 0 1 15.5-6.3L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.3L3 16M3 21v-5h5"/>',globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/>',x:'<path d="M6 6l12 12M18 6 6 18"/>',pencil:'<path d="M4 20h4L19 9l-4-4L4 16z"/>'};
+const ico=(n,z=16)=>`<svg class="ic" width="${z}" height="${z}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
+const grp=x=>x.replace(/\B(?=(\d{3})+(?!\d))/g,',');
+const amt=(n,dec=8)=>{if(n===0)return dec?'0.00':'0';if(n<0.01)return '<0.01';const d=Math.min(2,dec);const p=n.toFixed(d).split('.');return grp(p[0])+(d?'.'+p[1]:'')};
+const exact=(n,dec)=>{const p=n.toFixed(dec).split('.');return grp(p[0])+(dec?'.'+p[1]:'')};
+const base=(n,dec)=>BigInt(Math.round(n*10**dec)).toString();
+const usd=n=>'$'+amt(n,2);
+const full=a=>`<span class="addr">${a.match(/.{1,4}/g).map(c=>`<span>${c}</span>`).join('')}</span>`;
+const short=a=>a.slice(0,7)+'…'+a.slice(-5);
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const plural=(n,w)=>`${n} ${w}${n===1?'':'s'}`;
+
+function world(){return [
+ {name:'Holder account',tag:'Account 0',ini:'A0',addr:'z1qr4f9xk2m7dw8ul3hc6esn05jtgpav2y9zx7qe',
+  assets:[
+   {sym:'ZNN',name:'Zenon',zts:ZNN,dec:8,spend:1284.5,price:1.18,committed:[['Staked',500,'unlocks 14 Jan 2027']]},
+   {sym:'QSR',name:'Quasar',zts:QSR,dec:8,spend:9420,price:0.094,committed:[['Fused for plasma',150,'cancellable now']]},
+   {sym:'LUMEN',name:'Lumen Credits',zts:'zts1x7qk4m9c2dne5w0hyu3t8a',dec:6,spend:25000,price:null,committed:[],custom:true},
+   {sym:'ORB',name:'Orbit Pass',zts:'zts1f5gw8zr2pk6vs0m3jc9nel',dec:0,spend:12,price:null,committed:[],custom:true}],
+  waiting:[{h:'w1',from:'z1qpw3n8s5tkd0xj2c7yhv9e4mrz6ag0lu5f2k8c',sym:'ZNN',n:42.5},{h:'w2',from:'z1qq8e2vfm4ja7ct0x9nrs3hk5dy6wzlup2g7m4d',sym:'QSR',n:300},{h:'w3',from:'z1qrk6c0zu4hx8j2mv9t3fy7swdn5pael6q0g3r5',sym:'LUMEN',n:1000}],
+  rewards:{deleg:{znn:3.21,qsr:6.1},stake:{qsr:12.3}},stakes:[[500,'14 Jan 2027']],delegate:'Aurora',plasma:{level:'Medium',fused:150,entries:2},
+  pillar:null,issued:[],votes:[],
+  activity:[['in','Received','from z1qq8e2…7m4d','+120.00 QSR','Today 09:14'],['out','Sent','to Tamsin (rent)','−85.00 ZNN','Yesterday'],['call','Staked','Stake contract','500.00 ZNN','14 Oct'],['in','Received','from z1qpw3n…2k8c','+2,500.00 LUMEN','9 Oct']]},
+ {name:'Meridian operator',tag:'Account 1',ini:'A1',addr:'z1qpd7ey0wk3xn5s2c8vhtu4m6jagz9lfr03w5tk',
+  assets:[
+   {sym:'ZNN',name:'Zenon',zts:ZNN,dec:8,spend:312.07,price:1.18,committed:[['Pillar collateral',15000,'returned on dismantle']]},
+   {sym:'QSR',name:'Quasar',zts:QSR,dec:8,spend:48150,price:0.094,committed:[['Fused for plasma',2000,'cancellable now']]},
+   {sym:'MRD',name:'Meridian Points',zts:'zts1h9d3wq7c5xk2nz8a0v4mje',dec:2,spend:400000,price:null,committed:[],custom:true}],
+  waiting:[],rewards:{deleg:{znn:96.4,qsr:310},stake:{qsr:0}},stakes:[],delegate:'Meridian',plasma:{level:'High',fused:2000,entries:1},
+  pillar:{name:'Meridian',rank:17,of:41,weight:'1.92M ZNN',prod:'118 of 120 momentums this epoch'},issued:[{sym:'MRD',supply:'1,000,000.00',flags:'mintable, burnable'}],
+  votes:[{id:'a3f9c1e07b52d48860f1c2a9e5d7b3046c18f2ad9e0b7754c3a16d82f09e4b71',name:'Open ZTS indexer, phase 2',ask:'4,000 ZNN + 40,000 QSR',closes:'closes in 5 days',yes:14,no:3,abs:2,by:'z1qz0t7yd4sx9c3wke6n2vu5hmjr8gapf0l4q9s2',desc:'Funds an open-source indexer for token transfers and holders, with a public API for wallets and explorers.'}],
+  activity:[['call','Collected rewards','Pillar contract','96.40 ZNN','3 days ago'],['call','Voted Yes','Accelerator-Z · Bridge monitor','','8 days ago'],['out','Sent','to Cold storage','−1,200.00 ZNN','12 days ago']]}];}
+const CONTACTS={[RECIP]:'Tamsin (rent)'};
+const PINS={fuse:['Fuse QSR','zap','plasma'],collect:['Collect rewards','gift','rewards'],recvall:['Open incoming payments','down','receive'],vote:['Vote on projects','rocket','accelerator'],send:['Send','send','send'],stake:['Stake ZNN','layers','staking'],node:['Node diagnostics','server','node'],bridge:['Bridge sessions','link','bridge'],token:['Issue or manage tokens','coins','tokens']};
+// Tools. adv = hidden from Everyday except as a named pointer into Advanced.
+const TOOLS={
+ plasma:{n:'Plasma',i:'zap',d:'Fuse QSR so your transactions go out instantly instead of waiting on proof-of-work.',re:'PlasmaPanel.vue',st:a=>`${amt(a.plasma.fused)} QSR fused`},
+ addressbook:{n:'Address book',i:'book',d:'Names for the addresses you send to.',re:'AddressBook.vue',st:()=>'2 contacts'},
+ bridge:{n:'Bridge sessions',i:'link',d:'Apps connected through WalletConnect, and how to disconnect them.',re:'WalletConnect.vue'},
+ staking:{n:'Staking',i:'layers',d:'Lock ZNN for a fixed term to earn QSR.',re:'StakingPanel.vue',adv:1},
+ pillars:{n:'Pillars',i:'pillar',d:'Register and run a pillar, or inspect the pillar list.',re:'PillarPanel.vue, PillarLaunch.vue',adv:1},
+ sentinels:{n:'Sentinels',i:'shield',d:'Register and run a sentinel node.',re:'SentinelsPanel.vue, SentinelLaunch.vue',adv:1},
+ accelerator:{n:'Accelerator-Z',i:'rocket',d:'Propose, fund and vote on projects.',re:'AcceleratorPanel.vue',adv:1},
+ tokens:{n:'Token administration',i:'coins',d:'Issue a token, mint, burn and transfer ownership.',re:'Tokens.vue',adv:1},
+ rewards:{n:'Rewards',i:'gift',d:'Collect delegation, staking, pillar and sentinel rewards.',re:'RewardsPanel.vue',adv:1},
+ node:{n:'Node management',i:'server',d:'Choose remote or embedded node and investigate sync.',re:'Settings.vue node section',adv:1}};
+const ADVONLY=new Set(['staking','pillars','sentinels','accelerator','tokens','rewards','node']);
+const TITLES={send:['Send','Review happens on the built transaction'],receive:['Receive','Your address and payments waiting for you'],activity:['Activity','Everything this account sent, received and called'],earn:['Earn','Staking, delegation and rewards'],tools:['More tools','Everything else go-syrius can do'],settings:['Settings','Mode, network, receiving and security'],bridge:['Bridge sessions','WalletConnect apps that can ask this wallet to sign'],node:['Node','Connection, sync and diagnostics'],accelerator:['Accelerator-Z','Projects and pillar votes']};
+
+function init(o){return {mode:o.mode||'everyday',acct:o.acct||0,route:'home',net:'mainnet',mainnetOK:true,askMainnet:false,returnTo:null,
+  lookupFail:false,stalled:false,syncing:false,nodeMode:'embedded',auto:[false,false],draft:{to:'',asset:'ZNN',amount:''},err:null,
+  review:null,phase:null,busy:{},pins:['fuse','collect','recvall'],editPins:false,sessions:[{id:'s1',name:'NoM Bridge (sample)',url:'bridge.example',acct:0,since:'2 h ago'}],askDisc:null,
+  locked:false,menu:false,voted:null,advRoute:null,accounts:world()}}
+
+function createApp(root,o={}){
+ const s=init(o); const id=root.id;
+ root.innerHTML='<div class="body"></div><div class="toast" role="status" aria-live="polite" hidden></div>';
+ const body=root.firstChild,toastEl=root.lastChild;let tt;
+ const toast=m=>{toastEl.textContent=m;toastEl.hidden=false;clearTimeout(tt);tt=setTimeout(()=>toastEl.hidden=true,5000)};
+ const acc=()=>s.accounts[s.acct];
+ const asset=(sym,a=acc())=>a.assets.find(x=>x.sym===sym);
+ const waitSum=(a,sym)=>s.lookupFail?null:a.waiting.filter(w=>w.sym===sym).reduce((t,w)=>t+w.n,0);
+ const height=()=>s.stalled?H_STALL:H_OK;
+ const blocked=()=>s.net==='mainnet'&&!s.mainnetOK;
+ const hasDraft=()=>s.draft.to||s.draft.amount;
+ const rewardsTotal=a=>({znn:a.rewards.deleg.znn,qsr:a.rewards.deleg.qsr+a.rewards.stake.qsr});
+
+ // ── attention: one source for both modes ──
+ function attention(){const a=acc(),L=[],ev=s.mode==='everyday';
+  if(s.stalled)L.push({t:'dg',i:'alert',h:ev?'Your node has stopped syncing':'Embedded node sync stalled',d:ev?`Balances may be out of date. Last update 14 minutes ago.`:`#${grp(''+H_STALL)} of #${grp(''+H_OK)} · 0 peers · no momentum for 14 min`,c:'Investigate',act:'go',arg:'node'});
+  if(s.lookupFail)L.push({t:'wn',i:'alert',h:"Couldn't check for incoming payments",d:'The node did not answer. Payments may still be waiting. Last checked 14:02.',c:'Try again',act:'retry'});
+  else if(a.waiting.length)L.push({t:'ok',i:'down',h:`${plural(a.waiting.length,'payment')} waiting to be received`,d:a.waiting.map(w=>`${amt(w.n,asset(w.sym)?.dec??8)} ${w.sym}`).join(' · '),c:'Open payments',act:'go',arg:'receive'});
+  if(a.pillar&&a.votes.length&&!s.voted)L.push({t:'in',i:'rocket',h:`${a.pillar.name} has ${plural(a.votes.length,'vote')} waiting`,d:`${a.votes[0].name} · ${a.votes[0].closes}`,c:ev?'Open in Advanced':'Open vote',act:'go',arg:'accelerator'});
+  if(blocked())L.push({t:'wn',i:'lock',h:'Mainnet transactions are off',d:'You can view balances. Sending and receiving stay blocked until you allow them.',c:'Review setting',act:'go',arg:'settings'});
+  const r=rewardsTotal(a);if(r.znn||r.qsr)L.push({t:'ok',i:'gift',h:'Rewards ready to collect',d:`${amt(r.znn)} ZNN · ${amt(r.qsr)} QSR`,c:'Collect',act:'go',arg:ev?'earn':'rewards'});
+  if(hasDraft()&&s.route!=='send')L.push({t:'in',i:'pencil',h:'Unfinished send',d:`${esc(s.draft.amount||'…')} ${s.draft.asset} to ${s.draft.to?esc(short(s.draft.to)):'…'}`,c:'Resume',act:'go',arg:'send'});
+  return L}
+
+ // ── chrome ──
+ function nav(route,label,icon,badge,bw){const on=s.route===route||(route==='tools'&&TOOLS[s.route]);return `<button class="nav ${on?'on':''}" data-act="go" data-arg="${route}" ${on?'aria-current="page"':''} title="${label}">${ico(icon,18)}<span class="lbl">${label}</span>${badge?`<span class="badge ${bw||''}">${badge}<span class="sr"> waiting</span></span>`:''}</button>`}
+ function sidebar(){const a=acc(),ev=s.mode==='everyday';const inc=s.lookupFail?'?':a.waiting.length;const v=a.pillar&&a.votes.length&&!s.voted?a.votes.length:0;
+  const st=s.stalled?['Sync stalled','dg',99.9]:s.syncing?['Syncing 99%','wn',99]:['Synced','ok',100];
+  return `<aside class="side" aria-label="Main navigation">
+   <div class="brand"><div class="mk">s</div><span>go-syrius</span></div>
+   <div class="acct"><button class="acctbtn" data-act="menu" aria-expanded="${s.menu}" aria-haspopup="true" title="Switch account: ${a.name}"><span class="av ${s.acct?'b':''}">${a.ini}</span><span class="tx" style="flex:1;min-width:0"><span class="nm" style="display:block">${a.name}</span><span class="sub">${short(a.addr)}</span></span><span class="lbl mut">${ico('updown',14)}</span></button>
+   ${s.menu?`<div class="menu" role="menu" aria-label="Accounts">${s.accounts.map((x,i)=>`<button role="menuitemradio" aria-checked="${i===s.acct}" data-act="acct" data-arg="${i}"><span class="av ${i?'b':''}">${x.ini}</span><span style="flex:1"><b>${x.name}</b><small class="mono">${short(x.addr)}</small></span>${i===s.acct?ico('check'):''}</button>`).join('')}</div>`:''}</div>
+   ${ev?`<div class="quick"><button class="btn pri sm" data-act="go" data-arg="send" title="Send">${ico('send')}<span class="lbl">Send</span></button><button class="btn sm" data-act="go" data-arg="receive" title="Receive">${ico('down')}<span class="lbl">Receive</span></button></div>
+   <nav class="navs" aria-label="Wallet">${nav('home','Home','home')}${nav('activity','Activity','activity')}${nav('earn','Earn','gift')}${nav('tools','More tools','grid')}${nav('settings','Settings','settings')}</nav>`
+   :`<div><div class="navh">Wallet</div><nav class="navs" aria-label="Wallet">${nav('home','Overview','home')}${nav('send','Send','send')}${nav('receive','Receive','down',inc,s.lookupFail?'w':'')}${nav('activity','Activity','activity')}</nav></div>
+   <div><div class="navh">Network of Momentum</div><nav class="navs" aria-label="Network of Momentum">${nav('plasma','Plasma','zap')}${nav('staking','Staking','layers')}${nav('pillars','Pillars','pillar')}${nav('sentinels','Sentinels','shield')}${nav('accelerator','Accelerator-Z','rocket',v)}${nav('tokens','Tokens','coins')}${nav('rewards','Rewards','gift')}</nav></div>
+   <div><div class="navh">System</div><nav class="navs" aria-label="System">${nav('bridge','Bridge sessions','link',s.sessions.length)}${nav('node','Node','server',s.stalled?'!':0,'w')}${nav('addressbook','Address book','book')}${nav('settings','Settings','settings')}</nav></div>`}
+   <button class="nodec" data-act="go" data-arg="node" title="Node: ${st[0]}"><span class="r"><span class="st ${st[1]}">${ico('shield',14)}<span class="hid">${st[0]}</span></span><span class="mono mut hid">#${grp(''+height())}</span></span><span class="bar hid" aria-hidden="true"><i style="width:${st[2]}%;background:var(--${st[1]==='ok'?'primary':st[1]==='wn'?'warn':'danger'})"></i></span><span class="mut hid">${s.nodeMode==='embedded'?'Embedded node':'Remote node'}</span></button>
+  </aside>`}
+ function title(){if(s.route==='home')return s.mode==='everyday'?['Home','What you own and what needs you']:['Overview',`${acc().name} · what it holds, runs and owes`];
+  if(TITLES[s.route])return TITLES[s.route];const t=TOOLS[s.route];return [t.n,t.d]}
+ function topbar(){const a=acc(),t=title(),n=NETS[s.net];const v=a.pillar&&a.votes.length&&!s.voted?a.votes.length:0;
+  return `<header class="top"><div class="ttl"><h1 tabindex="-1">${t[0]}</h1><p>${t[1]}</p></div><div class="cluster">
+   <div class="seg" role="group" aria-label="Wallet mode"><span class="seglbl" aria-hidden="true">Mode</span><button data-act="mode" data-arg="everyday" aria-pressed="${s.mode==='everyday'}">Everyday</button><button data-act="mode" data-arg="advanced" aria-pressed="${s.mode==='advanced'}">Advanced</button></div>
+   <button class="chip ${s.net==='mainnet'&&!s.mainnetOK?'w':''}" data-act="go" data-arg="settings" title="Network: ${n.name}, chain ${n.chain}">${ico('globe')}<span>${n.name}</span><span class="lbl mut">chain ${n.chain}</span></button>
+   ${s.lookupFail?`<button class="chip w" data-act="go" data-arg="receive" title="Couldn't check for incoming payments">${ico('alert')}<span class="lbl">Incoming: couldn't check</span></button>`:a.waiting.length?`<button class="chip p" data-act="go" data-arg="receive" title="Open ${plural(a.waiting.length,'incoming payment')}">${ico('down')}<span>${a.waiting.length}</span><span class="lbl">incoming</span></button>`:''}
+   ${v?`<button class="chip p" data-act="go" data-arg="accelerator" title="${plural(v,'pillar vote')} waiting">${ico('rocket')}<span>${v}</span><span class="lbl">${v===1?'vote':'votes'}</span></button>`:''}
+   ${s.sessions.length?`<button class="chip" data-act="go" data-arg="bridge" title="${plural(s.sessions.length,'active bridge session')}">${ico('link')}<span>${s.sessions.length}</span><span class="lbl">${s.sessions.length===1?'bridge':'bridges'}</span></button>`:''}
+   <button class="chip" data-act="lock" title="Lock wallet">${ico('lock')}<span class="lbl">Lock</span></button>
+  </div></header>`}
+ function banner(){if(s.stalled&&s.route!=='node')return `<div class="banner d" role="alert"><span class="dg">${ico('alert',18)}</span><div class="gr"><b>${s.mode==='everyday'?'Your node has stopped syncing':'Embedded node sync stalled'}</b>Balances and incoming payments are shown as of #${grp(''+H_STALL)}, 14 minutes ago.</div><button class="btn sm" data-act="go" data-arg="node">Investigate</button></div>`;return ''}
+
+ // ── shared pieces ──
+ function todoList(){const L=attention();if(!L.length)return `<div class="clear"><span class="dot ok">${ico('check')}</span><span>Nothing needs you right now. <span class="mut">Incoming payments checked 12 s ago.</span></span></div>`;
+  return `<ul class="todo">${L.map(x=>`<li><span class="dot ${x.t} ${x.t==='in'?'':x.t}">${ico(x.i)}</span><span class="tx"><b>${x.h}</b><span>${x.d}</span></span><button class="btn sm" data-act="${x.act}" ${x.arg?`data-arg="${x.arg}"`:''} data-id="td-${x.i}">${x.c}</button></li>`).join('')}</ul>`}
+ function fiatScope(a){const priced=a.assets.filter(x=>x.price!=null),un=a.assets.filter(x=>x.price==null).map(x=>x.sym);
+  const total=priced.reduce((t,x)=>t+(x.spend+x.committed.reduce((c,k)=>c+k[1],0))*x.price,0);
+  return {total,un,priced:priced.map(x=>x.sym)}}
+ function assetRows(a,dense){return a.assets.map(x=>{const w=waitSum(a,x.sym),com=x.committed.reduce((t,k)=>t+k[1],0);
+   const fiat=s.net!=='mainnet'?'<span class="z">n/a</span>':x.price==null?'<span class="z">No price</span>':'≈ '+usd((x.spend+com)*x.price);
+   return `<tr><td><div class="tk"><span class="av ${x.sym==='QSR'?'b':''}" ${x.custom?'style="background:var(--hover);color:var(--mut)"':''}>${x.sym.slice(0,3)}</span><span><b>${x.name} <span class="mut" style="font-weight:500">${x.sym}</span></b>${dense?`<small class="mono">${x.zts}</small>`:x.custom?'<small>Custom token</small>':''}<small class="${dense?'nar':''}">${fiat}</small></span></div></td>
+    <td>${dense?exact(x.spend,x.dec):amt(x.spend,x.dec)}</td>
+    <td>${w===null?'<span class="wn" title="Couldn\'t check">?</span>':w?`<span class="ok">+${amt(w,x.dec)}</span>`:'<span class="z">—</span>'}</td>
+    <td>${com?`${amt(com,x.dec)}${x.committed.map(k=>`<small>${amt(k[1],x.dec)} ${k[0].toLowerCase()}${dense?' · '+k[2]:''}</small>`).join('')}`:'<span class="z">—</span>'}</td>
+    ${dense?`<td class="wide">${fiat}</td>`:''}</tr>`}).join('')}
+ function assetTable(a,dense){const f=fiatScope(a);return `<div class="tw"><table class="as ${dense?'dense':''}"><thead><tr><th scope="col">Asset</th><th scope="col">Spendable</th><th scope="col">Waiting</th><th scope="col">Committed</th>${dense?'<th scope="col" class="wide">Est. value</th>':''}</tr></thead><tbody>${assetRows(a,dense)}</tbody>
+  ${dense?`<tfoot><tr><td colspan="5">${s.net==='mainnet'?`Estimate ${usd(f.total)} covers ${f.priced.join(' and ')}, spendable and committed. ${f.un.length?f.un.join(', ')+' unpriced.':''} Waiting amounts excluded.`:'Testnet funds have no market value.'}</td></tr></tfoot>`:''}</table></div>`}
+ function activityRows(a,n){return a.activity.slice(0,n).map(r=>`<div class="row"><span class="dot ${r[0]==='in'?'ok':r[0]==='out'?'':'in'}" ${r[0]==='out'?'style="background:var(--hover)"':''}>${ico(r[0]==='in'?'down':r[0]==='out'?'send':'layers')}</span><span class="g"><b>${r[1]}</b><small>${r[2]}</small></span><span style="text-align:right"><span class="mono ${r[0]==='in'?'ok':''}">${r[3]}</span><small class="mut" style="display:block;font-size:12px">${r[4]}</small></span></div>`).join('')}
+
+ // ── Everyday Home ──
+ function homeE(){const a=acc(),f=fiatScope(a);const wn=s.lookupFail?null:a.waiting.length;
+  return `<div class="split"><div class="stack">
+   <section class="card flush" aria-labelledby="${id}own"><div class="hero"><div class="v"><h2 id="${id}own" class="mut" style="font-size:13.5px;font-weight:500">${s.net==='mainnet'?'Estimated value of what you own':'What you own'}</h2>
+     ${s.net==='mainnet'?`<div class="big">${usd(f.total)}</div><p class="hint" style="margin-top:6px;max-width:58ch">Covers ${f.priced.join(' and ')}, including staked and fused amounts. Not counted: ${f.un.length?f.un.join(' and ')+' (no price available)':'nothing unpriced'}${wn?`, and ${plural(wn,'payment')} not yet received`:wn===null?', and any payments not yet received':''}.</p>`
+     :`<div class="big" style="font-size:24px">Testnet funds</div><p class="hint" style="margin-top:6px">Testnet coins have no market value, so no estimate is shown.</p>`}</div>
+     <div class="acts"><button class="btn pri" data-act="go" data-arg="send" data-id="hs">${ico('send')}Send</button><button class="btn" data-act="go" data-arg="receive" data-id="hr">${ico('down')}Receive</button></div></div>
+     ${assetTable(a)}</section>
+   <section class="card flush" aria-labelledby="${id}ra"><div class="hd"><h2 id="${id}ra">Recent activity</h2><button class="lnk" data-act="go" data-arg="activity" data-id="all">See all ${ico('chev',14)}</button></div><div class="rows">${activityRows(a,3)}</div></section>
+  </div><aside class="stack" aria-label="Needs your attention">
+   <section class="card ${attention().length?'acc':''}"><h2>${attention().length?'Needs your attention':'All caught up'}</h2>${todoList()}</section>
+   <section class="card"><h2>Earning</h2><div style="margin-top:8px">
+     <div class="kv"><span>Staked</span><span class="mono">${a.stakes.length?amt(a.stakes[0][0])+' ZNN':'—'}</span></div>
+     <div class="kv"><span>Delegating to</span><span>${a.delegate}</span></div></div>
+     <button class="lnk" style="margin-top:8px" data-act="go" data-arg="earn" data-id="earn">Open Earn ${ico('chev',14)}</button></section>
+  </aside></div>`}
+
+ // ── Advanced overview ──
+ function homeA(){const a=acc(),L=attention();
+  const tiles=[
+   ['plasma','zap','Plasma',a.plasma.level,`${amt(a.plasma.fused)} QSR fused`,`${plural(a.plasma.entries,'fusion entry').replace('entrys','entries')}`,a.plasma.level==='Low'?'wn':'ok',1],
+   ['staking','layers','Staking',a.stakes.length?'Active':null,a.stakes.length?`${amt(a.stakes[0][0])} ZNN`:'',a.stakes.length?`unlocks ${a.stakes[0][1]}`:'',a.stakes.length?'ok':'n',a.stakes.length],
+   ['pillars','pillar','Pillar',a.pillar?'Owner':null,a.pillar?a.pillar.name:'',a.pillar?`rank ${a.pillar.rank} of ${a.pillar.of} · ${a.pillar.prod}`:'','ok',!!a.pillar],
+   ['accelerator','rocket','Accelerator-Z',a.pillar?(s.voted?'Up to date':plural(a.votes.length,'vote')+' due'):null,a.pillar?(s.voted?'No votes due':a.votes[0].name):'',a.pillar&&!s.voted?a.votes[0].closes:'',s.voted?'ok':'in',!!a.pillar],
+   ['tokens','coins','Tokens issued',a.issued.length?'Owner':null,a.issued.length?`${a.issued[0].sym} · ${a.issued[0].supply}`:'',a.issued.length?a.issued[0].flags:'','ok',a.issued.length],
+   ['bridge','link','Bridge sessions',s.sessions.length?'Active':null,s.sessions.length?s.sessions[0].name:'',s.sessions.length?`${s.accounts[s.sessions[0].acct].name} · connected ${s.sessions[0].since}`:'','ok',s.sessions.length],
+   ['node','server','Node',s.stalled?'Stalled':s.syncing?'Syncing':'Synced',`#${grp(''+height())}`,`${s.nodeMode==='embedded'?'Embedded':'Remote'} · ${s.stalled?'0 peers':s.nodeMode==='embedded'?'7 peers':'wss://node.example'}`,s.stalled?'dg':s.syncing?'wn':'ok',1],
+   ['sentinels','shield','Sentinel',null,'','','n',0]];
+  const used=tiles.filter(t=>t[7]),unused=tiles.filter(t=>!t[7]);
+  if(!a.pillar)unused.splice(0,0,...[]);
+  return `<section class="card flush" aria-labelledby="${id}na"><div class="hd"><h2 id="${id}na">Needs action <span class="mut" style="font-weight:400">· ${L.length}</span></h2><span class="hint">For ${a.name}</span></div>
+   ${L.length?`<table class="act"><tbody>${L.map(x=>`<tr><td><span class="dot ${x.t}">${ico(x.i)}</span></td><td><b>${x.h}</b><small>${x.d}</small></td><td><button class="btn sm ${x.t==='dg'||x.i==='rocket'?'pri':''}" data-act="${x.act}" ${x.arg?`data-arg="${x.arg}"`:''} data-id="na-${x.i}">${x.c}</button></td></tr>`).join('')}</tbody></table>`:`<div class="empty"><span class="dot ok">${ico('check')}</span><span>Nothing is waiting on this account. <span class="mut">Incoming payments checked 12 s ago.</span></span></div>`}</section>
+  <section class="card" style="padding:14px 20px" aria-label="Pinned actions"><div class="pins"><span class="pinl">${ico('pin',14)}Pinned</span>
+   ${s.pins.map(p=>`<button class="btn sm" data-act="go" data-arg="${PINS[p][2]}" data-id="pin-${p}">${ico(PINS[p][1],14)}${PINS[p][0]}</button>`).join('')||'<span class="hint">No pinned actions yet.</span>'}
+   <button class="lnk" style="margin-left:auto" data-act="pinEdit" aria-expanded="${s.editPins}">${s.editPins?'Done':'Edit pins'}</button></div>
+   ${s.editPins?`<fieldset style="border:0;padding:0;margin:0"><legend class="sr">Choose pinned actions</legend><div class="pinpick">${Object.entries(PINS).map(([k,v])=>`<label><input type="checkbox" id="${id}pin-${k}" data-pin="${k}" ${s.pins.includes(k)?'checked':''}>${v[0]}</label>`).join('')}</div></fieldset>`:''}</section>
+  <section class="card flush" aria-labelledby="${id}hold"><div class="hd"><h2 id="${id}hold">Holdings</h2><span class="hint mono">${short(a.addr)}</span></div>${assetTable(a,true)}</section>
+   <section aria-labelledby="${id}pos" style="min-width:0"><h2 id="${id}pos" class="sr">Positions and services</h2><div class="tiles">${used.map(t=>`<button class="tile" data-act="go" data-arg="${t[0]}" data-id="tile-${t[0]}"><span class="th">${ico(t[1],14)}${t[2]}<span class="pill ${t[6]}">${t[3]}</span></span><span class="fg">${t[4]}</span><span class="sb">${t[5]}</span></button>`).join('')}</div>
+   ${unused.length?`<div class="unused"><span>Not used by this account:</span>${unused.map(t=>`<button data-act="go" data-arg="${t[0]}" data-id="un-${t[0]}">${t[2]}</button>`).join('')}</div>`:''}</section>`}
+
+ // ── Receive ──
+ function qr(a){let h=7;for(const c of a)h=(h*31+c.charCodeAt(0))>>>0;let r='';const N=21,fin=(x,y)=>(x<7&&y<7)||(x>13&&y<7)||(x<7&&y>13);
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){let on;if(fin(x,y)){const fx=x>13?x-14:x,fy=y>13?y-14:y;on=fx===0||fx===6||fy===0||fy===6||(fx>1&&fx<5&&fy>1&&fy<5)}else{h=(h*1103515245+12345)>>>0;on=(h>>16)&1}if(on)r+=`<rect x="${x}" y="${y}" width="1" height="1"/>`}
+  return `<svg class="qr" viewBox="0 0 21 21" fill="#0d0d0d" role="img" aria-label="Sample QR pattern, not scannable">${r}</svg>`}
+ function receive(){const a=acc(),W=a.waiting,anyBusy=Object.keys(s.busy).length;
+  let list;
+  if(s.lookupFail)list=`<div class="empty" role="alert"><span class="dot wn">${ico('alert')}</span><div style="flex:1"><b>Couldn't check for incoming payments</b><p class="hint" style="margin:3px 0 10px;font-size:13.5px;color:var(--fg)">The node did not answer within 10 seconds. This is not the same as nothing waiting: payments sent to you are safe and will appear once the check succeeds.</p><p class="hint" style="margin-bottom:10px">Last successful check 14:02 at #${grp(''+(height()-84))}</p><button class="btn sm pri" data-act="retry">${ico('refresh',14)}Try again</button></div></div>`;
+  else if(!W.length)list=`<div class="empty"><span class="dot ok">${ico('check')}</span><div><b>Nothing waiting</b><p class="hint" style="margin-top:3px">Checked just now at #${grp(''+height())}. New payments show up here.</p></div></div>`;
+  else list=(blocked()?`<div class="banner w" style="border-radius:0" role="alert"><div class="gr"><b>Receiving is blocked on mainnet</b>Accepting a payment publishes a block. Mainnet transactions are off.</div><button class="btn sm" data-act="go" data-arg="settings" data-id="gate-r">Review setting</button></div>`:'')+
+   `<div class="rows">${W.map(w=>{const x=asset(w.sym)||{dec:8,name:w.sym};return `<div class="row" style="flex-wrap:wrap"><span class="dot ok">${ico('down')}</span><span class="g" style="flex:1 1 240px"><span class="mono ok" style="font-weight:700;font-size:15px">+${exact(w.n,x.dec)} ${w.sym}</span><small>${x.custom?`Custom token · <span class="mono">${x.zts}</span><br>`:''}from ${full(w.from)}</small></span>
+     ${s.busy[w.h]?`<span class="pill in"><span class="spin"></span>${a.plasma.level==='Low'?'Generating plasma…':'Receiving…'}</span>`:`<button class="btn sm" data-act="recv" data-arg="${w.h}" ${blocked()||s.busy.all?'disabled':''} aria-label="Receive ${amt(w.n,x.dec)} ${w.sym}">Receive</button>`}</div>`}).join('')}</div>`;
+  return `<div class="halves"><section class="card" aria-labelledby="${id}adr"><h2 id="${id}adr">Your address</h2><p class="hint" style="margin:2px 0 14px">${a.name} · ${NETS[s.net].name}</p><div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">${qr(a.addr)}<div style="flex:1 1 180px;min-width:0">${full(a.addr)}<div style="margin-top:12px"><button class="btn sm" data-act="copy">Copy address</button></div><p class="hint" style="margin-top:10px">Sample QR pattern for the prototype.</p></div></div></section>
+   <div class="stack"><section class="card flush" aria-labelledby="${id}wt"><div class="hd"><h2 id="${id}wt">Waiting to be received${s.lookupFail?'':` <span class="mut" style="font-weight:400">· ${W.length}</span>`}</h2>${!s.lookupFail&&W.length>1?`<button class="btn sm pri" data-act="recvAll" ${blocked()||anyBusy?'disabled':''}>${s.busy.all?'Receiving…':'Receive all'}</button>`:''}</div>${list}</section>
+   <section class="card" style="display:flex;gap:16px;align-items:center"><div style="flex:1;min-width:0"><h2 id="${id}ar">Receive automatically</h2><p class="hint" style="margin-top:4px">Off by default, and set per account. When on, payments to ${a.name} are accepted as they arrive while the wallet is unlocked. Each one uses a little plasma or a short proof-of-work.</p></div><button class="sw" role="switch" aria-checked="${s.auto[s.acct]}" aria-labelledby="${id}ar" data-act="auto"><i></i></button></section>
+   <p class="hint" style="padding:0 4px"><b style="color:var(--fg)">Why do payments wait?</b> On Zenon the receiver publishes a small block to accept each payment. Until then the funds are on their way and listed here.</p></div></div>`}
+
+ // ── Send ──
+ function send(){const a=acc(),d=s.draft,x=asset(d.asset)||a.assets[0];
+  return `<div class="halves form"><section class="card" aria-labelledby="${id}sf"><h2 id="${id}sf" class="sr">Send form</h2><div class="stack">
+   <div class="fld"><span class="flbl">From</span><div style="display:flex;gap:10px;align-items:center;padding:9px 12px;border:1px solid var(--border);border-radius:10px"><span class="av ${s.acct?'b':''}">${a.ini}</span><span style="min-width:0"><b>${a.name}</b><br>${full(a.addr)}</span></div></div>
+   <div class="fld"><label for="${id}to">To</label><input class="inp mono" id="${id}to" data-f="to" value="${esc(d.to)}" placeholder="z1…" autocomplete="off" spellcheck="false"><div><button class="lnk" data-act="sample">Use a sample address</button></div></div>
+   <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:12px"><div class="fld"><label for="${id}as">Asset</label><select class="inp" id="${id}as" data-f="asset">${a.assets.map(t=>`<option value="${t.sym}" ${t.sym===x.sym?'selected':''}>${t.sym} · ${t.name}</option>`).join('')}</select></div>
+   <div class="fld"><label for="${id}am">Amount</label><input class="inp mono" id="${id}am" data-f="amount" inputmode="decimal" value="${esc(d.amount)}" placeholder="0.00" autocomplete="off"></div></div>
+   <p class="hint">Spendable: <span class="mono" style="color:var(--fg)">${exact(x.spend,x.dec)} ${x.sym}</span>${x.custom?` · custom token <span class="mono">${x.zts}</span>`:''}</p>
+   ${s.err?`<p class="err" role="alert">${s.err}</p>`:''}
+   <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn pri" data-act="reviewSend">Review transaction</button>${hasDraft()?`<button class="btn" data-act="clearDraft">Clear</button>`:''}</div></div></section>
+   <aside class="card"><h2>Before anything is signed</h2><ol class="hint" style="padding-left:18px;margin:10px 0 0;font-size:13px;display:flex;flex-direction:column;gap:7px"><li>go-syrius builds the transaction from this form.</li><li>You review what the built transaction does, not what you typed.</li><li>On confirm it is hashed, signed and published. Plasma makes that instant; without it there is a short proof-of-work.</li></ol><p class="hint" style="margin-top:12px">This draft stays here if you switch mode or open another screen.</p></aside></div>`}
+
+ // ── shared review ──
+ function build(kind,p){const a=acc();
+  if(kind==='send'){const x=asset(p.asset),n=parseFloat(p.amount);return {kind,head:'Send',asset:x,n,to:p.to,toL:CONTACTS[p.to]||null,effects:[[`Spendable ${x.sym} after`,`${exact(x.spend-n,x.dec)} ${x.sym}`]],apply(){x.spend-=n;a.activity.unshift(['out','Sent','to '+(CONTACTS[p.to]||short(p.to)),`−${amt(n,x.dec)} ${x.sym}`,'Just now']);s.draft={to:'',asset:'ZNN',amount:''}}}}
+  if(kind==='vote'){const v=a.votes[0],code={Yes:0,No:1,Abstain:2}[p];return {kind,head:`Vote ${p}`,sub:v.name,asset:asset('ZNN'),n:0,to:AZ,toL:'Accelerator-Z embedded contract',call:['Accelerator','VoteByName',[['Project id',v.id],['Pillar name',a.pillar.name],['Vote',`${p} (${code})`]]],effects:[['Tokens moved','None'],['Can be changed','Until voting closes']],apply(){s.voted=p;a.activity.unshift(['call',`Voted ${p}`,'Accelerator-Z · '+v.name,'','Just now'])}}}
+  if(kind==='collect'){const st=p==='stake',r=st?a.rewards.stake:a.rewards.deleg;return {kind,head:st?'Collect staking rewards':'Collect delegation rewards',asset:asset('ZNN'),n:0,to:st?STAKEC:PILLARC,toL:st?'Stake embedded contract':'Pillar embedded contract',call:[st?'Stake':'Pillar','CollectReward',[]],effects:[['You will be sent',st?`${exact(r.qsr,8)} QSR`:`${exact(r.znn,8)} ZNN and ${exact(r.qsr,8)} QSR`],['Reward asset',st?'QSR only':'ZNN and QSR'],['Arrives as','Incoming payments you then receive']],apply(){const from=st?STAKEC:PILLARC;if(r.znn)a.waiting.push({h:'r'+Date.now(),from,sym:'ZNN',n:r.znn});if(r.qsr)a.waiting.push({h:'q'+Date.now(),from,sym:'QSR',n:r.qsr});if(st)a.rewards.stake={qsr:0};else a.rewards.deleg={znn:0,qsr:0};a.activity.unshift(['call','Collected rewards',st?'Stake contract':'Pillar contract','','Just now'])}}}}
+ function review(){const r=s.review,a=acc(),n=NETS[s.net],x=r.asset,pow=a.plasma.level==='Low';
+  if(s.phase==='done')return `<div class="ov"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="${id}rt"><span class="dot ok" style="width:40px;height:40px">${ico('check',20)}</span><h2 id="${id}rt" tabindex="-1" data-autofocus>${r.kind==='send'?`Sent ${exact(r.n,x.dec)} ${x.sym}`:r.kind==='vote'?'Vote published':'Rewards requested'}</h2><p class="hint" style="font-size:13.5px">Simulated. No transaction was created.</p><div class="rv"><div class="kv"><span>Transaction hash</span><span class="addr">${s.hash}</span></div><div class="kv"><span>Network</span><span>${n.name} · chain ${n.chain}</span></div></div><div class="dact"><button class="btn pri" data-act="done">Done</button></div></div></div>`;
+  const gate=blocked();
+  return `<div class="ov"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="${id}rt" aria-describedby="${id}rd">
+   <div><p class="hint" id="${id}rd">Review the built transaction. This is exactly what will be signed.</p><h2 id="${id}rt" tabindex="-1" data-autofocus style="margin-top:4px">${r.head}${r.sub?` on “${r.sub}”`:''}</h2></div>
+   ${r.kind==='send'?`<div class="amt">${exact(r.n,x.dec)} ${x.sym}</div>`:''}
+   ${s.net==='mainnet'?`<div class="banner ${gate?'d':'w'}" ${gate?'role="alert"':''}><span class="${gate?'dg':'wn'}">${ico(gate?'lock':'alert',18)}</span><div class="gr">${gate?`<b>Mainnet transactions are off</b>This transaction would use real funds on chain 1. go-syrius will not sign it until you allow mainnet transactions. That is a wallet-wide setting you turn on once, with its own explanation.`:`<b>Mainnet · real funds</b>You allowed mainnet transactions in Settings. Check the recipient and amount.`}</div>${gate?`<button class="btn sm" data-act="toGate">Open mainnet setting</button>`:''}</div>`:''}
+   <div class="rv">
+    <div class="kv"><span>${r.call?'Contract call value':'Amount'}</span><span class="mono">${exact(r.n,x.dec)} ${x.sym}${r.call&&!r.n?' <span class="mut" style="font-family:var(--sans)">(no tokens sent)</span>':''}</span></div>
+    <div class="kv"><span>Asset</span><span>${x.name} (${x.sym})<br><span class="mono" style="font-size:12.5px">${x.zts}</span><br><span class="mut" style="font-size:12.5px">${x.custom?'Custom token, not a protocol asset':'Protocol asset, 8 decimals fixed'}</span></span></div>
+    <div class="kv"><span>To</span><span>${r.toL?`<b>${r.toL}</b><br>`:'<span class="wn" style="font-size:12.5px">Not in your address book</span><br>'}${full(r.to)}</span></div>
+    <div class="kv"><span>From</span><span><b>${a.name}</b><br>${full(a.addr)}</span></div>
+    <div class="kv"><span>Network</span><span>${n.name} · chain ${n.chain}<br><span class="mut" style="font-size:12.5px">via ${s.nodeMode==='embedded'?'embedded node':'wss://node.example'}</span></span></div>
+    <div class="kv"><span>Fee</span><span>${pow?'None. Proof-of-work runs on confirm':'None. Covered by plasma'}</span></div>
+   </div>
+   ${x.custom&&r.kind==='send'?`<div class="rv" style="border-color:var(--warn)"><h3>Verify this custom token</h3><div class="kv" style="border-top:0"><span>Exact amount (base units)</span><span class="mono" style="overflow-wrap:anywhere">${base(r.n,x.dec)}</span></div><div class="kv"><span>Token standard</span><span class="mono" style="overflow-wrap:anywhere">${x.zts}</span></div><div class="kv"><span>Decimals</span><span>${x.dec}, as reported by the connected node</span></div><p class="hint" style="padding:2px 0 10px">The wallet cannot verify a custom token's decimals. The base-unit value is what the transaction transfers.</p></div>`:''}
+   <div class="rv">${r.call?`<h3>Decoded effect · ${r.call[0]}.${r.call[1]}</h3>${r.call[2].map(f=>`<div class="kv"><span>${f[0]}</span><span class="mono" style="overflow-wrap:anywhere;font-size:12.5px">${f[1]}</span></div>`).join('')}`:'<h3>Effect</h3>'}${r.effects.map(f=>`<div class="kv"><span>${f[0]}</span><span class="mono">${f[1]}</span></div>`).join('')}</div>
+   ${s.phase==='work'?`<div style="display:flex;gap:10px;align-items:center;color:var(--info);font-weight:600" role="status"><span class="spin"></span>${pow?'Generating plasma…':'Publishing…'}</div>`
+   :`<div class="dact"><button class="btn pri" data-act="confirm" ${gate||s.stalled?'disabled':''}>Confirm</button><button class="btn" data-act="cancel">Cancel</button></div>${s.stalled&&!gate?'<p class="hint">Confirm is unavailable while the node is not syncing.</p>':''}`}
+  </div></div>`}
+
+ // ── Earn / rewards ──
+ function rewardRows(a){const d=a.rewards.deleg,st=a.rewards.stake;return `<div class="rows"><div class="row"><span class="g"><b>${a.pillar?'Pillar and delegation rewards':'Delegation rewards'}</b><small>From ${a.delegate}</small></span><span class="mono">${amt(d.znn)} ZNN · ${amt(d.qsr)} QSR</span><button class="btn sm ${d.znn||d.qsr?'pri':''}" data-act="collect" data-arg="deleg" ${d.znn||d.qsr?'':'disabled'}>Collect</button></div>
+  <div class="row"><span class="g"><b>Staking rewards</b><small>Paid in QSR only</small></span><span class="mono">${amt(st.qsr)} QSR</span><button class="btn sm ${st.qsr?'pri':''}" data-act="collect" data-arg="stake" ${st.qsr?'':'disabled'}>Collect</button></div></div>`}
+ function earn(){const a=acc();return `<section class="card flush" aria-labelledby="${id}rw"><div class="hd"><h2 id="${id}rw">Rewards</h2></div>${rewardRows(a)}</section>
+  <div class="halves eq"><section class="card"><h2>Staking</h2><p class="hint" style="margin:4px 0 10px">Lock ZNN for a fixed term and earn QSR. Staked ZNN cannot be spent until the term ends.</p>${a.stakes.length?a.stakes.map(k=>`<div class="kv"><span>Staked</span><span class="mono">${exact(k[0],8)} ZNN</span></div><div class="kv"><span>Unlocks</span><span>${k[1]}</span></div>`).join(''):'<div class="kv"><span>Staked</span><span>Nothing yet</span></div>'}<button class="btn sm" style="margin-top:10px" data-act="stub" data-arg="Stake ZNN reuses StakingPanel">Stake ZNN</button></section>
+  <section class="card"><h2>Delegation</h2><p class="hint" style="margin:4px 0 10px">Back a pillar with your ZNN balance and share its rewards. Delegated ZNN stays spendable.</p><div class="kv"><span>Delegating to</span><span>${a.delegate}</span></div><div class="kv"><span>Counts toward its weight</span><span class="mono">${amt(asset('ZNN').spend)} ZNN</span></div><button class="btn sm" style="margin-top:10px" data-act="stub" data-arg="Choosing a pillar reuses PillarDelegate">Change pillar</button></section></div>`}
+
+ // ── More tools ──
+ function tools(){const a=acc();const card=(k,adv)=>{const t=TOOLS[k];const st=k==='bridge'?(s.sessions.length?plural(s.sessions.length,'active session'):''):t.st?t.st(a):'';return `<button class="tool ${adv?'adv':''}" data-act="${adv?'openAdv':'go'}" data-arg="${k}"><span class="dot" style="background:var(--hover)">${ico(t.i)}</span><span><b>${t.n}</b><span class="d">${t.d}</span>${st?`<span class="s">${st}</span>`:''}${adv?`<span class="s" style="color:var(--mut)">Opens in Advanced mode</span>`:''}</span></button>`};
+  return `<section aria-labelledby="${id}t1"><h2 id="${id}t1" style="font-size:15.5px;margin:0 0 10px">For everyday use</h2><div class="tools">${['plasma','addressbook','bridge'].map(k=>card(k)).join('')}</div></section>
+  <section aria-labelledby="${id}t2"><h2 id="${id}t2" style="font-size:15.5px;margin:6px 0 2px">Advanced mode only</h2><p class="hint" style="margin-bottom:10px">Tools for running network infrastructure, issuing tokens and governing funding. They are kept out of Everyday. Choosing one switches to Advanced, and you can switch back from the top bar.</p><div class="tools">${['pillars','sentinels','tokens','accelerator','node'].map(k=>card(k,1)).join('')}</div></section>`}
+ function toolStub(k){const t=TOOLS[k],a=acc();let extra='';
+  if(k==='plasma')extra=`<div class="kv"><span>Plasma level</span><span><span class="pill ${a.plasma.level==='Low'?'wn':'ok'}">${a.plasma.level}</span></span></div><div class="kv"><span>QSR fused</span><span class="mono">${exact(a.plasma.fused,8)} QSR</span></div><div class="kv"><span>Next transaction</span><span>${a.plasma.level==='Low'?'Needs a short proof-of-work':'Instant'}</span></div>`;
+  if(k==='staking')extra=a.stakes.length?a.stakes.map(x=>`<div class="kv"><span>Entry</span><span class="mono">${exact(x[0],8)} ZNN · unlocks ${x[1]}</span></div>`).join(''):'<div class="kv"><span>Entries</span><span>None</span></div>';
+  if(k==='pillars')extra=a.pillar?`<div class="kv"><span>Your pillar</span><span><b class="ok">${a.pillar.name}</b></span></div><div class="kv"><span>Rank</span><span>${a.pillar.rank} of ${a.pillar.of}</span></div><div class="kv"><span>Weight</span><span class="mono">${a.pillar.weight}</span></div><div class="kv"><span>Production</span><span>${a.pillar.prod}</span></div>${a.votes.length&&!s.voted?`<div class="banner i" style="margin-top:10px"><div class="gr"><b>${plural(a.votes.length,'vote')} waiting</b>${a.votes[0].name}</div><button class="btn sm pri" data-act="go" data-arg="accelerator" data-id="pv">Open vote</button></div>`:''}`:`<div class="kv"><span>Your pillar</span><span>None. Delegating to ${a.delegate}</span></div>`;
+  if(k==='tokens')extra=a.issued.length?a.issued.map(x=>`<div class="kv"><span>${x.sym}</span><span>${x.supply} supply · ${x.flags}</span></div>`).join(''):'<div class="kv"><span>Tokens you issued</span><span>None</span></div>';
+  if(k==='sentinels')extra='<div class="kv"><span>Your sentinel</span><span>None</span></div>';
+  if(k==='addressbook')extra=`<div class="kv"><span>Tamsin (rent)</span><span class="mono">${short(RECIP)}</span></div><div class="kv"><span>Cold storage</span><span class="mono">z1qqv9d…4h7pe</span></div>`;
+  if(k==='rewards')return `<section class="card flush"><div class="hd"><h2>Rewards to collect</h2></div>${rewardRows(a)}</section>`;
+  return `<section class="card" style="max-width:720px"><h2>${t.n} for ${a.name}</h2><div style="margin-top:8px">${extra}</div></section><div class="banner i" style="max-width:720px"><div class="gr"><b>Not rebuilt in this prototype</b>The production wallet keeps the existing screen here (${t.re}). Only how you reach it changes.</div></div>`}
+
+ // ── Accelerator vote ──
+ function accel(){const a=acc();if(!a.pillar)return `<section class="card" style="max-width:720px"><h2>Voting needs a pillar</h2><p class="hint" style="margin-top:6px;font-size:13.5px">${a.name} does not own a pillar, so there is nothing for it to vote on. You can still browse and donate to projects.</p></section>${toolStub('accelerator').split('</section>')[1]||''}`;
+  const v=a.votes[0],tot=v.yes+v.no+v.abs+(s.voted?1:0);const y=v.yes+(s.voted==='Yes'?1:0);
+  return `<section class="card ${s.voted?'':'acc'}" style="max-width:820px" aria-labelledby="${id}vt"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><h2 id="${id}vt" style="flex:1;font-size:18px">${v.name}</h2>${s.voted?`<span class="pill ok">${ico('check',13)}You voted ${s.voted}</span>`:`<span class="pill in">Awaiting ${a.pillar.name}'s vote</span>`}</div>
+   <p style="margin:8px 0 12px;max-width:66ch">${v.desc}</p>
+   <div class="kv"><span>Requested</span><span class="mono">${v.ask}</span></div><div class="kv"><span>Proposed by</span><span>${full(v.by)}</span></div><div class="kv"><span>Voting</span><span>${v.closes}</span></div>
+   <div class="kv"><span>So far</span><span>${y} yes · ${v.no+(s.voted==='No'?1:0)} no · ${v.abs+(s.voted==='Abstain'?1:0)} abstain <span class="mut">(${tot} of 41 pillars)</span></span></div>
+   <div class="kv"><span>Project id</span><span class="mono" style="font-size:12px;overflow-wrap:anywhere">${v.id}</span></div>
+   ${s.voted?`<p class="hint" style="margin-top:10px">You can change the vote until voting closes.</p>`:`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px" role="group" aria-label="Vote as ${a.pillar.name}"><button class="btn pri" data-act="vote" data-arg="Yes">Vote Yes</button><button class="btn" data-act="vote" data-arg="No">Vote No</button><button class="btn" data-act="vote" data-arg="Abstain">Abstain</button></div><p class="hint" style="margin-top:10px">Voting as pillar ${a.pillar.name}. You review the exact contract call before it is signed.</p>`}</section>
+  <section class="card flush" style="max-width:820px"><div class="hd"><h2>Already voted</h2></div><div class="rows"><div class="row"><span class="g"><b>Bridge monitor</b><small>Voted Yes · 8 days ago</small></span><span class="pill n">Voting open</span></div><div class="row"><span class="g"><b>Docs translation round</b><small>Voted Abstain · 3 weeks ago</small></span><span class="pill n">Closed</span></div></div></section>`}
+
+ // ── Bridge sessions ──
+ function bridge(){return `<section class="card flush" style="max-width:820px" aria-labelledby="${id}bs"><div class="hd"><h2 id="${id}bs">Active sessions <span class="mut" style="font-weight:400">· ${s.sessions.length}</span></h2></div>
+  ${s.sessions.length?`<div class="rows">${s.sessions.map(x=>`<div class="row" style="flex-wrap:wrap"><span class="dot ok">${ico('link')}</span><span class="g" style="flex:1 1 260px"><b>${x.name}</b><small>${x.url} · connected ${x.since} · for ${s.accounts[x.acct].name}</small><small>Can ask to read your address, sign and send. Every request still needs your review.</small></span>
+   ${s.askDisc===x.id?`<span style="display:flex;gap:8px;align-items:center" role="group" aria-label="Confirm disconnect"><span class="hint">Disconnect now?</span><button class="btn sm dgr" data-act="discYes" data-arg="${x.id}">Disconnect</button><button class="btn sm" data-act="discNo">Keep</button></span>`:`<button class="btn sm" data-act="discAsk" data-arg="${x.id}">Disconnect</button>`}</div>`).join('')}</div>`
+  :`<div class="empty"><span class="dot" style="background:var(--hover)">${ico('link')}</span><div><b>No active sessions</b><p class="hint" style="margin-top:3px">No app can send requests to this wallet.</p></div></div>`}</section>
+  <section class="card" style="max-width:820px"><h2>Connect an app</h2><p class="hint" style="margin:4px 0 10px">Paste a WalletConnect link from a bridge site. Supports Zenon mainnet.</p><button class="btn sm" data-act="stub" data-arg="Pairing reuses the existing WalletConnect screen">Paste pairing link</button></section>`}
+
+ // ── Node ──
+ function node(){const emb=s.nodeMode==='embedded';const ck=(ok,h,d)=>`<div class="chk"><span class="${ok?'ok':'dg'}">${ico(ok?'check':'x')}</span><span><b>${h}</b><small>${d}</small></span></div>`;
+  const modes=`<section class="card"><h2>Node mode</h2><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px" role="group" aria-label="Node mode"><button class="choice" data-act="nodeMode" data-arg="embedded" aria-pressed="${emb}"><span><b>Embedded</b><span>Runs a full node inside go-syrius and keeps syncing while the wallet is locked.</span></span></button><button class="choice" data-act="nodeMode" data-arg="remote" aria-pressed="${!emb}"><span><b>Remote</b><span>Connects to a node you choose. Currently wss://node.example.</span></span></button></div></section>`;
+  if(!s.stalled)return `<section class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="flex:1">${emb?'Embedded node':'Remote node'}</h2><span class="pill ${s.syncing?'wn':'ok'}">${s.syncing?'Syncing 99%':'Synced'}</span></div><div style="margin-top:8px"><div class="kv"><span>Height</span><span class="mono">#${grp(''+H_OK)}</span></div><div class="kv"><span>${emb?'Peers':'Endpoint'}</span><span class="mono">${emb?'7':'wss://node.example'}</span></div>${emb?'<div class="kv"><span>Disk</span><span class="mono">41.2 GB used · 212 GB free</span></div>':''}<div class="kv"><span>Last momentum</span><span>4 s ago</span></div></div></section>${modes}
+   <p class="hint">Tick "Embedded sync stalled" above the window to see the investigation view.</p>`;
+  return `<div class="banner d" role="alert"><span class="dg">${ico('alert',18)}</span><div class="gr"><b>Sync stalled: no new momentum for 14 minutes</b>Most likely cause: the node has no peers. It is running and the wallet can reach it, but it lost every peer at 13:51 and cannot reach seed nodes.</div></div>
+  <div class="halves eq"><section class="card"><h2>Where it stopped</h2><div style="margin-top:8px"><div class="kv"><span>Local height</span><span class="mono">#${grp(''+H_STALL)}</span></div><div class="kv"><span>Network height</span><span class="mono">#${grp(''+H_OK)} <span class="mut">(last reported 13:50)</span></span></div><div class="kv"><span>Behind by</span><span class="mono dg">${grp(''+(H_OK-H_STALL))} momentums</span></div><div class="kv"><span>Last momentum accepted</span><span class="mono">13:47:58</span></div><div class="kv"><span>Peers</span><span class="mono dg">0 <span class="mut">(was 7)</span></span></div></div>
+    <h2 style="margin-top:16px">What this affects</h2><p class="hint" style="font-size:13.5px;margin-top:6px">Balances, incoming payments and rewards are shown as of #${grp(''+H_STALL)}. Confirming transactions is paused, because the node could not broadcast them. Your funds are not affected.</p></section>
+   <section class="card"><h2>Checks</h2><div style="margin-top:8px">${ck(1,'Node process is running','Started 3 days ago')}${ck(1,'Wallet is connected to the node','Local RPC answering in 2 ms')}${ck(0,'Peers connected','0 of 7. Six of six seed nodes unreachable')}${ck(1,'Disk space','212 GB free')}${ck(1,'System clock','Within 1 s of network time')}</div></section></div>
+  <section class="card"><h2>What to try</h2><p class="hint" style="font-size:13.5px;margin:6px 0 12px">Check that this computer is online and that a firewall or VPN is not blocking port 35995. Then restart the node. If you need the wallet now, switch to a remote node; the embedded data is kept.</p><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn pri" data-act="restart">${ico('refresh')}Restart embedded node</button><button class="btn" data-act="nodeMode" data-arg="remote" data-id="sw">Use a remote node for now</button><button class="btn" data-act="copyDiag">Copy diagnostics</button></div></section>
+  <section class="card"><h2>Recent node events</h2><pre class="log" style="margin-top:8px">13:47:58  momentum #${grp(''+H_STALL)} accepted
+13:48:40  peer 4f2a… disconnected (timeout)
+13:49:05  peer 91cc… disconnected (timeout)
+13:51:12  0 peers, dialing seed nodes
+13:56:12  dial failed: 6 of 6 seed nodes unreachable
+14:02:10  sync marked stalled (no momentum for 14 min)</pre></section>`}
+
+ // ── Settings / Activity ──
+ function settings(){const a=acc();return `<div class="stack" style="max-width:820px">
+  <section class="card" aria-labelledby="${id}sm"><h2 id="${id}sm">Mode</h2><p class="hint" style="margin:4px 0 10px">Changes the layout only. Your account, network and unfinished work stay as they are.</p><div style="display:flex;gap:10px;flex-wrap:wrap" role="group" aria-label="Wallet mode"><button class="choice" data-act="mode" data-arg="everyday" data-id="sm-e" aria-pressed="${s.mode==='everyday'}"><span><b>Everyday</b><span>Holding, sending, receiving and earning. Operator tools stay out of the way.</span></span></button><button class="choice" data-act="mode" data-arg="advanced" data-id="sm-a" aria-pressed="${s.mode==='advanced'}"><span><b>Advanced</b><span>Adds pillars, sentinels, token issuance, Accelerator-Z and node management.</span></span></button></div></section>
+  <section class="card" aria-labelledby="${id}sn"><h2 id="${id}sn">Network</h2><div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 16px" role="group" aria-label="Network"><button class="choice" data-act="net" data-arg="mainnet" aria-pressed="${s.net==='mainnet'}"><span><b>Mainnet</b><span>Chain 1. Real funds.</span></span></button><button class="choice" data-act="net" data-arg="testnet" aria-pressed="${s.net==='testnet'}"><span><b>Testnet</b><span>Chain 73404. Coins have no value.</span></span></button></div>
+   <div style="border-top:1px solid var(--border);padding-top:14px" id="${id}gate"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1 1 300px"><b>Mainnet transactions</b><p class="hint" style="margin-top:3px">${s.mainnetOK?'Allowed. go-syrius and approved bridge sessions can sign and publish transactions with real funds on chain 1.':'Off. Nothing can be signed on mainnet: no sends, no receives, no contract calls, no bridge requests.'}</p></div>
+    ${s.mainnetOK?`<span class="pill ok">Allowed</span><button class="btn sm" data-act="allowOff">Turn off</button>`:s.askMainnet?'':`<button class="btn sm pri" data-act="allowAsk">Allow mainnet transactions…</button>`}</div>
+   ${s.askMainnet?`<div class="banner d" style="margin-top:12px;align-items:flex-start" role="alertdialog" aria-labelledby="${id}gh"><div class="gr"><b id="${id}gh">Allow transactions with real funds?</b>Mainnet transactions use real ZNN, QSR and tokens, and cannot be undone once published. This applies to every account in this wallet and to bridge sessions you approve. You will still review each transaction before it is signed. Check the connected node, recipient, amount and contract call every time.</div><div style="display:flex;gap:8px"><button class="btn sm pri" data-act="allowYes">I understand, allow</button><button class="btn sm" data-act="allowNo">Cancel</button></div></div>`:''}
+   ${s.returnTo&&s.mainnetOK?`<div class="banner i" style="margin-top:12px"><div class="gr"><b>Your transaction is still waiting</b>Nothing was signed while you were here.</div><button class="btn sm pri" data-act="backToReview">Back to review</button></div>`:s.returnTo?`<p class="hint" style="margin-top:10px">Your unfinished transaction is kept. <button class="lnk" data-act="backToReview" data-id="b2">Back to review</button></p>`:''}</div></section>
+  <section class="card" style="display:flex;gap:16px;align-items:center"><div style="flex:1"><h2 id="${id}sar">Receive automatically</h2><p class="hint" style="margin-top:4px">For ${a.name}. Off unless you turn it on. The incoming count in the top bar only opens the payments; it never changes this.</p></div><button class="sw" role="switch" aria-checked="${s.auto[s.acct]}" aria-labelledby="${id}sar" data-act="auto"><i></i></button></section>
+  <section class="card"><h2>Security</h2><div class="kv" style="margin-top:6px"><span>Auto-lock</span><span>After 15 minutes idle</span></div><button class="btn sm" data-act="lock" data-id="sl">${ico('lock',14)}Lock now</button></section></div>`}
+ function activity(){const a=acc();return `<section class="card flush"><div class="hd"><h2>All activity</h2><span class="hint">${a.name}</span></div><div class="rows">${activityRows(a,20)}</div></section>`}
+
+ function page(){const r=s.route;if(r==='home')return s.mode==='everyday'?homeE():homeA();
+  return ({send,receive,activity,earn,tools,settings,bridge,node,accelerator:accel})[r]?.()??toolStub(r)}
+ function view(){return `<div class="tbar" aria-hidden="true"><i></i><i></i><i></i><span>go-syrius</span></div><div class="shell">${sidebar()}<div class="col">${topbar()}<main class="main" tabindex="-1">${banner()}${page()}</main></div></div>${s.review?review():''}${s.locked?`<div class="lockscr"><div><span class="dot" style="width:52px;height:52px;margin:0 auto 14px;background:var(--hover)">${ico('lock',22)}</span><h2 style="margin:0 0 6px;font-size:20px" tabindex="-1" data-autofocus>Wallet locked</h2><p class="hint" style="font-size:13.5px;margin-bottom:16px">The real wallet asks for your password here.${s.nodeMode==='embedded'?' The embedded node keeps syncing.':''}</p><button class="btn pri" data-act="unlock">Unlock (simulated)</button></div></div>`:''}`}
+
+ const keyOf=e=>!e||!body.contains(e)?null:e.id?'#'+CSS.escape(e.id):e.dataset.act?`[data-act="${e.dataset.act}"]`+(e.dataset.arg?`[data-arg="${e.dataset.arg}"]`:'')+(e.dataset.id?`[data-id="${e.dataset.id}"]`:''):null;
+ let lastRoute=null,lastOv=null;
+ function render(focus){const ae=document.activeElement,had=body.contains(ae),k=keyOf(ae),sc=body.querySelector('.main')?.scrollTop||0;
+  body.innerHTML=view();const m=body.querySelector('.main');if(lastRoute===s.route&&m)m.scrollTop=sc;
+  const ov=s.locked?'lock':s.review?'rv'+s.phase:null;let t=null;
+  if(ov&&ov!==lastOv)t=body.querySelector('[data-autofocus]');else if(focus)t=body.querySelector(focus);else if(k)t=body.querySelector(k);
+  if(!o.static&&(had||focus||(ov&&ov!==lastOv)))(t||body.querySelector('.ov [data-autofocus]')||body.querySelector('h1'))?.focus({preventScroll:true});
+  lastRoute=s.route;lastOv=ov;o.onRender&&o.onRender(s)}
+ function go(r,quiet){if(s.mode==='everyday'&&ADVONLY.has(r)){s.mode='advanced';if(!quiet)toast(`Switched to Advanced for ${TOOLS[r].n}. Same account and network.`)}s.route=r;s.menu=false;s.err=null;render('h1')}
+ const openReview=(kind,p)=>{s.review=build(kind,p);s.rvArgs=[kind,p];s.phase='review';render()};
+
+ const A={
+  go:r=>go(r), openAdv:r=>go(r),
+  mode(m){if(m===s.mode)return;const from=s.mode;s.mode=m;s.menu=false;
+   if(m==='everyday'){if(ADVONLY.has(s.route)){s.advRoute=s.route;s.route='home'}}else{if(s.route==='earn'||s.route==='tools')s.route=s.advRoute||'home';else if(s.advRoute&&s.route==='home'&&from==='everyday'){s.route=s.advRoute}s.advRoute=null}
+   toast(`${m==='everyday'?'Everyday':'Advanced'} mode. Same account and network${hasDraft()?', send draft kept':''}${s.advRoute?`. ${TOOLS[s.advRoute].n} is where you left it in Advanced`:''}.`);render()},
+  menu(){s.menu=!s.menu;render()},
+  acct(i){s.acct=+i;s.menu=false;s.busy={};if(hasDraft()){s.draft.asset='ZNN'}toast(`Now using ${acc().name}.`);render('.acctbtn')},
+  lock(){s.locked=true;s.menu=false;render()}, unlock(){s.locked=false;render('h1')},
+  retry(){s.lookupFail=false;toast('Checked. '+(acc().waiting.length?plural(acc().waiting.length,'payment')+' waiting.':'Nothing waiting.'));render()},
+  recv(h){const a=acc(),w=a.waiting.find(x=>x.h===h);if(!w||blocked())return;s.busy[h]=1;render();setTimeout(()=>{finishRecv(a,[w]);delete s.busy[h];render()},1300)},
+  recvAll(){const a=acc();if(blocked())return;s.busy.all=1;a.waiting.forEach(w=>s.busy[w.h]=1);render();setTimeout(()=>{finishRecv(a,[...a.waiting]);s.busy={};render()},1700)},
+  auto(){s.auto[s.acct]=!s.auto[s.acct];toast(`Auto-receive ${s.auto[s.acct]?'on':'off'} for ${acc().name}.`);render()},
+  copy(){toast('Address copied (simulated).')}, copyDiag(){toast('Diagnostics copied (simulated).')}, stub(m){toast(m+'. Not rebuilt in this prototype.')},
+  sample(){s.draft.to=RECIP;render('#'+CSS.escape(id+'am'))},
+  clearDraft(){s.draft={to:'',asset:'ZNN',amount:''};s.err=null;render('#'+CSS.escape(id+'to'))},
+  reviewSend(){const d=s.draft,x=asset(d.asset),n=parseFloat(d.amount);
+   if(!/^z1[a-z0-9]{38}$/.test(d.to.trim()))s.err='Enter a full Zenon address: z1 followed by 38 characters.';
+   else if(!(n>0)||!/^\d*\.?\d+$/.test(d.amount.trim()))s.err='Enter an amount greater than zero.';
+   else if(n>x.spend)s.err=`That is more than the ${exact(x.spend,x.dec)} ${x.sym} you can spend.`;
+   else if((d.amount.split('.')[1]||'').length>x.dec)s.err=`${x.sym} has ${x.dec} decimal places.`;
+   else{s.err=null;d.to=d.to.trim();return openReview('send',{...d})}render('.err')},
+  vote:p=>openReview('vote',p), collect:p=>openReview('collect',p),
+  confirm(){if(blocked()||s.stalled)return;const r=s.review;s.phase='work';render();setTimeout(()=>{if(s.review!==r||s.phase!=='work')return;r.apply();s.hash=[...Array(64)].map(()=>'0123456789abcdef'[Math.random()*16|0]).join('');s.phase='done';s.returnTo=null;render()},1500)},
+  cancel(){s.review=null;s.phase=null;s.returnTo=null;render()},
+  done(){const k=s.review.kind;s.review=null;s.phase=null;if(k==='send')s.route='home';render('h1')},
+  toGate(){s.returnTo=s.rvArgs;s.review=null;s.phase=null;s.route='settings';s.askMainnet=true;render('[data-act="allowYes"]');body.querySelector('#'+CSS.escape(id+'gate'))?.scrollIntoView({block:'center'})},
+  allowAsk(){s.askMainnet=true;render('[data-act="allowYes"]')}, allowNo(){s.askMainnet=false;render()},
+  allowYes(){s.mainnetOK=true;s.askMainnet=false;toast('Mainnet transactions allowed.');render(s.returnTo?'[data-act="backToReview"]':null)},
+  allowOff(){s.mainnetOK=false;toast('Mainnet transactions turned off.');render()},
+  backToReview(){const r=s.returnTo;if(!r)return;s.route=r[0]==='send'?'send':r[0]==='vote'?'accelerator':s.mode==='everyday'?'earn':'rewards';openReview(r[0],r[1])},
+  net(n){s.net=n;toast(`${NETS[n].name}, chain ${NETS[n].chain}.`);render()},
+  pinEdit(){s.editPins=!s.editPins;render()},
+  discAsk(i){s.askDisc=i;render('[data-act="discYes"]')}, discNo(){s.askDisc=null;render()},
+  discYes(i){s.sessions=s.sessions.filter(x=>x.id!==i);s.askDisc=null;toast('Disconnected. The app can no longer send requests.');render('h1')},
+  nodeMode(m){s.nodeMode=m;if(m==='remote'&&s.stalled){s.stalled=false;toast('Using remote node. Embedded data kept.')}render()},
+  restart(){s.stalled=false;s.syncing=true;toast('Embedded node restarted. 7 peers connected.');render('h1');setTimeout(()=>{s.syncing=false;render()},2600)}};
+ function finishRecv(a,ws){ws.forEach(w=>{const x=a.assets.find(t=>t.sym===w.sym);if(x)x.spend+=w.n;a.waiting=a.waiting.filter(y=>y.h!==w.h);a.activity.unshift(['in','Received','from '+short(w.from),`+${amt(w.n,x?.dec??8)} ${w.sym}`,'Just now'])});toast(ws.length===1?`Received ${amt(ws[0].n,asset(ws[0].sym,a)?.dec??8)} ${ws[0].sym}.`:`Received ${ws.length} payments.`)}
+
+ body.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b||b.disabled)return;A[b.dataset.act]?.(b.dataset.arg)});
+ body.addEventListener('input',e=>{const f=e.target.dataset.f;if(f&&f!=='asset')s.draft[f]=e.target.value});
+ body.addEventListener('change',e=>{const t=e.target;if(t.dataset.f==='asset'){s.draft.asset=t.value;s.err=null;render()}if(t.dataset.pin){s.pins=t.checked?[...s.pins,t.dataset.pin]:s.pins.filter(p=>p!==t.dataset.pin);render()}});
+ body.addEventListener('keydown',e=>{if(e.key==='Escape'){if(s.review&&s.phase==='review')A.cancel();else if(s.review&&s.phase==='done')A.done();else if(s.menu){s.menu=false;render('.acctbtn')}}
+  if(e.key==='Tab'){const d=body.querySelector('.ov .dlg,.lockscr');if(!d)return;const f=[...d.querySelectorAll('button:not(:disabled),[tabindex="-1"][data-autofocus]')].filter(x=>x.tagName==='BUTTON');if(!f.length)return;const i=f.indexOf(document.activeElement);if(e.shiftKey&&i<=0){e.preventDefault();f[f.length-1].focus()}else if(!e.shiftKey&&(i===-1||i===f.length-1)){e.preventDefault();f[0].focus()}}});
+ render();
+ return {s,render,go,toast}}
+
+// ── page wiring ──
+const $=i=>document.getElementById(i);
+const fit=st=>{const w=st.firstElementChild,W=+st.dataset.w,H=+st.dataset.h,k=Math.min(1,st.clientWidth/W);w.style.width=W+'px';w.style.height=H+'px';w.style.transform=`scale(${k})`;st.style.height=Math.ceil(H*k)+'px'};
+const cmpE=createApp($('cmpE'),{mode:'everyday',static:true}),cmpX=createApp($('cmpX'),{mode:'advanced',static:true});
+const proto=createApp($('proto'),{onRender(s){$('scFail').checked=s.lookupFail;$('scStall').checked=s.stalled;$('scGate').checked=s.net==='mainnet'&&!s.mainnetOK}});
+const stages=[...document.querySelectorAll('.stage')];const ro=new ResizeObserver(es=>es.forEach(e=>fit(e.target)));stages.forEach(st=>{fit(st);ro.observe(st)});
+const setCmp=i=>{[cmpE,cmpX].forEach(a=>{a.s.acct=i;a.render()});$('cmpA0').setAttribute('aria-pressed',i===0);$('cmpA1').setAttribute('aria-pressed',i===1)};
+$('cmpA0').onclick=()=>setCmp(0);$('cmpA1').onclick=()=>setCmp(1);
+const guide=t=>$('guide').innerHTML=t,S=proto.s;
+const reset=()=>{const keep=S.mode;Object.assign(S,{acct:0,route:'home',review:null,phase:null,locked:false,menu:false,busy:{},err:null,askMainnet:false,returnTo:null,voted:null,advRoute:null,askDisc:null,editPins:false,draft:{to:'',asset:'ZNN',amount:''},accounts:(()=>{const f=createFresh();return f})(),mode:keep})};
+function createFresh(){const d=document.createElement('div');d.id='tmp';return createApp(d,{static:true}).s.accounts}
+$('j0').onclick=()=>{reset();Object.assign(S,{lookupFail:false,stalled:false,syncing:false,net:'mainnet',mainnetOK:true,nodeMode:'embedded',mode:'everyday',sessions:[{id:'s1',name:'NoM Bridge (sample)',url:'bridge.example',acct:0,since:'2 h ago'}]});proto.render();guide('Reset. Pick a journey, or click around. Switch <b>Mode</b> at any point: the account, network and any unfinished send stay as they are.')};
+$('j1').onclick=()=>{reset();proto.render();guide('<b>Receive.</b> Click the <b>3 incoming</b> chip in the top bar, or "Open payments" on Home. Receive one payment, then the rest. Tick <b>Incoming lookup fails</b> to compare "couldn\'t check" with "nothing waiting".')};
+$('j2').onclick=()=>{reset();S.route='send';S.draft={to:RECIP,asset:'ZNN',amount:'25.5'};proto.render();guide('<b>Send.</b> Press <b>Review transaction</b>. Then try the asset <b>LUMEN</b> for custom-token verification, and tick <b>Mainnet consent not given</b> to see how the review leads to that decision and back.')};
+$('j3').onclick=()=>{reset();S.acct=1;proto.render();guide('<b>Pillar vote.</b> You are now on the Meridian operator account. In Advanced, the vote leads "Needs action". In Everyday it is one line that opens Advanced. Open it, vote, and review the contract call.')};
+$('scFail').onchange=e=>{S.lookupFail=e.target.checked;proto.render()};
+$('scStall').onchange=e=>{S.stalled=e.target.checked;S.syncing=false;if(S.stalled)S.nodeMode='embedded';proto.render();if(S.stalled)guide('<b>Stalled sync.</b> A banner appears on every screen. Press <b>Investigate</b> to open the Node page: where it stopped, which check failed, what is affected and what to try.')};
+$('scGate').onchange=e=>{S.net='mainnet';S.mainnetOK=!e.target.checked;S.askMainnet=false;proto.render()};
+document.querySelectorAll('[data-size]').forEach(b=>b.onclick=()=>{const [w,h]=b.dataset.size.split('x');const st=$('protoStage');st.dataset.w=w;st.dataset.h=h;document.querySelectorAll('[data-size]').forEach(x=>x.setAttribute('aria-pressed',x===b));fit(st)});
+})();
+</script>

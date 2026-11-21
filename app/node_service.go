@@ -1131,7 +1131,7 @@ func (n *NodeService) GetUnreceived() ([]UnreceivedBlock, error) {
 }
 
 func toUnreceivedBlock(b *api.AccountBlock, decimals int) UnreceivedBlock {
-	u := UnreceivedBlock{FromHash: b.Hash.String(), FromAddress: b.Address.String(), Amount: "0", Token: b.TokenStandard.String(), Decimals: decimals}
+	u := UnreceivedBlock{FromHash: b.Hash.String(), FromAddress: b.Address.String(), Amount: "0", Token: b.TokenStandard.String(), Zts: b.TokenStandard.String(), Decimals: decimals}
 	if b.Amount != nil {
 		u.Amount = b.Amount.String()
 	}

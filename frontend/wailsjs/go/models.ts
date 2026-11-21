@@ -379,6 +379,7 @@ export namespace app {
 	}
 	export class PlasmaInfo {
 	    qsrFused: string;
+	    qsrFusedOwned: string;
 	    currentPlasma: number;
 	    maxPlasma: number;
 	
@@ -389,6 +390,7 @@ export namespace app {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.qsrFused = source["qsrFused"];
+	        this.qsrFusedOwned = source["qsrFusedOwned"];
 	        this.currentPlasma = source["currentPlasma"];
 	        this.maxPlasma = source["maxPlasma"];
 	    }
@@ -573,6 +575,8 @@ export namespace app {
 	    accountLabels: Record<string, string>;
 	    accountCounts: Record<string, number>;
 	    contacts: Contact[];
+	    uiMode: string;
+	    pinnedActions: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -593,6 +597,8 @@ export namespace app {
 	        this.accountLabels = source["accountLabels"];
 	        this.accountCounts = source["accountCounts"];
 	        this.contacts = this.convertValues(source["contacts"], Contact);
+	        this.uiMode = source["uiMode"];
+	        this.pinnedActions = source["pinnedActions"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -785,6 +791,7 @@ export namespace app {
 	    fromHash: string;
 	    fromAddress: string;
 	    token: string;
+	    zts: string;
 	    amount: string;
 	    decimals: number;
 	
@@ -797,6 +804,7 @@ export namespace app {
 	        this.fromHash = source["fromHash"];
 	        this.fromAddress = source["fromAddress"];
 	        this.token = source["token"];
+	        this.zts = source["zts"];
 	        this.amount = source["amount"];
 	        this.decimals = source["decimals"];
 	    }

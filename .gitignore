@@ -25,6 +25,7 @@ wallet*.json
 
 # Frontend build artifacts and dependencies
 node_modules/
+frontend/.pnpm-store/
 frontend/dist/
 build/bin
 frontend/package.json.md5

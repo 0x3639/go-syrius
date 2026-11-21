@@ -2,6 +2,29 @@
 
 A start-to-finish plan to reimplement the Zenon `syrius` wallet (currently Flutter/Dart) as a Go + Wails desktop application.
 
+> **Two layout modes (2026-11-21):** The shell has an **Everyday** and an
+> **Advanced** layout over the same wallet, switched from a labelled control in
+> the top bar or Settings. Everyday is Home, Activity, Earn, More tools and
+> Settings, with Send and Receive as sidebar buttons; it keeps pillar and
+> sentinel operation, token issuance and Accelerator-Z out of its navigation.
+> More tools names those as "Advanced mode only"; opening one (or following any
+> link to one) switches layout and says so. Advanced keeps the full sidebar and
+> replaces the dashboard with an operator overview: needs-action list, pinned
+> shortcuts, holdings with token standards, and a tile per position or service
+> that the account actually uses. Both Home screens list every held asset split
+> into spendable, waiting and committed (staked ZNN, fused QSR); the fiat
+> estimate now counts committed amounts and states its scope. The top-bar
+> incoming count opens Receive and no longer toggles auto-receive, which stays
+> an explicit switch there. The mode and pins are layout preferences in
+> `settings.json` (`uiMode`, `pinnedActions`; `ConfigService.SetUIMode` /
+> `SetPinnedActions`, both validated in Go) and never change what the backend
+> permits. Fresh installs start in Everyday; installs that predate the setting
+> keep Advanced. Signing, confirmation and consent flows are untouched.
+> Deferred to follow-up PRs: a distinct "couldn't check" state for incoming
+> payments, embedded-node sync diagnostics, a network row and mainnet-consent
+> route in the transaction review, and pillar/sentinel collateral in holdings.
+> Prototype: `docs/prototypes/two-mode-wallet.html`.
+
 > **Bend laws (2026-11-20):** Add 76 checked laws for wallet effect matching,
 > publication gates, mainnet consent, bridge funding, token precision bounds,
 > auto-lock, reconnect eligibility, pending-slot ownership, and publication-journal

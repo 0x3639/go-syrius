@@ -33,3 +33,11 @@ export function SetAutoReceive(arg1) {
 export function SetChainID(arg1) {
   return window['go']['app']['ConfigService']['SetChainID'](arg1);
 }
+
+export function SetPinnedActions(arg1) {
+  return window['go']['app']['ConfigService']['SetPinnedActions'](arg1);
+}
+
+export function SetUIMode(arg1) {
+  return window['go']['app']['ConfigService']['SetUIMode'](arg1);
+}

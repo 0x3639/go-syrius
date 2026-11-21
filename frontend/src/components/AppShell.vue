@@ -39,8 +39,13 @@ const autoReceive = useAutoReceiveStore()
 const wallet = useWalletStore()
 const tx = useTxStore()
 const walletConnect = useWalletConnectStore()
-const title = computed(() => (route.meta.title as string) ?? '')
-const subtitle = computed(() => (route.meta.subtitle as string) ?? '')
+// The dashboard route is Home in Everyday and the operator Overview in Advanced.
+const HOME_TITLES = {
+  everyday: ['Home', 'What you own, and anything that needs you.'],
+  advanced: ['Overview', 'What this account holds, runs and needs to act on.'],
+} as const
+const title = computed(() => route.name === 'dashboard' ? HOME_TITLES[ui.mode][0] : (route.meta.title as string) ?? '')
+const subtitle = computed(() => route.name === 'dashboard' ? HOME_TITLES[ui.mode][1] : (route.meta.subtitle as string) ?? '')
 
 // Global bootstrap. AppShell wraps every authenticated route and unmounts only
 // on lock, so this is the single place the app re-hydrates after an unlock —

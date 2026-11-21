@@ -262,7 +262,12 @@ type WalletConnectPrepareResult struct {
 
 // PlasmaInfo is the active address's plasma snapshot.
 type PlasmaInfo struct {
-	QsrFused      string `json:"qsrFused"`
+	// QsrFused is the QSR fused FOR this address (beneficiary side): what
+	// its plasma comes from, whoever owns the fusion.
+	QsrFused string `json:"qsrFused"`
+	// QsrFusedOwned is the QSR this address has fused and can cancel (owner
+	// side), to itself or to others. This is what the address still owns.
+	QsrFusedOwned string `json:"qsrFusedOwned"`
 	CurrentPlasma uint64 `json:"currentPlasma"`
 	MaxPlasma     uint64 `json:"maxPlasma"`
 }

@@ -71,7 +71,22 @@ func (s *NomService) GetPlasmaInfo() (PlasmaInfo, error) {
 	if info.QsrAmount != nil {
 		qsr = info.QsrAmount.String()
 	}
-	return PlasmaInfo{QsrFused: qsr, CurrentPlasma: info.CurrentPlasma, MaxPlasma: info.MaxPlasma}, nil
+	// The owner-side total comes with any page of the owner's entries: the
+	// node sums every entry before paging, so one entry is enough to read it.
+	owned, err := client.PlasmaApi.GetEntriesByAddress(addr, 0, 1)
+	if err != nil {
+		return PlasmaInfo{}, err
+	}
+	return PlasmaInfo{QsrFused: qsr, QsrFusedOwned: ownedFusionTotal(owned), CurrentPlasma: info.CurrentPlasma, MaxPlasma: info.MaxPlasma}, nil
+}
+
+// ownedFusionTotal is the QSR an address has fused across all of its fusion
+// entries, as reported by the owner-side entry list. "0" when unknown.
+func ownedFusionTotal(list *embedded.FusionEntryList) string {
+	if list == nil || list.QsrAmount == nil || list.QsrAmount.Sign() < 0 {
+		return "0"
+	}
+	return list.QsrAmount.String()
 }
 
 // GetFusionEntries returns the active address's fusion entries with derived revocability.

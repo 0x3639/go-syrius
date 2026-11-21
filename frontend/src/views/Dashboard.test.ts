@@ -58,7 +58,7 @@ describe('Dashboard', () => {
       useUnreceivedStore().items = [{ fromHash: 'h1', fromAddress: 'z1a', token: 'ZNN', amount: '4250000000', decimals: 8 }] as any
       const stake = useStakeStore(); stake.status = 'ready'
       stake.stakeInfo = { totalAmount: '50000000000', entries: [] } as any
-      usePlasmaStore().info = { qsrFused: '15000000000', currentPlasma: 80000, maxPlasma: 100000 } as any
+      usePlasmaStore().info = { qsrFused: '15000000000', qsrFusedOwned: '15000000000', currentPlasma: 80000, maxPlasma: 100000 } as any
       const w = setup(mode)
       await w.vm.$nextTick()
       const znn = w.get('[data-testid="holding-ZNN"]').text()
@@ -108,6 +108,17 @@ describe('Dashboard', () => {
       useBalancesStore().items = [{ zts: 'zts1znnxxxxxxxxxxxxx9z4ulx', symbol: 'ZNN', decimals: 8, amount: '1' }] as any
       await w.vm.$nextTick()
       expect(refresh).toHaveBeenCalled()
+    })
+
+    it('counts QSR this account fused, not plasma others fused for it', async () => {
+      // 900 QSR fused for this account by someone else; it owns a 20 QSR fusion.
+      usePlasmaStore().info = { qsrFused: '90000000000', qsrFusedOwned: '2000000000', currentPlasma: 80000, maxPlasma: 100000 } as any
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      const qsr = w.get('[data-zts="zts1qsrxxxxxxxxxxxxxmrhjll"]')
+      expect(qsr.text()).toContain('fused for plasma')
+      expect(qsr.findAll('td')[3].text()).toContain('20')
+      expect(qsr.findAll('td')[3].text()).not.toContain('900')
     })
 
     it('states what the fiat estimate covers and leaves out', () => {

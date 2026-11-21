@@ -27,7 +27,7 @@ export type Holding = {
   spendable: string
   /** Sent to this account but not yet received. */
   waiting: string
-  /** Owned but not spendable right now: staked ZNN, fused QSR. */
+  /** Owned but not spendable right now: staked ZNN, QSR this account fused. */
   committed: Commitment[]
   committedTotal: string
   /** Fiat estimate of spendable + committed; null when the asset has no price. */
@@ -86,7 +86,9 @@ export function useHoldings() {
       }
       const staked = stake.available ? stake.stakeInfo?.totalAmount : undefined
       if (staked && staked !== '0') row(ZNN_ZTS, 'ZNN', 8).committed.push({ label: 'staked', amount: staked })
-      const fused = plasma.info?.qsrFused
+      // Owner side: QSR this account fused and can cancel, whoever benefits.
+      // Not `qsrFused`, which is plasma fused FOR this account by anyone.
+      const fused = plasma.info?.qsrFusedOwned
       if (fused && fused !== '0') row(QSR_ZTS, 'QSR', 8).committed.push({ label: 'fused for plasma', amount: fused })
     }
     for (const r of byZts.values()) {

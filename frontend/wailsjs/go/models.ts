@@ -379,6 +379,7 @@ export namespace app {
 	}
 	export class PlasmaInfo {
 	    qsrFused: string;
+	    qsrFusedOwned: string;
 	    currentPlasma: number;
 	    maxPlasma: number;
 	
@@ -389,6 +390,7 @@ export namespace app {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.qsrFused = source["qsrFused"];
+	        this.qsrFusedOwned = source["qsrFusedOwned"];
 	        this.currentPlasma = source["currentPlasma"];
 	        this.maxPlasma = source["maxPlasma"];
 	    }

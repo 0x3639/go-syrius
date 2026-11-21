@@ -343,6 +343,23 @@ type SentinelInfo struct {
 	Active                bool   `json:"active"`
 }
 
+// Collateral is what the active address has locked in the pillar and sentinel
+// contracts and still owns: every amount here comes back to the address when
+// the pillar or sentinel is revoked, or the deposit withdrawn. QSR burned at
+// pillar registration is gone and is deliberately not part of this. All
+// values are base-unit decimal strings ("0" when none).
+type Collateral struct {
+	// PillarZnn is the ZNN locked by active pillars this address owns.
+	PillarZnn string `json:"pillarZnn"`
+	// SentinelZnn and SentinelQsr are locked by an active sentinel.
+	SentinelZnn string `json:"sentinelZnn"`
+	SentinelQsr string `json:"sentinelQsr"`
+	// PillarDepositedQsr and SentinelDepositedQsr are QSR escrowed toward a
+	// registration that has not happened yet; withdrawable at any time.
+	PillarDepositedQsr   string `json:"pillarDepositedQsr"`
+	SentinelDepositedQsr string `json:"sentinelDepositedQsr"`
+}
+
 // OwnedPillarInfo describes the pillar owned by the active address. An empty
 // Name means the address owns no pillar.
 type OwnedPillarInfo struct {

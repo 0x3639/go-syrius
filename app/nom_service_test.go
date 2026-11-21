@@ -641,3 +641,44 @@ func TestOwnedFusionTotal(t *testing.T) {
 		t.Fatalf("total = %q, want the list total regardless of page size", got)
 	}
 }
+
+// Collateral counts only what comes back to the owner: ZNN for each active
+// pillar, ZNN and QSR for an active sentinel, and unspent registration
+// deposits. Burned pillar QSR and revoked registrations count for nothing.
+func TestCollateralFrom(t *testing.T) {
+	none := collateralFrom(nil, nil, nil, nil)
+	if none != (Collateral{PillarZnn: "0", SentinelZnn: "0", SentinelQsr: "0", PillarDepositedQsr: "0", SentinelDepositedQsr: "0"}) {
+		t.Fatalf("no positions = %+v", none)
+	}
+
+	active := &embedded.PillarInfo{Name: "live"}
+	revoked := &embedded.PillarInfo{Name: "gone", RevokeTimestamp: 1700000000}
+	got := collateralFrom([]*embedded.PillarInfo{active, revoked, nil}, nil, big.NewInt(42), nil)
+	if got.PillarZnn != "1500000000000" { // 15,000 ZNN, once
+		t.Fatalf("PillarZnn = %s, want one active pillar's stake", got.PillarZnn)
+	}
+	if got.PillarDepositedQsr != "42" || got.SentinelZnn != "0" || got.SentinelQsr != "0" {
+		t.Fatalf("pillar-only = %+v", got)
+	}
+
+	sentinel := &embedded.SentinelInfo{RegistrationTimestamp: 1700000000, Active: true}
+	got = collateralFrom(nil, sentinel, nil, big.NewInt(7))
+	if got.SentinelZnn != "500000000000" || got.SentinelQsr != "5000000000000" { // 5,000 ZNN, 50,000 QSR
+		t.Fatalf("active sentinel = %+v", got)
+	}
+	if got.SentinelDepositedQsr != "7" || got.PillarZnn != "0" {
+		t.Fatalf("sentinel-only = %+v", got)
+	}
+
+	for name, s := range map[string]*embedded.SentinelInfo{
+		"never registered": {},
+		"revoked":          {RegistrationTimestamp: 1700000000, Active: false},
+	} {
+		if got := collateralFrom(nil, s, nil, nil); got.SentinelZnn != "0" || got.SentinelQsr != "0" {
+			t.Fatalf("%s sentinel holds collateral: %+v", name, got)
+		}
+	}
+	if got := collateralFrom(nil, nil, big.NewInt(-1), big.NewInt(-1)); got.PillarDepositedQsr != "0" || got.SentinelDepositedQsr != "0" {
+		t.Fatalf("negative deposits must read as 0: %+v", got)
+	}
+}

@@ -14,6 +14,10 @@ export function GetActivePillarCount() {
   return window['go']['app']['NomService']['GetActivePillarCount']();
 }
 
+export function GetCollateral() {
+  return window['go']['app']['NomService']['GetCollateral']();
+}
+
 export function GetDelegation() {
   return window['go']['app']['NomService']['GetDelegation']();
 }

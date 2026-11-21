@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import { useBalancesStore } from '../stores/balances'
 import { useUnreceivedStore } from '../stores/unreceived'
 import { useStakeStore } from '../stores/stake'
+import { useCollateralStore } from '../stores/collateral'
 import { usePlasmaStore } from '../stores/plasma'
 import { usePriceStore } from '../stores/price'
 import { useNodeStore } from '../stores/node'
@@ -27,7 +28,8 @@ export type Holding = {
   spendable: string
   /** Sent to this account but not yet received. */
   waiting: string
-  /** Owned but not spendable right now: staked ZNN, QSR this account fused. */
+  /** Owned but not spendable right now: staked ZNN, QSR this account fused,
+   *  pillar and sentinel collateral, and unspent registration deposits. */
   committed: Commitment[]
   committedTotal: string
   /** Fiat estimate of spendable + committed; null when the asset has no price. */
@@ -44,12 +46,14 @@ export function sumBase(values: (string | undefined | null)[]): string {
 // balance, payments waiting to be received, and amounts committed to staking
 // or fusion. ZNN and QSR always appear, including at zero. Only the protocol
 // rows are priced and only they carry staked/fused amounts, so a custom token
-// that reuses a protocol symbol can never borrow their value. Pillar and
-// sentinel collateral is not included: the stores do not expose it yet.
+// that reuses a protocol symbol can never borrow their value. Collateral is
+// only what returns to the account; QSR burned at pillar registration is not
+// a holding and never appears.
 export function useHoldings() {
   const balances = useBalancesStore()
   const unreceived = useUnreceivedStore()
   const stake = useStakeStore()
+  const collateral = useCollateralStore()
   const plasma = usePlasmaStore()
   const price = usePriceStore()
   const node = useNodeStore()
@@ -92,6 +96,18 @@ export function useHoldings() {
       // Not `qsrFused`, which is plasma fused FOR this account by anyone.
       const fused = plasma.info?.qsrFusedOwned
       if (fused && fused !== '0') row(QSR_ZTS, 'QSR', 8).committed.push({ label: 'fused for plasma', amount: fused })
+      // Skipped while stale, for the same reason as staking above.
+      const c = collateral.available && !collateral.stale ? collateral.info : null
+      if (c) {
+        const add = (zts: string, symbol: string, label: string, amount: string | undefined) => {
+          if (amount && amount !== '0') row(zts, symbol, 8).committed.push({ label, amount })
+        }
+        add(ZNN_ZTS, 'ZNN', 'pillar collateral', c.pillarZnn)
+        add(ZNN_ZTS, 'ZNN', 'sentinel collateral', c.sentinelZnn)
+        add(QSR_ZTS, 'QSR', 'sentinel collateral', c.sentinelQsr)
+        add(QSR_ZTS, 'QSR', 'deposited for a pillar', c.pillarDepositedQsr)
+        add(QSR_ZTS, 'QSR', 'deposited for a sentinel', c.sentinelDepositedQsr)
+      }
     }
     for (const r of byZts.values()) {
       r.committedTotal = sumBase(r.committed.map((c) => c.amount))

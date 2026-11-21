@@ -2,8 +2,9 @@
 import { watch } from 'vue'
 import { useNodeStore } from '../stores/node'
 import { useBalancesStore } from '../stores/balances'
-import { ZNN_ZTS } from '../lib/useHoldings'
+import { ZNN_ZTS, QSR_ZTS } from '../lib/useHoldings'
 import { useStakeStore } from '../stores/stake'
+import { useCollateralStore } from '../stores/collateral'
 import { usePillarStore } from '../stores/pillar'
 import { useSentinelStore } from '../stores/sentinel'
 import { useWalletStore } from '../stores/wallet'
@@ -18,6 +19,7 @@ import OverviewAdvanced from './OverviewAdvanced.vue'
 const node = useNodeStore()
 const balances = useBalancesStore()
 const stake = useStakeStore()
+const collateral = useCollateralStore()
 const pillar = usePillarStore()
 const sentinel = useSentinelStore()
 const wallet = useWalletStore()
@@ -32,6 +34,7 @@ function refreshEarning() {
   stake.refresh()
   pillar.refresh()
   sentinel.refresh()
+  collateral.refresh()
 }
 useNodeRefresh(refreshEarning)
 watch(() => wallet.activeIndex, refreshEarning)
@@ -48,6 +51,13 @@ watch(() => wallet.activeIndex, refreshEarning)
 watch(
   () => balances.items.find((b) => b.zts === ZNN_ZTS)?.amount ?? '',
   () => { if (node.connected) stake.resync() },
+  { flush: 'sync' },
+)
+// Collateral and registration deposits move ZNN and QSR in and out of the
+// spendable balance in the same way, so they follow either balance.
+watch(
+  () => [ZNN_ZTS, QSR_ZTS].map((z) => balances.items.find((b) => b.zts === z)?.amount ?? '').join('|'),
+  () => { if (node.connected) collateral.resync() },
   { flush: 'sync' },
 )
 </script>

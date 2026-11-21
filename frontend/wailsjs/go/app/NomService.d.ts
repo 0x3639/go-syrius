@@ -8,6 +8,8 @@ export function EstimatePlasma(arg1:string):Promise<number>;
 
 export function GetActivePillarCount():Promise<number>;
 
+export function GetCollateral():Promise<app.Collateral>;
+
 export function GetDelegation():Promise<app.DelegationInfo>;
 
 export function GetDepositedQsr():Promise<string>;

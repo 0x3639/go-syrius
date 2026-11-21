@@ -34,7 +34,7 @@ const delegatedTo = computed(() => pillar.delegation?.name || '')
 
 // What the estimate covers, said plainly next to the number.
 const scope = computed(() => {
-  const parts = ['Covers ZNN and QSR, including staked and fused amounts.']
+  const parts = ['Covers ZNN and QSR, including staked, fused and locked amounts.']
   const missing: string[] = []
   if (unpriced.value.length) missing.push(`${unpriced.value.join(', ')} (no price available)`)
   if (waitingUnknown.value) missing.push('any payments not yet received')

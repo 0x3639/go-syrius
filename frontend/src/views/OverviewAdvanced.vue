@@ -114,7 +114,7 @@ const unused = computed(() => tiles.value.filter((t) => !t.used))
       <h2 id="ov-holdings" class="section-title px-6 py-4">Holdings</h2>
       <HoldingsTable dense />
       <p v-if="balances.available && totalUsd !== null" class="hint border-t border-border px-6 py-3" data-testid="estimate-scope">
-        Estimate {{ formatFiat(totalUsd) }} covers ZNN and QSR, spendable and committed.
+        Estimate {{ formatFiat(totalUsd) }} covers ZNN and QSR, spendable and committed (staked, fused, collateral and deposits).
         <template v-if="unpriced.length">{{ unpriced.join(', ') }} unpriced.</template> Waiting amounts are excluded<template v-if="waitingUnknown"> and could not be checked</template>.
       </p>
     </section>

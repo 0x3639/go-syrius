@@ -5,7 +5,8 @@ import { formatFiat } from '../lib/fiat'
 import TokenAmount from './TokenAmount.vue'
 
 // Every asset the account holds, split into what can be spent now, what is
-// waiting to be received, and what is committed to staking or fusion. `dense`
+// waiting to be received, and what is committed: staking, fusion, pillar and
+// sentinel collateral, registration deposits. `dense`
 // (Advanced) adds the token standard and a fiat column.
 defineProps<{ dense?: boolean }>()
 const balances = useBalancesStore()
@@ -49,7 +50,11 @@ const { rows, waitingUnknown } = useHoldings()
           <td class="border-t border-border px-3 text-right align-top" :class="dense ? 'py-2.5' : 'py-3.5 pr-6'">
             <template v-if="r.committed.length">
               <span class="whitespace-nowrap text-foreground"><TokenAmount :amount="r.committedTotal" :decimals="r.decimals" /></span>
-              <span v-for="c in r.committed" :key="c.label" class="block text-xs text-muted-foreground">{{ c.label }}</span>
+              <!-- One line per commitment. With several, each shows its own amount
+                   so the total above can be checked against its parts. -->
+              <span v-for="c in r.committed" :key="c.label" class="block text-xs text-muted-foreground">
+                <template v-if="r.committed.length > 1"><TokenAmount :amount="c.amount" :decimals="r.decimals" /> </template>{{ c.label }}
+              </span>
             </template>
             <span v-else class="text-muted-foreground">—</span>
           </td>

@@ -10,6 +10,7 @@ import { useNodeStore } from '../stores/node'
 import { useBalancesStore } from '../stores/balances'
 import { usePlasmaStore } from '../stores/plasma'
 import { useStakeStore } from '../stores/stake'
+import { useCollateralStore } from '../stores/collateral'
 import { useSentinelStore } from '../stores/sentinel'
 import { currentRequestEpoch } from '../lib/requestEpoch'
 import { usePillarStore } from '../stores/pillar'
@@ -29,6 +30,7 @@ const node = useNodeStore()
 const balances = useBalancesStore()
 const plasma = usePlasmaStore()
 const stake = useStakeStore()
+const collateral = useCollateralStore()
 const sentinel = useSentinelStore()
 const pillar = usePillarStore()
 const accelerator = useAcceleratorStore()
@@ -89,6 +91,7 @@ function invalidateWalletData() {
   plasma.invalidate()
   unreceived.invalidate()
   stake.invalidate()
+  collateral.invalidate()
   pillar.invalidate()
   sentinel.invalidate()
   accelerator.invalidate()

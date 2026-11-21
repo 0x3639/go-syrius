@@ -5,54 +5,145 @@ import Dashboard from './Dashboard.vue'
 import { useNodeStore } from '../stores/node'
 import { useBalancesStore } from '../stores/balances'
 import { usePriceStore } from '../stores/price'
+import { useUiStore } from '../stores/ui'
+import { useUnreceivedStore } from '../stores/unreceived'
+import { useStakeStore } from '../stores/stake'
+import { usePlasmaStore } from '../stores/plasma'
+import { usePillarStore } from '../stores/pillar'
+import { useAcceleratorStore } from '../stores/accelerator'
 
-const push = vi.fn()
+const push = vi.hoisted(() => vi.fn())
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
+// The dashboard refreshes earning snapshots on mount; without a backend those
+// calls would wipe the fixtures set up below.
+vi.mock('../../wailsjs/go/app/NomService', () => ({}))
 
-function setup() {
+function setup(mode: 'everyday' | 'advanced') {
+  useUiStore().mode = mode
   const balances = useBalancesStore()
   balances.items = [
-    { zts: 'zts1', symbol: 'ZNN', decimals: 8, amount: '1240850319000' },
-    { zts: 'zts2', symbol: 'QSR', decimals: 8, amount: '12408500000000' },
+    { zts: 'zts1znnxxxxxxxxxxxxx9z4ulx', symbol: 'ZNN', decimals: 8, amount: '1240850319000' },
+    { zts: 'zts1qsrxxxxxxxxxxxxxmrhjll', symbol: 'QSR', decimals: 8, amount: '12408500000000' },
+    { zts: 'zts1customxxxxxxxxxxxxxxxx', symbol: 'LUMEN', decimals: 6, amount: '25000000000' },
   ] as any
+  for (const s of [useStakeStore(), usePillarStore()] as any[]) s.refresh = vi.fn()
   return mount(Dashboard, { global: { stubs: { TxHistory: true } } })
 }
 
 describe('Dashboard', () => {
-  beforeEach(() => { setActivePinia(createPinia()); useNodeStore().connected = true; useBalancesStore().status = 'ready' })
-
-  it('does not display zero funds or a fiat total when disconnected', () => {
-    useNodeStore().connected = false
-    usePriceStore().available = true
-    const w = setup()
-    expect(w.text()).toContain('Disconnected')
-    expect(w.text()).toContain('Balance unavailable')
-    expect(w.text()).not.toContain('$0.00')
-    expect(w.get('[aria-label="ZNN balance"]').text()).toBe('—')
+  beforeEach(() => {
+    setActivePinia(createPinia()); push.mockClear()
+    useNodeStore().connected = true; useBalancesStore().status = 'ready'
   })
 
-  it('shows a USD portfolio total when price is available', async () => {
-    const price = usePriceStore()
-    price.znnUsd = 0.118422; price.qsrUsd = 0.02343554; price.available = true
-    const w = setup()
-    await w.vm.$nextTick()
-    expect(w.text()).toContain('Total portfolio value')
-    expect(w.text()).toContain('$') // a formatted fiat total
+  describe.each(['everyday', 'advanced'] as const)('%s', (mode) => {
+    it('does not display zero funds or a fiat total when disconnected', () => {
+      useNodeStore().connected = false
+      usePriceStore().available = true
+      const w = setup(mode)
+      expect(w.text()).toContain('Disconnected')
+      expect(w.text()).not.toContain('$0.00')
+      expect(w.get('[aria-label="ZNN balance"]').text()).toBe('—')
+    })
+
+    it('lists every held asset, including tokens without a price', () => {
+      const price = usePriceStore(); price.znnUsd = 1; price.qsrUsd = 0.1; price.available = true
+      const w = setup(mode)
+      for (const s of ['ZNN', 'QSR', 'LUMEN']) expect(w.find(`[data-testid="holding-${s}"]`).exists()).toBe(true)
+      expect(w.get('[data-testid="holding-LUMEN"]').text()).toContain('No price')
+      expect(w.get('[data-testid="holding-ZNN"]').text()).toContain('≈ $')
+    })
+
+    it('separates spendable, waiting and committed amounts', async () => {
+      useUnreceivedStore().items = [{ fromHash: 'h1', fromAddress: 'z1a', token: 'ZNN', amount: '4250000000', decimals: 8 }] as any
+      const stake = useStakeStore(); stake.status = 'ready'
+      stake.stakeInfo = { totalAmount: '50000000000', entries: [] } as any
+      usePlasmaStore().info = { qsrFused: '15000000000', currentPlasma: 80000, maxPlasma: 100000 } as any
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      const znn = w.get('[data-testid="holding-ZNN"]').text()
+      expect(znn).toContain('12,408.5') // spendable
+      expect(znn).toContain('+42.5')    // waiting
+      expect(znn).toContain('500')    // committed
+      expect(znn).toContain('staked')
+      expect(w.get('[data-testid="holding-QSR"]').text()).toContain('fused for plasma')
+    })
+
+    it('states what the fiat estimate covers and leaves out', () => {
+      const price = usePriceStore(); price.znnUsd = 1; price.qsrUsd = 0.1; price.available = true
+      useUnreceivedStore().items = [{ fromHash: 'h1', fromAddress: 'z1a', token: 'ZNN', amount: '1', decimals: 8 }] as any
+      const scope = setup(mode).get('[data-testid="estimate-scope"]').text()
+      expect(scope).toContain('ZNN and QSR')
+      expect(scope).toContain('LUMEN')
+    })
+
+    it('includes committed amounts in the estimate', () => {
+      const price = usePriceStore(); price.znnUsd = 1; price.qsrUsd = 0; price.available = true
+      const stake = useStakeStore(); stake.status = 'ready'
+      stake.stakeInfo = { totalAmount: '50000000000', entries: [] } as any
+      // 12,408.50319 spendable + 500 staked at $1
+      expect(setup(mode).text()).toContain('$12,908.50')
+    })
+
+    it('surfaces waiting payments and opens them', async () => {
+      useUnreceivedStore().items = [{ fromHash: 'h1', fromAddress: 'z1a', token: 'ZNN', amount: '4250000000', decimals: 8 }] as any
+      const w = setup(mode)
+      expect(w.text()).toContain('1 payment waiting to be received')
+      await w.get('[data-testid="attention-incoming"]').trigger('click')
+      expect(push).toHaveBeenCalledWith('/receive')
+    })
+
+    it('tells a pillar owner about a pending vote', async () => {
+      const pillar = usePillarStore(); pillar.myPillar = { name: 'Meridian' } as any
+      useAcceleratorStore().votable = [{ needsMyVote: true }] as any
+      const w = setup(mode)
+      expect(w.text()).toContain('Meridian has 1 vote waiting')
+      await w.get('[data-testid="attention-vote"]').trigger('click')
+      expect(push).toHaveBeenCalledWith('/network/accelerator?sub=Vote')
+    })
   })
 
-  it('falls back to a ZNN headline when price is unavailable', async () => {
-    const price = usePriceStore(); price.available = false
-    const w = setup()
-    await w.vm.$nextTick()
-    expect(w.text()).toContain('ZNN')
-    expect(w.text()).not.toContain('≈ $')
-    // The hero must not claim a portfolio total it can't compute.
+  it('Everyday falls back to a ZNN headline when price is unavailable', () => {
+    usePriceStore().available = false
+    const w = setup('everyday')
     expect(w.text()).toContain('ZNN balance')
-    expect(w.text()).not.toContain('Total portfolio value')
+    expect(w.text()).not.toContain('Estimated value')
+    expect(w.text()).not.toContain('≈ $')
+  })
+
+  it('Everyday keeps operator detail off Home', () => {
+    const w = setup('everyday')
+    expect(w.text()).toContain('All caught up')
+    for (const s of ['Pinned', 'Sentinel', 'Tokens issued', 'Plasma']) expect(w.text()).not.toContain(s)
+  })
+
+  it('Everyday sends vote alerts to Advanced by name', () => {
+    const pillar = usePillarStore(); pillar.myPillar = { name: 'Meridian' } as any
+    useAcceleratorStore().votable = [{ needsMyVote: true }] as any
+    expect(setup('everyday').get('[data-testid="attention-vote"]').text()).toBe('Open in Advanced')
+  })
+
+  it('Advanced leads with tiles the account uses and collapses the rest', () => {
+    usePlasmaStore().info = { qsrFused: '15000000000', currentPlasma: 80000, maxPlasma: 100000 } as any
+    const w = setup('advanced')
+    expect(w.find('[data-testid="tile-plasma"]').exists()).toBe(true)
+    expect(w.find('[data-testid="tile-node"]').exists()).toBe(true)
+    expect(w.find('[data-testid="tile-sentinel"]').exists()).toBe(false)
+    expect(w.find('[data-testid="unused-sentinel"]').exists()).toBe(true)
+  })
+
+  it('Advanced pins are editable and open their tool', async () => {
+    const ui = useUiStore()
+    const w = setup('advanced')
+    await w.get('[data-testid="pin-fuse"]').trigger('click')
+    expect(push).toHaveBeenCalledWith('/network/plasma')
+    await w.get('button[aria-expanded="false"]').trigger('click')
+    await w.get('input[aria-label="Pin Vote on projects"]').setValue(true)
+    expect(ui.pins).toContain('vote')
+    expect(w.find('[data-testid="pin-vote"]').exists()).toBe(true)
   })
 
   it('has no View all button (history pages in place)', () => {
-    const w = setup()
-    expect(w.text()).not.toContain('View all')
+    expect(setup('everyday').text()).not.toContain('View all')
   })
 })

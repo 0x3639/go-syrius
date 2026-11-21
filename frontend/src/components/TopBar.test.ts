@@ -4,16 +4,21 @@ import { setActivePinia, createPinia } from 'pinia'
 // Stub the router so TopBar's useRouter()/useRoute() resolve without a real
 // router being installed (otherwise Vue logs an "injection Symbol(router) not
 // found" warn). useRoute drives the on-Pillars-page title suffix.
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }), useRoute: () => ({ name: 'dashboard', query: {} }) }))
+const push = vi.hoisted(() => vi.fn())
+const route = vi.hoisted(() => ({ name: 'dashboard', query: {}, meta: {} as Record<string, unknown> }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => route }))
 import TopBar from './TopBar.vue'
 import { useWalletStore } from '../stores/wallet'
 import { useAutoReceiveStore } from '../stores/autoReceive'
+import { useUnreceivedStore } from '../stores/unreceived'
+import { useNodeStore } from '../stores/node'
+import { useUiStore } from '../stores/ui'
 import { useWalletConnectStore } from '../stores/walletconnect'
 
 const stubs = { AccountSlotPicker: true }
 
 describe('TopBar', () => {
-  beforeEach(() => setActivePinia(createPinia()))
+  beforeEach(() => { setActivePinia(createPinia()); push.mockClear(); route.meta = {}; localStorage.removeItem('syrius.mode') })
 
   it('renders the page title', () => {
     const w = mount(TopBar, { props: { title: 'Dashboard' }, global: { stubs } })
@@ -39,13 +44,52 @@ describe('TopBar', () => {
     expect(lock).toHaveBeenCalled()
   })
 
-  it('toggles auto-receive with the active account index', async () => {
+  // The count is a link to the payments. It must never change auto-receive,
+  // which is an explicit switch on the Receive screen.
+  it('the incoming count opens the payments and never toggles auto-receive', async () => {
     const wallet = useWalletStore(); wallet.locked = false; wallet.activeIndex = 3
-    const autoReceive = useAutoReceiveStore()
-    const toggle = vi.spyOn(autoReceive, 'toggle').mockResolvedValue(undefined)
-    const w = mount(TopBar, { props: { title: 'Dashboard' }, global: { stubs } })
-    await w.find('button[aria-label="Auto-receive off"]').trigger('click')
-    expect(toggle).toHaveBeenCalledWith(3)
+    const toggle = vi.spyOn(useAutoReceiveStore(), 'toggle').mockResolvedValue(undefined)
+    useUnreceivedStore().items = [{ fromHash: 'h1' }, { fromHash: 'h2' }] as any
+    const w = mount(TopBar, { props: { title: 'Home' }, global: { stubs } })
+    const btn = w.find('button[aria-label="2 incoming payment(s) waiting"]')
+    expect(btn.text()).toBe('2')
+    await btn.trigger('click')
+    expect(push).toHaveBeenCalledWith('/receive')
+    expect(toggle).not.toHaveBeenCalled()
+  })
+
+  it('offers a labelled mode switch that reflects the current mode', async () => {
+    const ui = useUiStore()
+    const w = mount(TopBar, { props: { title: 'Overview' }, global: { stubs } })
+    const group = w.find('[role="group"][aria-label="Wallet mode"]')
+    expect(group.text()).toContain('Mode')
+    const [everyday, advanced] = group.findAll('button')
+    expect(advanced.attributes('aria-pressed')).toBe('true')
+    await everyday.trigger('click')
+    expect(ui.mode).toBe('everyday')
+    expect(everyday.attributes('aria-pressed')).toBe('true')
+    // A shared screen stays where it is: no navigation, nothing discarded.
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it('leaves an operator-only screen when switching to Everyday', async () => {
+    route.meta = { advanced: true }
+    const w = mount(TopBar, { props: { title: 'Pillars' }, global: { stubs } })
+    await w.find('[aria-label="Wallet mode"] button').trigger('click')
+    expect(push).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('names the connected network and chain', async () => {
+    const node = useNodeStore(); node.connected = true; node.chainId = 1
+    const w = mount(TopBar, { props: { title: 'Home' }, global: { stubs } })
+    expect(w.get('[data-testid="network-chip"]').text()).toContain('Mainnet')
+    expect(w.get('[data-testid="network-chip"]').text()).toContain('chain 1')
+    node.chainId = 73404
+    await w.vm.$nextTick()
+    expect(w.get('[data-testid="network-chip"]').text()).toContain('Testnet')
+    node.connected = false
+    await w.vm.$nextTick()
+    expect(w.find('[data-testid="network-chip"]').exists()).toBe(false)
   })
 
   it('shows WalletConnect in muted state when disconnected', () => {

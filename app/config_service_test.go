@@ -346,3 +346,99 @@ func TestGetBuildInfo(t *testing.T) {
 		t.Fatal("BuildInfo.Commit is empty")
 	}
 }
+
+func TestUIModeDefaultsFreshInstallToEveryday(t *testing.T) {
+	t.Setenv("GO_SYRIUS_DATA_DIR", t.TempDir())
+	c := newConfigService()
+	s, err := c.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.UIMode != uiModeEveryday {
+		t.Fatalf("fresh install mode = %q, want everyday", s.UIMode)
+	}
+	if len(s.PinnedActions) == 0 {
+		t.Fatal("fresh install should have default pinned actions")
+	}
+}
+
+func TestUIModeKeepsAdvancedForExistingInstalls(t *testing.T) {
+	// Wallets on disk but no settings file.
+	dir := t.TempDir()
+	t.Setenv("GO_SYRIUS_DATA_DIR", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "wallets"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "wallets", "old.dat"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := newConfigService()
+	s, err := c.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.UIMode != uiModeAdvanced {
+		t.Fatalf("wallets without settings: mode = %q, want advanced", s.UIMode)
+	}
+
+	// A settings file written before the mode existed.
+	dir2 := t.TempDir()
+	t.Setenv("GO_SYRIUS_DATA_DIR", dir2)
+	if err := os.WriteFile(filepath.Join(dir2, "settings.json"), []byte(`{"nodeMode":"remote","theme":"dark"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err = c.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.UIMode != uiModeAdvanced {
+		t.Fatalf("pre-mode settings file: mode = %q, want advanced", s.UIMode)
+	}
+}
+
+func TestSetUIModeValidatesAndPersists(t *testing.T) {
+	t.Setenv("GO_SYRIUS_DATA_DIR", t.TempDir())
+	c := newConfigService()
+	if err := c.SetUIMode("expert"); err == nil {
+		t.Fatal("unknown mode must be rejected")
+	}
+	if err := c.SetUIMode(uiModeAdvanced); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := c.GetSettings()
+	if s.UIMode != uiModeAdvanced {
+		t.Fatalf("mode = %q, want advanced", s.UIMode)
+	}
+	// An unrelated setter must not reset the mode.
+	if err := c.SetAutoReceive(true); err != nil {
+		t.Fatal(err)
+	}
+	s, _ = c.GetSettings()
+	if s.UIMode != uiModeAdvanced {
+		t.Fatalf("mode after unrelated write = %q, want advanced", s.UIMode)
+	}
+}
+
+func TestSetPinnedActionsValidates(t *testing.T) {
+	t.Setenv("GO_SYRIUS_DATA_DIR", t.TempDir())
+	c := newConfigService()
+	for _, bad := range [][]string{{"fuse", "launch-missiles"}, {"fuse", "fuse"}, {"fuse", "collect", "receive", "vote", "send", "stake", "tokens"}} {
+		if err := c.SetPinnedActions(bad); err == nil {
+			t.Fatalf("SetPinnedActions(%v) must fail", bad)
+		}
+	}
+	if err := c.SetPinnedActions([]string{"vote", "node"}); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := c.GetSettings()
+	if len(s.PinnedActions) != 2 || s.PinnedActions[0] != "vote" || s.PinnedActions[1] != "node" {
+		t.Fatalf("pinned = %v", s.PinnedActions)
+	}
+	if err := c.SetPinnedActions([]string{}); err != nil {
+		t.Fatal(err)
+	}
+	s, _ = c.GetSettings()
+	if s.PinnedActions == nil || len(s.PinnedActions) != 0 {
+		t.Fatalf("empty pins must stay empty, got %v", s.PinnedActions)
+	}
+}

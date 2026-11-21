@@ -3,6 +3,8 @@ import { mount, RouterLinkStub } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import Sidebar from './Sidebar.vue'
 import { useNodeStore } from '../stores/node'
+import { useUiStore } from '../stores/ui'
+import { useUnreceivedStore } from '../stores/unreceived'
 import { vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 
@@ -54,9 +56,26 @@ describe('Sidebar', () => {
   it('renders the core nav destinations', () => {
     const w = mountSidebar()
     const text = w.text()
-    for (const label of ['Dashboard', 'Send', 'Receive', 'Tokens', 'Plasma', 'Staking', 'Pillars', 'Sentinels', 'Accelerator', 'Rewards', 'WalletConnect', 'Settings']) {
+    for (const label of ['Overview', 'Activity', 'Send', 'Receive', 'Tokens', 'Plasma', 'Staking', 'Pillars', 'Sentinels', 'Accelerator', 'Rewards', 'WalletConnect', 'Settings']) {
       expect(text).toContain(label)
     }
+  })
+
+  it('Everyday shows five destinations and keeps operator tools out', () => {
+    useUiStore().mode = 'everyday'
+    const text = mountSidebar().text()
+    for (const label of ['Home', 'Activity', 'Earn', 'More tools', 'Settings', 'Send', 'Receive']) {
+      expect(text).toContain(label)
+    }
+    for (const label of ['Pillars', 'Sentinels', 'Tokens', 'Accelerator', 'Staking', 'Network of Momentum']) {
+      expect(text).not.toContain(label)
+    }
+  })
+
+  it('Everyday still shows how many payments are waiting', () => {
+    useUiStore().mode = 'everyday'
+    useUnreceivedStore().items = [{ fromHash: 'h1' }, { fromHash: 'h2' }] as any
+    expect(mountSidebar().find('[aria-label="2 waiting"]').exists()).toBe(true)
   })
 
   it('shows the app version below the sync pill', async () => {

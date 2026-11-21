@@ -30,4 +30,36 @@ describe('ui store', () => {
     localStorage.removeItem('syrius.theme')
   })
 
+
+  it('starts in Advanced until a preference is known, then restores the cached mode', () => {
+    const s = useUiStore()
+    expect(s.mode).toBe('advanced')
+    localStorage.setItem('syrius.mode', 'everyday')
+    try { s.initMode(); expect(s.mode).toBe('everyday') } finally { localStorage.removeItem('syrius.mode') }
+  })
+
+  it('ignores an unknown cached mode', () => {
+    localStorage.setItem('syrius.mode', 'expert')
+    try { const s = useUiStore(); s.initMode(); expect(s.mode).toBe('advanced') } finally { localStorage.removeItem('syrius.mode') }
+  })
+
+  it('setMode switches at once, caches it and survives a failed save', () => {
+    const s = useUiStore()
+    s.setMode('everyday', 'note') // no backend in this test: the save throws and is swallowed
+    expect(s.mode).toBe('everyday')
+    expect(s.modeNotice).toBe('note')
+    expect(localStorage.getItem('syrius.mode')).toBe('everyday')
+    localStorage.removeItem('syrius.mode')
+  })
+
+  it('togglePin adds, removes and stops at the limit', () => {
+    const s = useUiStore()
+    s.pins = []
+    for (const id of ['fuse', 'collect', 'receive', 'vote', 'send', 'stake'] as const) s.togglePin(id)
+    expect(s.pins).toHaveLength(6)
+    s.togglePin('node')
+    expect(s.pins).not.toContain('node')
+    s.togglePin('fuse')
+    expect(s.pins).not.toContain('fuse')
+  })
 })

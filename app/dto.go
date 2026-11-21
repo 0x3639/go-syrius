@@ -58,6 +58,11 @@ type Settings struct {
 	AccountCounts map[string]int `json:"accountCounts"`
 	// Contacts is the address book (saved name → address entries).
 	Contacts []Contact `json:"contacts"`
+	// UIMode selects the shell layout: "everyday" (holders) or "advanced"
+	// (operators). Layout only — it never changes what the backend permits.
+	UIMode string `json:"uiMode"`
+	// PinnedActions are the shortcut ids pinned on the Advanced overview.
+	PinnedActions []string `json:"pinnedActions"`
 }
 
 // Contact is a saved address-book entry.

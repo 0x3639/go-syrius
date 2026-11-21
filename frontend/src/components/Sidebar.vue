@@ -3,21 +3,36 @@ import { computed, onMounted, ref } from 'vue'
 import {
   LayoutDashboardIcon, SendIcon, DownloadIcon, CoinsIcon, ZapIcon, LayersIcon,
   Building2Icon, ShieldCheckIcon, RocketIcon, GiftIcon, SettingsIcon,
-  BookUserIcon, ShieldIcon, LinkIcon,
+  BookUserIcon, ShieldIcon, LinkIcon, ActivityIcon, LayoutGridIcon, HomeIcon,
 } from '@lucide/vue'
 import { useNodeStore } from '../stores/node'
 import { useUnreceivedStore } from '../stores/unreceived'
+import { useUiStore } from '../stores/ui'
 import AccountSlotPicker from './AccountSlotPicker.vue'
 import SidebarLink from './SidebarLink.vue'
 import { GetBuildInfo } from '../../wailsjs/go/app/ConfigService'
 
 const node = useNodeStore()
 const unreceived = useUnreceivedStore()
+const ui = useUiStore()
+const everyday = computed(() => ui.mode === 'everyday')
+
+// Everyday: five destinations, with Send and Receive as buttons above them.
+// Operator tools are reachable only through More tools, which names them and
+// switches to Advanced.
+const everydayNav = [
+  { to: '/dashboard', label: 'Home', icon: HomeIcon },
+  { to: '/activity', label: 'Activity', icon: ActivityIcon },
+  { to: '/earn', label: 'Earn', icon: GiftIcon },
+  { to: '/tools', label: 'More tools', icon: LayoutGridIcon },
+  { to: '/settings', label: 'Settings', icon: SettingsIcon },
+]
 
 const walletNav = computed(() => [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboardIcon },
+  { to: '/dashboard', label: 'Overview', icon: LayoutDashboardIcon },
   { to: '/transfer', label: 'Send', icon: SendIcon },
   { to: '/receive', label: 'Receive', icon: DownloadIcon, badge: unreceived.items.length },
+  { to: '/activity', label: 'Activity', icon: ActivityIcon },
   { to: '/tokens', label: 'Tokens', icon: CoinsIcon },
 ])
 const networkNav = [
@@ -74,6 +89,22 @@ onMounted(async () => {
     <!-- Only this region scrolls: the picker's dropdown is wider than the
          sidebar and must not sit inside an overflow container. -->
     <div class="-mx-3.5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3.5">
+    <template v-if="everyday">
+      <div class="grid grid-cols-2 gap-2">
+        <RouterLink to="/transfer" class="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90">
+          <SendIcon :size="15" /> Send
+        </RouterLink>
+        <RouterLink to="/receive" class="relative inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-input text-sm font-semibold text-sidebar-foreground transition-colors hover:bg-sidebar-accent/60">
+          <DownloadIcon :size="15" /> Receive
+          <span v-if="unreceived.items.length" class="absolute -right-1 -top-1 rounded-full bg-primary px-1.5 text-xs font-bold leading-5 text-primary-foreground" :aria-label="`${unreceived.items.length} waiting`">{{ unreceived.items.length }}</span>
+        </RouterLink>
+      </div>
+      <nav class="flex flex-col gap-0.5" aria-label="Wallet">
+        <SidebarLink v-for="item in everydayNav" :key="item.to" v-bind="item" />
+      </nav>
+    </template>
+
+    <template v-else>
     <div>
       <div class="px-2.5 pb-1.5 text-xs font-semibold text-muted-foreground">Wallet</div>
       <nav class="flex flex-col gap-0.5" aria-label="Wallet">
@@ -87,10 +118,11 @@ onMounted(async () => {
         <SidebarLink v-for="item in networkNav" :key="item.to" v-bind="item" />
       </nav>
     </div>
+    </template>
 
     <!-- Bottom: utilities + node-sync card -->
     <div class="mt-auto flex flex-col gap-0.5 pt-2">
-      <SidebarLink v-for="item in bottomNav" :key="item.to" v-bind="item" />
+      <template v-if="!everyday"><SidebarLink v-for="item in bottomNav" :key="item.to" v-bind="item" /></template>
       <div class="mt-2.5 flex flex-col gap-2 rounded-lg bg-sidebar-accent px-3 py-2.5" role="status">
         <div class="flex items-center justify-between gap-2 text-xs">
           <span class="flex items-center gap-1.5 font-semibold" :class="synced ? 'text-success' : 'text-warning'">

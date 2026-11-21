@@ -11,4 +11,5 @@ app.use(pinia)
 // Restore the persisted theme (default dark) before mount so the first paint —
 // including the locked screens, which never mount AppShell — honors it.
 useUiStore().initTheme()
+useUiStore().initMode()
 app.use(router).mount('#app')

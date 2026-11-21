@@ -573,6 +573,8 @@ export namespace app {
 	    accountLabels: Record<string, string>;
 	    accountCounts: Record<string, number>;
 	    contacts: Contact[];
+	    uiMode: string;
+	    pinnedActions: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -593,6 +595,8 @@ export namespace app {
 	        this.accountLabels = source["accountLabels"];
 	        this.accountCounts = source["accountCounts"];
 	        this.contacts = this.convertValues(source["contacts"], Contact);
+	        this.uiMode = source["uiMode"];
+	        this.pinnedActions = source["pinnedActions"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

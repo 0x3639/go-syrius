@@ -39,7 +39,7 @@ vi.mock('../../wailsjs/go/app/WalletService', () => ({
 vi.mock('../../wailsjs/runtime/runtime', () => ({ EventsOn: vi.fn() }))
 
 const push = vi.fn()
-vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => ({ name: 'settings', meta: {}, query: {} }) }))
 
 vi.mock('nom-ui', () => ({
   Input: {

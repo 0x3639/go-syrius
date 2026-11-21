@@ -17,3 +17,7 @@ export function SetAllowMainnetSend(arg1:boolean):Promise<void>;
 export function SetAutoReceive(arg1:boolean):Promise<void>;
 
 export function SetChainID(arg1:number):Promise<void>;
+
+export function SetPinnedActions(arg1:Array<string>):Promise<void>;
+
+export function SetUIMode(arg1:string):Promise<void>;

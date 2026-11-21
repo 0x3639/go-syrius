@@ -268,6 +268,23 @@ describe('Dashboard', () => {
       expect(coll).toHaveBeenCalledTimes(1) // as soon as sync ends, without waiting for a tick
     })
 
+    it('when sync ends, replaces a request issued mid-sync instead of waiting for it', async () => {
+      const w = setup(mode)
+      const node = useNodeStore()
+      const stake = useStakeStore() as any
+      const coll = useCollateralStore() as any
+      node.syncing = true
+      await w.vm.$nextTick()
+      // Both stores have a request outstanding from before sync finished.
+      stake._active = 7; coll._active = 7
+      stake.refresh.mockClear(); coll.refresh.mockClear()
+      node.syncing = false
+      await w.vm.$nextTick()
+      // No further height change: the reload must still happen, for both.
+      expect(stake.refresh).toHaveBeenCalledTimes(1)
+      expect(coll.refresh).toHaveBeenCalledTimes(1)
+    })
+
     it('shows a read that failed during a reload, even on rows it is still holding', async () => {
       const price = usePriceStore(); price.znnUsd = 1; price.qsrUsd = 0.1; price.available = true
       const stake = useStakeStore(); const c = useCollateralStore()

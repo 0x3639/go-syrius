@@ -48,14 +48,21 @@ watch(() => wallet.activeIndex, refreshEarning)
 //
 // Two limits keep this cheap. While an embedded node is still syncing its
 // height climbs every couple of seconds and the chain it describes is not the
-// settled one, so reloads wait until sync ends (the syncing flag is watched
-// too, so the first reload happens as soon as it does). And refreshIfIdle
-// lets a reload in flight finish instead of superseding it, so a node slower
-// than the tick interval still lands a snapshot.
-watch(() => [node.height, node.syncing] as const, () => {
+// settled one, so reloads wait until sync ends. And refreshIfIdle lets a
+// reload in flight finish instead of superseding it, so a node slower than the
+// tick interval still lands a snapshot.
+watch(() => node.height, () => {
   if (!node.connected || node.syncing) return
   stake.refreshIfIdle()
   collateral.refreshIfIdle()
+})
+// The moment sync ends, reload unconditionally. A request already in flight
+// (from mount or a balance change) was issued against the chain mid-sync, so
+// it must be superseded, not waited for: refresh(), not refreshIfIdle().
+watch(() => node.syncing, (syncing, was) => {
+  if (!was || syncing || !node.connected) return
+  stake.refresh()
+  collateral.refresh()
 })
 
 // Holdings add staked ZNN to the spendable balance. The balance refreshes on

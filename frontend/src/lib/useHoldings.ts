@@ -1,4 +1,4 @@
-import { computed } from 'vue'
+import { computed, shallowRef, watch } from 'vue'
 import { useBalancesStore } from '../stores/balances'
 import { useUnreceivedStore } from '../stores/unreceived'
 import { useStakeStore } from '../stores/stake'
@@ -32,6 +32,11 @@ export type Holding = {
    *  pillar and sentinel collateral, and unspent registration deposits. */
   committed: Commitment[]
   committedTotal: string
+  /** A read behind the committed amounts failed: they may be incomplete.
+   *  Never the same as "nothing committed". */
+  committedUnknown: boolean
+  /** A read behind the committed amounts is in flight or has not landed yet. */
+  committedPending: boolean
   /** Fiat estimate of spendable + committed; null when the asset has no price. */
   usd: number | null
 }
@@ -58,13 +63,13 @@ export function useHoldings() {
   const price = usePriceStore()
   const node = useNodeStore()
 
-  const rows = computed<Holding[]>(() => {
+  const liveRows = computed<Holding[]>(() => {
     const byZts = new Map<string, Holding>()
     const row = (zts: string, symbol: string, decimals: number): Holding => {
       let r = byZts.get(zts)
       if (!r) {
         const p = PROTOCOL[zts]
-        r = { zts, symbol: p?.symbol ?? symbol, name: p?.name ?? symbol, decimals, protocol: !!p, spendable: '0', waiting: '0', committed: [], committedTotal: '0', usd: null }
+        r = { zts, symbol: p?.symbol ?? symbol, name: p?.name ?? symbol, decimals, protocol: !!p, spendable: '0', waiting: '0', committed: [], committedTotal: '0', committedUnknown: false, committedPending: false, usd: null }
         byZts.set(zts, r)
       }
       return r
@@ -108,6 +113,16 @@ export function useHoldings() {
         add(QSR_ZTS, 'QSR', 'deposited for a pillar', c.pillarDepositedQsr)
         add(QSR_ZTS, 'QSR', 'deposited for a sentinel', c.sentinelDepositedQsr)
       }
+      // Say so when a figure above is missing because its read failed or has
+      // not landed, rather than letting the row read as "nothing committed".
+      const znnRow = row(ZNN_ZTS, 'ZNN', 8)
+      const qsrRow = row(QSR_ZTS, 'QSR', 8)
+      const failed = (s: { status: string }) => s.status === 'error'
+      const waitingOn = (s: { status: string; stale: boolean }) => s.stale || s.status === 'idle' || s.status === 'loading'
+      znnRow.committedUnknown = failed(stake) || failed(collateral)
+      qsrRow.committedUnknown = failed(collateral)
+      znnRow.committedPending = !znnRow.committedUnknown && (waitingOn(stake) || waitingOn(collateral))
+      qsrRow.committedPending = !qsrRow.committedUnknown && waitingOn(collateral)
     }
     for (const r of byZts.values()) {
       r.committedTotal = sumBase(r.committed.map((c) => c.amount))
@@ -116,16 +131,37 @@ export function useHoldings() {
     return [...byZts.values()]
   })
 
+  // A staking or collateral snapshot is marked stale the moment a balance
+  // moves, until its reload lands. A stale snapshot must never be added to the
+  // newer balance, but simply dropping it would make every row and the total
+  // dip and bounce back on each payment. So while anything is stale the table
+  // keeps showing the last settled picture as a whole (old balance WITH old
+  // locked amounts: consistent), marked "updating…", and switches to the new
+  // picture once the reload lands. An account or connection change clears the
+  // stale marks in the same tick, so a held picture never crosses accounts.
+  const settling = computed(() => node.connected && (stake.stale || collateral.stale))
+  const settledRows = shallowRef<Holding[] | null>(null)
+  watch([liveRows, settling], () => { if (!settling.value) settledRows.value = liveRows.value }, { immediate: true, flush: 'sync' })
+  const rows = computed<Holding[]>(() => {
+    if (!settling.value || !settledRows.value) return liveRows.value
+    return settledRows.value.map((r) => ({
+      ...r,
+      committedPending: !r.committedUnknown && ((r.zts === ZNN_ZTS && (stake.stale || collateral.stale)) || (r.zts === QSR_ZTS && collateral.stale)),
+    }))
+  })
+
   /** Fiat total, or null without a price feed or loaded balances. */
   const totalUsd = computed(() => {
     if (!balances.available || !price.available) return null
     return rows.value.reduce((t, r) => t + (r.usd ?? 0), 0)
   })
+  /** A read behind staked or locked amounts failed: the estimate may be low. */
+  const committedUnknown = computed(() => rows.value.some((r) => r.committedUnknown))
   /** Assets the estimate leaves out because they have no price. */
   const unpriced = computed(() => [...new Set(rows.value.filter((r) => r.usd === null && (r.spendable !== '0' || r.committedTotal !== '0')).map((r) => r.symbol))])
   const waitingCount = computed(() => (node.connected ? unreceived.items.length : 0))
   /** The incoming lookup failed: waiting amounts are unknown, not zero. */
   const waitingUnknown = computed(() => unreceived.failed)
 
-  return { rows, totalUsd, unpriced, waitingCount, waitingUnknown }
+  return { rows, totalUsd, unpriced, waitingCount, waitingUnknown, committedUnknown }
 }

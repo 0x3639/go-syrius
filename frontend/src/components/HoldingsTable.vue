@@ -53,10 +53,16 @@ const { rows, waitingUnknown } = useHoldings()
               <!-- One line per commitment. With several, each shows its own amount
                    so the total above can be checked against its parts. -->
               <span v-for="c in r.committed" :key="c.label" class="block text-xs text-muted-foreground">
-                <template v-if="r.committed.length > 1"><TokenAmount :amount="c.amount" :decimals="r.decimals" /> </template>{{ c.label }}
+                <!-- The explicit space matters: a bare trailing space inside the
+                     template is dropped by the compiler, gluing amount to label. -->
+                <template v-if="r.committed.length > 1"><TokenAmount :amount="c.amount" :decimals="r.decimals" />{{ ' ' }}</template>{{ c.label }}
               </span>
             </template>
-            <span v-else class="text-muted-foreground">—</span>
+            <span v-else-if="!r.committedUnknown && !r.committedPending" class="text-muted-foreground">—</span>
+            <!-- Unknown and still-loading are their own answers, never "—". -->
+            <span v-if="r.committedUnknown" class="block text-xs font-semibold text-warning" data-testid="committed-unknown"
+              title="Staked or locked amounts could not be read from the node. They are retried automatically.">? couldn't check</span>
+            <span v-else-if="r.committedPending" class="block text-xs text-muted-foreground" data-testid="committed-pending">updating…</span>
           </td>
           <td v-if="dense" class="whitespace-nowrap border-t border-border py-2.5 pl-3 pr-6 text-right align-top font-mono tabular-nums">
             <span v-if="!balances.available" class="text-muted-foreground">—</span>

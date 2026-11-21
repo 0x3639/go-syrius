@@ -39,6 +39,18 @@ function refreshEarning() {
 useNodeRefresh(refreshEarning)
 watch(() => wallet.activeIndex, refreshEarning)
 
+// Reload staking and collateral on every momentum while the dashboard is open.
+// A reload tied only to a balance change is not enough: the balance drops
+// when a stake, registration or deposit is SENT, but the contract records it
+// a momentum later, so that one reload reads "nothing locked" and nothing
+// would correct it. The same tick also retries a read that failed. These are
+// plain refreshes: they do not mark the snapshot stale, so nothing flickers.
+watch(() => node.height, () => {
+  if (!node.connected) return
+  stake.refresh()
+  collateral.refresh()
+})
+
 // Holdings add staked ZNN to the spendable balance. The balance refreshes on
 // every momentum but the stake snapshot does not, so a stake or withdrawal
 // (here or from another client) would be counted twice or not at all until

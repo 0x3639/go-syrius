@@ -26,7 +26,7 @@ const price = usePriceStore()
 const node = useNodeStore()
 const stake = useStakeStore()
 const pillar = usePillarStore()
-const { rows, totalUsd, unpriced, waitingCount, waitingUnknown } = useHoldings()
+const { rows, totalUsd, unpriced, waitingCount, waitingUnknown, committedUnknown } = useHoldings()
 const { items } = useAttention()
 
 const znn = computed(() => rows.value.find((r) => r.zts === ZNN_ZTS))
@@ -34,7 +34,10 @@ const delegatedTo = computed(() => pillar.delegation?.name || '')
 
 // What the estimate covers, said plainly next to the number.
 const scope = computed(() => {
-  const parts = ['Covers ZNN and QSR, including staked, fused and locked amounts.']
+  // Only claim staked and locked amounts are covered when they were read.
+  const parts = [committedUnknown.value
+    ? 'Covers ZNN and QSR. Staked or locked amounts could not be checked, so this may be low.'
+    : 'Covers ZNN and QSR, including staked, fused and locked amounts.']
   const missing: string[] = []
   if (unpriced.value.length) missing.push(`${unpriced.value.join(', ')} (no price available)`)
   if (waitingUnknown.value) missing.push('any payments not yet received')

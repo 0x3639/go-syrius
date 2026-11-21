@@ -33,7 +33,9 @@ const baseAmount = computed(() => {
   } catch { return null }
 })
 const overBalance = computed(() => balances.available && baseAmount.value !== null && baseAmount.value > BigInt(held(token.value)))
-const canDonate = computed(() => baseAmount.value !== null && !overBalance.value)
+// Like Send, Staking and Plasma: no submit until the balance is known, so the
+// amount can actually be checked against it.
+const canDonate = computed(() => balances.available && baseAmount.value !== null && !overBalance.value)
 
 async function donate() {
   if (!canDonate.value || baseAmount.value === null) return
@@ -84,6 +86,7 @@ watch(
       <AmountInput v-model="amount" :label="`Amount (${token})`" aria-label="donate amount" :symbol="token" :max="maxDecimal" />
       <p v-if="amount && baseAmount === null" class="text-xs text-destructive">Enter an amount greater than zero, with at most 8 decimal places.</p>
       <p v-else-if="overBalance" class="text-xs text-destructive">That is more than this account holds.</p>
+      <p v-else-if="!balances.available" class="hint">Your balance is not available yet, so donating is paused.</p>
     </div>
 
     <Button class="h-12 w-full text-base font-bold" aria-label="donate" :disabled="!canDonate" @click="donate">Donate</Button>

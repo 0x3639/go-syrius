@@ -21,7 +21,13 @@ describe('AcceleratorDonate', () => {
     setActivePinia(createPinia()); useNodeStore().connected = true
     const tx = useTxStore()
     const awaitConfirm = vi.spyOn(tx, 'awaitConfirm').mockImplementation(() => {})
-    return { awaitConfirm, w: mount(AcceleratorDonate) }
+    const balances = useBalancesStore()
+    balances.items = [
+      { zts: 'zts1znn', symbol: 'ZNN', decimals: 8, amount: '1000000000' },
+      { zts: 'zts1qsr', symbol: 'QSR', decimals: 8, amount: '1000000000' },
+    ]
+    balances.status = 'ready'
+    return { awaitConfirm, balances, w: mount(AcceleratorDonate) }
   }
   const donateBtn = (w: ReturnType<typeof mount>) => w.find('button[aria-label="donate"]')
 
@@ -54,11 +60,21 @@ describe('AcceleratorDonate', () => {
     expect(Nom.PrepareDonate).not.toHaveBeenCalled()
   })
 
-  it('blocks an amount above the held balance', async () => {
-    const { w } = setup()
-    const balances = useBalancesStore()
-    balances.items = [{ zts: 'zts1znn', symbol: 'ZNN', decimals: 8, amount: '100000000' }]
+  it('stays disabled until the balance is available', async () => {
+    const { w, balances } = setup()
+    balances.status = 'loading'
+    await w.find('input[aria-label="donate amount"]').setValue('1')
+    expect(donateBtn(w).attributes('disabled')).toBeDefined()
+    expect(w.text()).toContain('balance is not available yet')
     balances.status = 'ready'
+    await w.vm.$nextTick()
+    expect(donateBtn(w).attributes('disabled')).toBeUndefined()
+  })
+
+  it('blocks an amount above the held balance', async () => {
+    const { w, balances } = setup()
+    balances.items = [{ zts: 'zts1znn', symbol: 'ZNN', decimals: 8, amount: '100000000' }]
+    await w.vm.$nextTick()
     await w.find('input[aria-label="donate amount"]').setValue('2')
     expect(donateBtn(w).attributes('disabled')).toBeDefined()
     expect(w.text()).toContain('more than this account holds')

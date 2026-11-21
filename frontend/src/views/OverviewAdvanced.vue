@@ -42,7 +42,7 @@ const accelerator = useAcceleratorStore()
 const token = useTokenStore()
 const walletConnect = useWalletConnectStore()
 const ui = useUiStore()
-const { totalUsd, unpriced, waitingUnknown } = useHoldings()
+const { totalUsd, unpriced, waitingUnknown, committedUnknown } = useHoldings()
 const { items } = useAttention()
 
 useNodeRefresh(() => token.refresh())
@@ -114,7 +114,9 @@ const unused = computed(() => tiles.value.filter((t) => !t.used))
       <h2 id="ov-holdings" class="section-title px-6 py-4">Holdings</h2>
       <HoldingsTable dense />
       <p v-if="balances.available && totalUsd !== null" class="hint border-t border-border px-6 py-3" data-testid="estimate-scope">
-        Estimate {{ formatFiat(totalUsd) }} covers ZNN and QSR, spendable and committed (staked, fused, collateral and deposits).
+        <!-- Only claim staked and locked amounts are covered when they were read. -->
+        <template v-if="committedUnknown">Estimate {{ formatFiat(totalUsd) }} covers ZNN and QSR, spendable plus the committed amounts shown. Staked or locked amounts could not all be checked, so it may be low.</template>
+        <template v-else>Estimate {{ formatFiat(totalUsd) }} covers ZNN and QSR, spendable and committed (staked, fused, collateral and deposits).</template>
         <template v-if="unpriced.length">{{ unpriced.join(', ') }} unpriced.</template> Waiting amounts are excluded<template v-if="waitingUnknown"> and could not be checked</template>.
       </p>
     </section>

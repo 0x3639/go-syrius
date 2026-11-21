@@ -27,7 +27,13 @@ function setup(mode: 'everyday' | 'advanced') {
     { zts: 'zts1qsrxxxxxxxxxxxxxmrhjll', symbol: 'QSR', decimals: 8, amount: '12408500000000' },
     { zts: 'zts1customxxxxxxxxxxxxxxxx', symbol: 'LUMEN', decimals: 6, amount: '25000000000' },
   ] as any
-  for (const s of [useStakeStore(), usePillarStore(), useCollateralStore()] as any[]) s.refresh = vi.fn()
+  usePillarStore().refresh = vi.fn() as any
+  // A reload "lands" at once unless a test replaces it: landing is what clears
+  // a stale mark, exactly as the real stores do.
+  for (const s of [useStakeStore(), useCollateralStore()] as any[]) s.refresh = vi.fn(() => { s.stale = false })
+  // Staking and collateral have answered unless a test says otherwise, so an
+  // empty committed cell means "nothing committed", not "still loading".
+  for (const s of [useStakeStore(), useCollateralStore()]) if (s.status === 'idle') s.status = 'ready'
   return mount(Dashboard, { global: { stubs: { TxHistory: true } } })
 }
 
@@ -127,7 +133,8 @@ describe('Dashboard', () => {
       stake.stakeInfo = { totalAmount: '50000000000', entries: [] } as any
       const w = setup(mode)
       await w.vm.$nextTick()
-      const committed = () => w.get('[data-zts="zts1znnxxxxxxxxxxxxx9z4ulx"]').findAll('td')[3].text()
+      const cells = () => w.get('[data-zts="zts1znnxxxxxxxxxxxxx9z4ulx"]').findAll('td')
+      const committed = () => cells()[3].text()
       expect(committed()).toContain('500')
 
       // The stake is withdrawn elsewhere: the balance rises first, and the
@@ -139,11 +146,17 @@ describe('Dashboard', () => {
       }))
       useBalancesStore().items = [{ zts: 'zts1znnxxxxxxxxxxxxx9z4ulx', symbol: 'ZNN', decimals: 8, amount: '1290850319000' }] as any
       await w.vm.$nextTick()
-      expect(committed()).toBe('—') // not 500 on top of the new balance
+      // Never 500 on top of the NEW balance. Until the reload lands the row
+      // keeps the previous consistent picture (old balance, old stake), marked.
+      expect(cells()[1].text()).toContain('12,408.5')
+      expect(cells()[1].text()).not.toContain('12,908.5')
+      expect(committed()).toContain('500')
+      expect(committed()).toContain('updating…')
 
       land()
       await new Promise((r) => setTimeout(r))
       await w.vm.$nextTick()
+      expect(cells()[1].text()).toContain('12,908.5')
       expect(committed()).toBe('—')
       expect(stake.stale).toBe(false)
     })
@@ -165,15 +178,18 @@ describe('Dashboard', () => {
       c.info = { pillarZnn: '1500000000000', sentinelZnn: '500000000000', sentinelQsr: '5000000000000', pillarDepositedQsr: '0', sentinelDepositedQsr: '120000000000' } as any
       const w = setup(mode)
       await w.vm.$nextTick()
-      const znn = w.get('[data-zts="zts1znnxxxxxxxxxxxxx9z4ulx"]').findAll('td')[3].text()
-      expect(znn).toContain('20,000') // total
-      expect(znn).toMatch(/15,000\S* ?pillar collateral/)
-      expect(znn).toMatch(/pillar collateral5,000\S* ?sentinel collateral/)
-      const qsr = w.get('[data-zts="zts1qsrxxxxxxxxxxxxxmrhjll"]').findAll('td')[3].text()
-      expect(qsr).toContain('51,200')
-      expect(qsr).toMatch(/50,000\S* ?sentinel collateral/)
-      expect(qsr).toMatch(/sentinel collateral1,200\S* ?deposited for a sentinel/)
-      expect(qsr).not.toContain('deposited for a pillar') // zero entries are left out
+      // Each commitment is its own line: amount, a space, then the label.
+      // (TokenAmount also renders an exact value for screen readers, hence \S*.)
+      const cell = (zts: string) => w.get(`[data-zts="${zts}"]`).findAll('td')[3]
+      const lines = (zts: string) => cell(zts).findAll('span.block').map((s) => s.text())
+      expect(cell('zts1znnxxxxxxxxxxxxx9z4ulx').text()).toContain('20,000') // total
+      expect(lines('zts1znnxxxxxxxxxxxxx9z4ulx')).toHaveLength(2)
+      expect(lines('zts1znnxxxxxxxxxxxxx9z4ulx')[0]).toMatch(/^15,000\S* pillar collateral$/)
+      expect(lines('zts1znnxxxxxxxxxxxxx9z4ulx')[1]).toMatch(/^5,000\S* sentinel collateral$/)
+      expect(cell('zts1qsrxxxxxxxxxxxxxmrhjll').text()).toContain('51,200')
+      expect(lines('zts1qsrxxxxxxxxxxxxxmrhjll')[0]).toMatch(/^50,000\S* sentinel collateral$/)
+      expect(lines('zts1qsrxxxxxxxxxxxxxmrhjll')[1]).toMatch(/^1,200\S* deposited for a sentinel$/)
+      expect(cell('zts1qsrxxxxxxxxxxxxxmrhjll').text()).not.toContain('deposited for a pillar') // zero entries are left out
       // 12,408.50319 spendable + 20,000 locked ZNN at $1
       expect(w.text()).toContain('$32,408.50')
     })
@@ -183,15 +199,155 @@ describe('Dashboard', () => {
       c.info = { pillarZnn: '1500000000000', sentinelZnn: '0', sentinelQsr: '0', pillarDepositedQsr: '0', sentinelDepositedQsr: '0' } as any
       const w = setup(mode)
       await w.vm.$nextTick()
-      const committed = () => w.get('[data-zts="zts1znnxxxxxxxxxxxxx9z4ulx"]').findAll('td')[3].text()
-      expect(committed()).toContain('15,000')
+      const cells = () => w.get('[data-zts="zts1znnxxxxxxxxxxxxx9z4ulx"]').findAll('td')
+      expect(cells()[3].text()).toContain('15,000')
       // The pillar is revoked elsewhere: the refund lands in the balance while
       // the collateral reload is still in flight.
       ;(c.refresh as any).mockImplementation(() => new Promise<void>(() => {}))
       useBalancesStore().items = [{ zts: 'zts1znnxxxxxxxxxxxxx9z4ulx', symbol: 'ZNN', decimals: 8, amount: '2740850319000' }] as any
       await w.vm.$nextTick()
       expect(c.stale).toBe(true)
-      expect(committed()).toBe('—')
+      // Never 15,000 on top of the new 27,408.5 balance: the previous
+      // consistent picture stays, marked as updating.
+      expect(cells()[1].text()).toContain('12,408.5')
+      expect(cells()[1].text()).not.toContain('27,408.5')
+      expect(cells()[3].text()).toContain('updating…')
+    })
+
+    it('holds the estimate steady while a snapshot is being reloaded', async () => {
+      const price = usePriceStore(); price.znnUsd = 1; price.qsrUsd = 0; price.available = true
+      const c = useCollateralStore(); c.status = 'ready'
+      c.info = { pillarZnn: '1500000000000', sentinelZnn: '0', sentinelQsr: '0', pillarDepositedQsr: '0', sentinelDepositedQsr: '0' } as any
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      expect(w.text()).toContain('$27,408.50') // 12,408.50 spendable + 15,000 locked
+      // An ordinary payment arrives: +10 ZNN. The reload is in flight.
+      let land!: () => void
+      ;(c.refresh as any).mockImplementation(() => new Promise<void>((r) => { land = r }).then(() => { c.stale = false }))
+      useBalancesStore().items = useBalancesStore().items.map((b) => b.symbol === 'ZNN' ? { ...b, amount: '1241850319000' } : b)
+      await w.vm.$nextTick()
+      expect(c.stale).toBe(true)
+      expect(w.text()).toContain('$27,408.50') // held: no dip to $12,418.50
+      expect(w.text()).not.toContain('$12,418.50')
+      land()
+      await new Promise((r) => setTimeout(r))
+      await w.vm.$nextTick()
+      expect(w.text()).toContain('$27,418.50')
+    })
+
+    it('reloads staking and collateral on every momentum, so a late contract update is picked up', async () => {
+      const w = setup(mode)
+      const stake = useStakeStore().refresh as any
+      const coll = useCollateralStore().refresh as any
+      stake.mockClear(); coll.mockClear()
+      useNodeStore().height = 8419331
+      await w.vm.$nextTick()
+      expect(stake).toHaveBeenCalledTimes(1)
+      expect(coll).toHaveBeenCalledTimes(1)
+      // Plain reloads: nothing is marked stale, so nothing flickers.
+      expect(useStakeStore().stale).toBe(false)
+      expect(useCollateralStore().stale).toBe(false)
+      useNodeStore().connected = false
+      stake.mockClear(); coll.mockClear()
+      useNodeStore().height = 8419332
+      await w.vm.$nextTick()
+      expect(coll).not.toHaveBeenCalled()
+    })
+
+    it('pauses the per-momentum reload while the node is still syncing, then catches up', async () => {
+      const w = setup(mode)
+      const node = useNodeStore()
+      const coll = useCollateralStore().refresh as any
+      node.syncing = true
+      coll.mockClear()
+      node.height = 100; await w.vm.$nextTick()
+      node.height = 101; await w.vm.$nextTick()
+      expect(coll).not.toHaveBeenCalled()
+      node.syncing = false
+      await w.vm.$nextTick()
+      expect(coll).toHaveBeenCalledTimes(1) // as soon as sync ends, without waiting for a tick
+    })
+
+    it('when sync ends, replaces a request issued mid-sync instead of waiting for it', async () => {
+      const w = setup(mode)
+      const node = useNodeStore()
+      const stake = useStakeStore() as any
+      const coll = useCollateralStore() as any
+      node.syncing = true
+      await w.vm.$nextTick()
+      // Both stores have a request outstanding from before sync finished.
+      stake._active = 7; coll._active = 7
+      stake.refresh.mockClear(); coll.refresh.mockClear()
+      node.syncing = false
+      await w.vm.$nextTick()
+      // No further height change: the reload must still happen, for both.
+      expect(stake.refresh).toHaveBeenCalledTimes(1)
+      expect(coll.refresh).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows a read that failed during a reload, even on rows it is still holding', async () => {
+      const price = usePriceStore(); price.znnUsd = 1; price.qsrUsd = 0.1; price.available = true
+      const stake = useStakeStore(); const c = useCollateralStore()
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      // A balance change marks both stale; staking stays in flight, collateral fails.
+      ;(stake.refresh as any).mockImplementation(() => new Promise<void>(() => {}))
+      ;(c.refresh as any).mockImplementation(() => { c.status = 'error'; c.stale = false })
+      useBalancesStore().items = useBalancesStore().items.map((b) => b.symbol === 'ZNN' ? { ...b, amount: '1' } : b)
+      await w.vm.$nextTick()
+      expect(stake.stale).toBe(true) // the picture is still held
+      for (const zts of ['zts1znnxxxxxxxxxxxxx9z4ulx', 'zts1qsrxxxxxxxxxxxxxmrhjll']) {
+        expect(w.get(`[data-zts="${zts}"]`).find('[data-testid="committed-unknown"]').exists()).toBe(true)
+      }
+      expect(w.get('[data-testid="estimate-scope"]').text()).toMatch(/could not (all )?be checked/)
+    })
+
+    it('marks every held protocol row as updating, not only the one whose read is stale', async () => {
+      const stake = useStakeStore()
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      ;(stake.refresh as any).mockImplementation(() => new Promise<void>(() => {}))
+      useBalancesStore().items = useBalancesStore().items.map((b) => b.symbol === 'ZNN' ? { ...b, amount: '1' } : b)
+      await w.vm.$nextTick()
+      expect(useCollateralStore().stale).toBe(false)
+      for (const zts of ['zts1znnxxxxxxxxxxxxx9z4ulx', 'zts1qsrxxxxxxxxxxxxxmrhjll']) {
+        expect(w.get(`[data-zts="${zts}"]`).find('[data-testid="committed-pending"]').exists()).toBe(true)
+      }
+    })
+
+    it('says it could not check locked amounts instead of showing none', async () => {
+      const price = usePriceStore(); price.znnUsd = 1; price.qsrUsd = 0.1; price.available = true
+      useCollateralStore().status = 'error'
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      for (const zts of ['zts1znnxxxxxxxxxxxxx9z4ulx', 'zts1qsrxxxxxxxxxxxxxmrhjll']) {
+        const cell = w.get(`[data-zts="${zts}"]`).findAll('td')[3]
+        expect(cell.find('[data-testid="committed-unknown"]').exists()).toBe(true)
+        expect(cell.text()).not.toBe('—')
+      }
+      const scope = w.get('[data-testid="estimate-scope"]').text()
+      expect(scope).toMatch(/could not (all )?be checked/)
+      expect(scope).not.toContain('including staked, fused and locked amounts')
+      expect(scope).not.toContain('collateral and deposits')
+    })
+
+    it('a failed staking read marks ZNN only, and keeps what is known', async () => {
+      useStakeStore().status = 'error'
+      const c = useCollateralStore(); c.status = 'ready'
+      c.info = { pillarZnn: '1500000000000', sentinelZnn: '0', sentinelQsr: '0', pillarDepositedQsr: '0', sentinelDepositedQsr: '0' } as any
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      const znn = w.get('[data-zts="zts1znnxxxxxxxxxxxxx9z4ulx"]').findAll('td')[3]
+      expect(znn.text()).toContain('15,000')
+      expect(znn.find('[data-testid="committed-unknown"]').exists()).toBe(true)
+      expect(w.get('[data-zts="zts1qsrxxxxxxxxxxxxxmrhjll"]').find('[data-testid="committed-unknown"]').exists()).toBe(false)
+    })
+
+    it('says committed amounts are still loading before the first answer', async () => {
+      useCollateralStore().status = 'loading'
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      expect(w.get('[data-zts="zts1qsrxxxxxxxxxxxxxmrhjll"]').findAll('td')[3].text()).toBe('updating…')
     })
 
     it('reloads collateral when the QSR balance moves', async () => {

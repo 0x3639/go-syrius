@@ -2,6 +2,21 @@
 
 A start-to-finish plan to reimplement the Zenon `syrius` wallet (currently Flutter/Dart) as a Go + Wails desktop application.
 
+> **Collateral review fixes (2026-11-21):** A self-review of the collateral
+> change found three defects, now fixed. (1) Staking and collateral reloaded
+> only when a balance moved, but a balance drops when a stake, registration or
+> deposit is sent and the contract records it a momentum later, so the single
+> reload could read "nothing locked" and never be corrected; the dashboard now
+> reloads both every momentum while open, which also retries a failed read.
+> (2) A failed or pending read looked the same as "nothing committed"; the
+> committed column now says "? couldn't check" or "updating…", and the scope
+> line stops claiming locked amounts are covered when they could not be read.
+> (3) Per-commitment amounts rendered glued to their labels. Also: while a
+> snapshot is marked stale the holdings table keeps its last settled picture as
+> a whole (old balance with old locked amounts), marked "updating…", so rows
+> and the total no longer dip on every payment; and `GetCollateral` documents
+> that its four reads are not taken at one height.
+
 > **Review network row and mainnet-consent route (2026-11-21):** Every preview
 > (`SendPreview`, `CallPreview`, including WalletConnect and journal replays)
 > now carries `chainId`: the chain identifier stamped on the held block. The

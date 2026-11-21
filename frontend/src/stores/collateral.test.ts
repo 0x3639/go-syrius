@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 const GetCollateral = vi.hoisted(() => vi.fn())
 vi.mock('../../wailsjs/go/app/NomService', () => ({ GetCollateral }))
 
+import { READ_TIMEOUT_MS } from '../lib/withTimeout'
 import { useCollateralStore } from './collateral'
 import { useNodeStore } from './node'
 
@@ -58,5 +59,57 @@ describe('collateral store', () => {
     s.invalidate()
     expect(s.info).toBeNull()
     expect(s.stale).toBe(false)
+  })
+
+  // A node slower than the tick interval: every tick used to supersede the
+  // request before it, so no response was ever accepted.
+  it('periodic reloads let the request in flight land instead of superseding it', async () => {
+    const s = useCollateralStore()
+    let land!: (v: unknown) => void
+    GetCollateral.mockReturnValueOnce(new Promise((r) => { land = r }))
+    const first = s.refreshIfIdle()
+    await s.refreshIfIdle() // next tick, response still outstanding
+    await s.refreshIfIdle()
+    expect(GetCollateral).toHaveBeenCalledTimes(1)
+    land(snapshot('9'))
+    await first
+    expect(s.info?.pillarZnn).toBe('9')
+    GetCollateral.mockResolvedValueOnce(snapshot('9'))
+    await s.refreshIfIdle() // idle again: the next tick reloads
+    expect(GetCollateral).toHaveBeenCalledTimes(2)
+  })
+
+  it('a periodic reload is not blocked by a request that can no longer land', async () => {
+    const s = useCollateralStore()
+    GetCollateral.mockReturnValueOnce(new Promise(() => {})) // never answers
+    s.refreshIfIdle()
+    s.invalidate() // account or connection changed
+    GetCollateral.mockResolvedValueOnce(snapshot('9'))
+    await s.refreshIfIdle()
+    expect(GetCollateral).toHaveBeenCalledTimes(2)
+    expect(s.info?.pillarZnn).toBe('9')
+  })
+
+  // The WebSocket transport has no per-call deadline: a read the node never
+  // answers would otherwise block periodic reloads and hold the rows forever.
+  it('gives up on an unanswered read, reports unknown and lets the next reload run', async () => {
+    vi.useFakeTimers()
+    try {
+      const s = useCollateralStore()
+      s.stale = true
+      GetCollateral.mockReturnValueOnce(new Promise(() => {})) // never answers
+      const hung = s.refreshIfIdle()
+      await s.refreshIfIdle()
+      expect(GetCollateral).toHaveBeenCalledTimes(1) // gate is held while it is outstanding
+      await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS)
+      await hung
+      expect(s.status).toBe('error') // shown as "couldn't check", not as old data
+      expect(s.stale).toBe(false)
+      GetCollateral.mockResolvedValueOnce(snapshot('9'))
+      await s.refreshIfIdle()
+      expect(GetCollateral).toHaveBeenCalledTimes(2)
+      expect(s.info?.pillarZnn).toBe('9')
+      expect(s.status).toBe('ready')
+    } finally { vi.useRealTimers() }
   })
 })

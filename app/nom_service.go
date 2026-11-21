@@ -582,6 +582,12 @@ func collateralFrom(pillars []*embedded.PillarInfo, sentinel *embedded.SentinelI
 
 // GetCollateral returns what the active address has locked in the pillar and
 // sentinel contracts and still owns. Read-only.
+//
+// The four reads are separate RPC calls and are NOT taken at one height: a
+// registration landing between them can be seen as neither a deposit nor a
+// registration. Callers must treat this as a snapshot to refresh, not a
+// ledger; the dashboard reloads it every momentum, which corrects any such
+// read on the next tick.
 func (s *NomService) GetCollateral() (Collateral, error) {
 	client := s.node.currentClient()
 	if client == nil {

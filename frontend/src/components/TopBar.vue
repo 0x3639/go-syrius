@@ -120,15 +120,17 @@ async function lockWallet() {
       <!-- Opens the waiting payments. It never changes auto-receive: that is
            an explicit switch on the Receive screen. -->
       <button type="button"
-        :aria-label="unreceived.items.length > 0 ? `${unreceived.items.length} incoming payment(s) waiting` : 'Incoming payments'"
-        :title="unreceived.items.length > 0
+        :aria-label="unreceived.failed ? `Couldn't check for incoming payments` : unreceived.items.length > 0 ? `${unreceived.items.length} incoming payment(s) waiting` : 'Incoming payments'"
+        :title="unreceived.failed ? `Couldn't check for incoming payments — open Receive to try again` : unreceived.items.length > 0
           ? `${unreceived.items.length} payment(s) waiting — open Receive`
           : autoReceive.enabled ? 'No payments waiting · auto-receive is on' : 'No payments waiting'"
         class="relative grid h-8.5 w-8.5 place-items-center rounded-md transition-colors"
-        :class="`hover:bg-foreground/[0.06] ${unreceived.items.length > 0 ? 'text-primary' : 'text-muted-foreground'}`"
+        :class="`hover:bg-foreground/[0.06] ${unreceived.failed ? 'text-warning' : unreceived.items.length > 0 ? 'text-primary' : 'text-muted-foreground'}`"
         @click="router.push('/receive')">
         <ArrowDownCircleIcon :size="16" />
-        <span v-if="unreceived.items.length > 0"
+        <span v-if="unreceived.failed"
+          class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[0.625rem] font-semibold text-warning-foreground" aria-hidden="true">?</span>
+        <span v-else-if="unreceived.items.length > 0"
           class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.625rem] font-semibold text-primary-foreground">
           {{ unreceived.items.length }}
         </span>

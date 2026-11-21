@@ -82,4 +82,46 @@ describe('unreceived store', () => {
     expect(s.error).toBe('boom')
     expect(s.busy['h2']).toBeUndefined()
   })
+
+  it('records a successful lookup with its time', async () => {
+    const s = useUnreceivedStore()
+    expect(s.lookup).toBe('idle')
+    const before = Date.now()
+    await s.load()
+    expect(s.lookup).toBe('ok')
+    expect(s.lastCheckedAt).toBeGreaterThanOrEqual(before)
+  })
+
+  it('records a failed lookup as failed, not as an empty result', async () => {
+    const s = useUnreceivedStore()
+    await s.load()
+    const checked = s.lastCheckedAt
+    GetUnreceived.mockRejectedValueOnce(new Error('timeout'))
+    await s.load()
+    expect(s.lookup).toBe('failed')
+    expect(s.items).toEqual([])
+    expect(s.lastCheckedAt).toBe(checked) // still the last SUCCESSFUL check
+    await s.load()
+    expect(s.lookup).toBe('ok')
+    expect(s.items).toHaveLength(1)
+  })
+
+  it('an obsolete failure does not mark the current scope as failed', async () => {
+    const s = useUnreceivedStore()
+    let fail!: (e: Error) => void
+    GetUnreceived.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject }))
+    const loading = s.load()
+    s.invalidate()
+    fail(new Error('old connection'))
+    await loading
+    expect(s.lookup).toBe('idle')
+  })
+
+  it('invalidate forgets the lookup outcome and time', async () => {
+    const s = useUnreceivedStore()
+    await s.load()
+    s.invalidate()
+    expect(s.lookup).toBe('idle')
+    expect(s.lastCheckedAt).toBe(0)
+  })
 })

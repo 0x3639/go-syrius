@@ -2,6 +2,16 @@
 
 A start-to-finish plan to reimplement the Zenon `syrius` wallet (currently Flutter/Dart) as a Go + Wails desktop application.
 
+> **Incoming lookup state (2026-11-21):** A failed incoming-payment lookup is
+> now its own state instead of an empty list. The unreceived store records the
+> outcome of the latest lookup (`idle` / `ok` / `failed`) and when one last
+> succeeded. Receive shows "Couldn't check for incoming payments" with the last
+> successful check time and a Try again button; "Nothing is waiting" appears
+> only after a successful lookup, with its time. Home, the Advanced overview,
+> the sidebar and the top bar show the unknown state ("?") rather than a zero
+> count, and the fiat scope line says waiting payments could not be checked.
+> A lost connection stays with the existing balance notice. Frontend only.
+
 > **Two layout modes (2026-11-21):** The shell has an **Everyday** and an
 > **Advanced** layout over the same wallet, switched from a labelled control in
 > the top bar or Settings. Everyday is Home, Activity, Earn, More tools and
@@ -20,8 +30,7 @@ A start-to-finish plan to reimplement the Zenon `syrius` wallet (currently Flutt
 > `SetPinnedActions`, both validated in Go) and never change what the backend
 > permits. Fresh installs start in Everyday; installs that predate the setting
 > keep Advanced. Signing, confirmation and consent flows are untouched.
-> Deferred to follow-up PRs: a distinct "couldn't check" state for incoming
-> payments, embedded-node sync diagnostics, a network row and mainnet-consent
+> Deferred to follow-up PRs: embedded-node sync diagnostics, a network row and mainnet-consent
 > route in the transaction review, and pillar/sentinel collateral in holdings.
 > Prototype: `docs/prototypes/two-mode-wallet.html`.
 

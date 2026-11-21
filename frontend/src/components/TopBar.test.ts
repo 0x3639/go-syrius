@@ -59,6 +59,17 @@ describe('TopBar', () => {
     expect(toggle).not.toHaveBeenCalled()
   })
 
+  it('shows that incoming payments could not be checked', async () => {
+    useNodeStore().connected = true
+    useUnreceivedStore().lookup = 'failed'
+    const w = mount(TopBar, { props: { title: 'Home' }, global: { stubs } })
+    const btn = w.get(`button[aria-label="Couldn't check for incoming payments"]`)
+    expect(btn.text()).toBe('?')
+    expect(btn.classes()).toContain('text-warning')
+    await btn.trigger('click')
+    expect(push).toHaveBeenCalledWith('/receive')
+  })
+
   it('offers a labelled mode switch that reflects the current mode', async () => {
     const ui = useUiStore()
     const w = mount(TopBar, { props: { title: 'Overview' }, global: { stubs } })

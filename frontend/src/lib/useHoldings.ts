@@ -108,6 +108,8 @@ export function useHoldings() {
   /** Assets the estimate leaves out because they have no price. */
   const unpriced = computed(() => [...new Set(rows.value.filter((r) => r.usd === null && (r.spendable !== '0' || r.committedTotal !== '0')).map((r) => r.symbol))])
   const waitingCount = computed(() => (node.connected ? unreceived.items.length : 0))
+  /** The incoming lookup failed: waiting amounts are unknown, not zero. */
+  const waitingUnknown = computed(() => unreceived.failed)
 
-  return { rows, totalUsd, unpriced, waitingCount }
+  return { rows, totalUsd, unpriced, waitingCount, waitingUnknown }
 }

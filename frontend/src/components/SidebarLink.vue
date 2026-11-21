@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 
-defineProps<{ to: string; label: string; icon: Component; badge?: number }>()
+// badge: a count, or '?' when the count could not be determined.
+defineProps<{ to: string; label: string; icon: Component; badge?: number | string }>()
 </script>
 
 <template>
@@ -19,8 +20,9 @@ defineProps<{ to: string; label: string; icon: Component; badge?: number }>()
       <span class="min-w-0 flex-1 truncate">{{ label }}</span>
       <span
         v-if="badge"
-        class="rounded-full bg-primary px-1.5 text-xs font-bold leading-5 text-primary-foreground"
-        :aria-label="`${badge} waiting`"
+        class="rounded-full px-1.5 text-xs font-bold leading-5"
+        :class="badge === '?' ? 'bg-warning/20 text-warning' : 'bg-primary text-primary-foreground'"
+        :aria-label="badge === '?' ? `Couldn't check` : `${badge} waiting`"
       >{{ badge }}</span>
     </a>
   </RouterLink>

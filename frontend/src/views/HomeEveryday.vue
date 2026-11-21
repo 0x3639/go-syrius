@@ -26,7 +26,7 @@ const price = usePriceStore()
 const node = useNodeStore()
 const stake = useStakeStore()
 const pillar = usePillarStore()
-const { rows, totalUsd, unpriced, waitingCount } = useHoldings()
+const { rows, totalUsd, unpriced, waitingCount, waitingUnknown } = useHoldings()
 const { items } = useAttention()
 
 const znn = computed(() => rows.value.find((r) => r.zts === ZNN_ZTS))
@@ -37,7 +37,8 @@ const scope = computed(() => {
   const parts = ['Covers ZNN and QSR, including staked and fused amounts.']
   const missing: string[] = []
   if (unpriced.value.length) missing.push(`${unpriced.value.join(', ')} (no price available)`)
-  if (waitingCount.value) missing.push(`${waitingCount.value} ${waitingCount.value === 1 ? 'payment' : 'payments'} not yet received`)
+  if (waitingUnknown.value) missing.push('any payments not yet received')
+  else if (waitingCount.value) missing.push(`${waitingCount.value} ${waitingCount.value === 1 ? 'payment' : 'payments'} not yet received`)
   if (missing.length) parts.push(`Not counted: ${missing.join(', and ')}.`)
   return parts.join(' ')
 })

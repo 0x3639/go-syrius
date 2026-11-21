@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import UnreceivedPanel from './UnreceivedPanel.vue'
 import { useUnreceivedStore, type Unreceived } from '../stores/unreceived'
+import { useNodeStore } from '../stores/node'
 
 // Stub nom-ui Button to a plain <button> mirroring disabled + click, so we
 // exercise our row composition and store binding, not nom-ui internals.
@@ -78,5 +79,64 @@ describe('UnreceivedPanel', () => {
     expect(w.text()).toContain('Generating Plasma')
     expect(w.findAll('button').find((b) => b.text() === 'Receive')).toBeFalsy()
     expect(w.find('.animate-pulse').exists()).toBe(true)
+  })
+
+  // Three answers that must never be merged: we could not check, we have not
+  // heard back yet, and we checked and found nothing.
+  describe('lookup states', () => {
+    function mounted(set: (s: ReturnType<typeof useUnreceivedStore>) => void) {
+      const store = useUnreceivedStore()
+      vi.spyOn(store, 'load').mockResolvedValue()
+      useNodeStore().connected = true
+      set(store)
+      return { w: mount(UnreceivedPanel), store }
+    }
+
+    it('says it could not check, and never "nothing is waiting", when the lookup failed', () => {
+      const { w } = mounted((s) => { s.lookup = 'failed'; s.lastCheckedAt = new Date(2026, 10, 21, 14, 2, 7).getTime() })
+      const alert = w.get('[data-testid="incoming-failed"]')
+      expect(alert.attributes('role')).toBe('alert')
+      expect(alert.text()).toContain("Couldn't check for incoming payments")
+      expect(alert.text()).toContain('not the same as nothing waiting')
+      expect(alert.text()).toContain('Last successful check at 14:02:07')
+      expect(w.find('[data-testid="incoming-empty"]').exists()).toBe(false)
+      expect(w.text()).not.toContain('Nothing is waiting.')
+      expect(w.text()).not.toContain('· 0')
+    })
+
+    it('says so when there has been no successful check yet', () => {
+      const { w } = mounted((s) => { s.lookup = 'failed' })
+      expect(w.text()).toContain('No successful check yet')
+    })
+
+    it('Try again reruns the lookup', async () => {
+      const { w, store } = mounted((s) => { s.lookup = 'failed' })
+      ;(store.load as any).mockClear()
+      await w.findAll('button').find((b) => b.text() === 'Try again')!.trigger('click')
+      // (The stubbed Button both emits and forwards the native click, so the
+      // handler can run twice here; what matters is that the lookup reruns.)
+      expect(store.load).toHaveBeenCalled()
+    })
+
+    it('says nothing is waiting, with the check time, only after a successful lookup', () => {
+      const { w } = mounted((s) => { s.lookup = 'ok'; s.lastCheckedAt = new Date(2026, 10, 21, 9, 30, 0).getTime() })
+      const empty = w.get('[data-testid="incoming-empty"]')
+      expect(empty.text()).toContain('Nothing is waiting.')
+      expect(empty.text()).toContain('Checked at 09:30:00')
+      expect(w.text()).toContain('· 0')
+      expect(w.find('[data-testid="incoming-failed"]').exists()).toBe(false)
+    })
+
+    it('says it is still checking before the first answer', () => {
+      const { w } = mounted(() => {})
+      expect(w.get('[data-testid="incoming-pending"]').text()).toContain('Checking for incoming payments')
+      expect(w.text()).not.toContain('Nothing is waiting.')
+    })
+
+    it('leaves a lost connection to the balance notice', () => {
+      const { w } = mounted((s) => { s.lookup = 'failed' })
+      useNodeStore().connected = false
+      return w.vm.$nextTick().then(() => expect(w.find('[data-testid="incoming-failed"]').exists()).toBe(false))
+    })
   })
 })

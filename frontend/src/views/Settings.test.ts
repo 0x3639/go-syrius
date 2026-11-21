@@ -39,7 +39,8 @@ vi.mock('../../wailsjs/go/app/WalletService', () => ({
 vi.mock('../../wailsjs/runtime/runtime', () => ({ EventsOn: vi.fn() }))
 
 const push = vi.fn()
-vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => ({ name: 'settings', meta: {}, query: {} }) }))
+const route = vi.hoisted(() => ({ name: 'settings', meta: {}, query: {} as Record<string, string> }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => route }))
 
 vi.mock('nom-ui', () => ({
   Input: {
@@ -50,6 +51,7 @@ vi.mock('nom-ui', () => ({
 }))
 
 import Settings from './Settings.vue'
+import { useConsentStore } from '../stores/consent'
 import { useNodeStore } from '../stores/node'
 
 const flush = () => new Promise((r) => setTimeout(r))
@@ -217,6 +219,66 @@ describe('Settings.vue', () => {
     expect(SetAllowMainnetSend).toHaveBeenCalledWith(true)
     expect((checkbox.element as HTMLInputElement).checked).toBe(true)
     expect(w.text()).toContain('Mainnet transactions enabled')
+  })
+
+  it('keeps the mainnet setting behind its disclosure on an ordinary visit', async () => {
+    route.query = {}
+    const w = mount(Settings)
+    await flush()
+    expect((w.find('details').element as HTMLDetailsElement).open).toBe(false)
+    expect(w.find('[data-testid="consent-return"]').exists()).toBe(false)
+  })
+
+  it('opens the mainnet setting when the visit came to review it, and offers the way back once enabled', async () => {
+    route.query = { section: 'mainnet' }
+    const consent = useConsentStore()
+    consent.leaveFrom('/transfer')
+    try {
+      const w = mount(Settings)
+      await flush()
+      expect((w.find('details').element as HTMLDetailsElement).open).toBe(true)
+      // No shortcut: the explicit warning still has to be confirmed.
+      expect(w.find('[data-testid="consent-return"]').exists()).toBe(false)
+      expect(SetAllowMainnetSend).not.toHaveBeenCalled()
+
+      await w.find('input[aria-label="enable mainnet transactions"]').trigger('click')
+      expect(w.text()).toContain('Mainnet transactions use real ZNN')
+      await w.find('button[aria-label="Confirm mainnet transactions"]').trigger('click')
+      await flush()
+      expect(SetAllowMainnetSend).toHaveBeenCalledWith(true)
+      expect(consent.mainnetAllowed).toBe(true)
+
+      push.mockClear()
+      await w.get('button[aria-label="Back to where you were"]').trigger('click')
+      expect(push).toHaveBeenCalledWith('/transfer')
+      expect(consent.returnTo).toBe('')
+    } finally { route.query = {} }
+  })
+
+  it('does not offer a way back when enabling fails', async () => {
+    route.query = { section: 'mainnet' }
+    useConsentStore().leaveFrom('/transfer')
+    SetAllowMainnetSend.mockRejectedValueOnce(new Error('disk full'))
+    try {
+      const w = mount(Settings)
+      await flush()
+      await w.find('input[aria-label="enable mainnet transactions"]').trigger('click')
+      await w.find('button[aria-label="Confirm mainnet transactions"]').trigger('click')
+      await flush()
+      expect(w.find('[data-testid="consent-return"]').exists()).toBe(false)
+      expect(useConsentStore().mainnetAllowed).not.toBe(true)
+    } finally { route.query = {} }
+  })
+
+  it('turning mainnet transactions off updates the shared consent state', async () => {
+    GetSettings.mockResolvedValueOnce({ chainId: 1, allowMainnetSend: true, autoLockMinutes: 5 })
+    const w = mount(Settings)
+    await flush()
+    expect(useConsentStore().mainnetAllowed).toBe(true)
+    await w.find('input[aria-label="enable mainnet transactions"]').trigger('click')
+    await flush()
+    expect(SetAllowMainnetSend).toHaveBeenCalledWith(false)
+    expect(useConsentStore().mainnetAllowed).toBe(false)
   })
 
   it('keeps the mainnet checkbox disabled when the warning is cancelled', async () => {

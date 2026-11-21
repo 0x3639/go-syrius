@@ -753,3 +753,32 @@ func TestLookupBackfillsOwnershipForLegacyRecords(t *testing.T) {
 		t.Fatalf("legacy-record intent match = %+v; want unknown owned by 400", res)
 	}
 }
+
+// The review shows which network a transaction is for. That must come from the
+// block itself, so a preview rebuilt from the journal carries the journaled
+// block's chain identifier, not whatever the wallet is connected to now.
+func TestWalletConnectPreviewCarriesTheBlocksChain(t *testing.T) {
+	tx := newTestTxService(t)
+	unlockTestWallet(t, tx.wallet)
+	active, _ := tx.wallet.activeAddress()
+	req, _ := validWalletConnectRequest(t)
+	req.FromAddress = active.String()
+	template, _, _, err := walletConnectBridgeTemplate(req, active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	built := stubBuilt(template, "6666666666666666666666666666666666666666666666666666666666666666")
+	built.ChainIdentifier = mainnetChainID
+	blockJSON, err := json.Marshal(built)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx.node.chainID = 73404 // connected elsewhere: must not leak into the preview
+	p, err := tx.wcPreviewFromRecord(wcPublicationRecord{BlockJSON: blockJSON, Hash: built.Hash.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.ChainID != mainnetChainID {
+		t.Fatalf("preview ChainID = %d, want the journaled block's %d", p.ChainID, mainnetChainID)
+	}
+}

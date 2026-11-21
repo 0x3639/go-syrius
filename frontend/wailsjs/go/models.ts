@@ -92,6 +92,7 @@ export namespace app {
 	    difficulty: number;
 	    needsPoW: boolean;
 	    holdId: number;
+	    chainId: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new CallPreview(source);
@@ -112,6 +113,7 @@ export namespace app {
 	        this.difficulty = source["difficulty"];
 	        this.needsPoW = source["needsPoW"];
 	        this.holdId = source["holdId"];
+	        this.chainId = source["chainId"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -525,6 +527,7 @@ export namespace app {
 	    hash: string;
 	    needsPoW: boolean;
 	    holdId: number;
+	    chainId: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new SendPreview(source);
@@ -543,6 +546,7 @@ export namespace app {
 	        this.hash = source["hash"];
 	        this.needsPoW = source["needsPoW"];
 	        this.holdId = source["holdId"];
+	        this.chainId = source["chainId"];
 	    }
 	}
 	export class SendRequest {

@@ -2,6 +2,22 @@
 
 A start-to-finish plan to reimplement the Zenon `syrius` wallet (currently Flutter/Dart) as a Go + Wails desktop application.
 
+> **Review network row and mainnet-consent route (2026-11-21):** Every preview
+> (`SendPreview`, `CallPreview`, including WalletConnect and journal replays)
+> now carries `chainId`: the chain identifier stamped on the held block. The
+> confirm dialog shows it as a Network row ("Mainnet · chain 1 · Real funds"),
+> derived from the block, never from the connected node or the setting. The
+> original idea of reaching mainnet consent from inside the review does not
+> apply: `TxService` refuses a chain-1 transaction when it is *prepared*, so
+> no review exists yet. That guard is unchanged (prepare, confirm and
+> pre-broadcast still check the persisted opt-in). Instead, while the wallet
+> is connected to mainnet with the opt-in off, a banner on every screen says
+> nothing can be signed and links to the setting; Settings opens the Advanced
+> network disclosure for that visit and, once the existing explicit warning
+> is confirmed, offers the way back. Nothing is held across that detour: the
+> transaction is rebuilt and reviewed on return. The frontend's consent state
+> only explains; it grants nothing.
+
 > **Collateral in holdings (2026-11-21):** Holdings now count what an account
 > has locked in the pillar and sentinel contracts and still owns:
 > 15,000 ZNN per active pillar, 5,000 ZNN and 50,000 QSR for an active
@@ -42,8 +58,7 @@ A start-to-finish plan to reimplement the Zenon `syrius` wallet (currently Flutt
 > `SetPinnedActions`, both validated in Go) and never change what the backend
 > permits. Fresh installs start in Everyday; installs that predate the setting
 > keep Advanced. Signing, confirmation and consent flows are untouched.
-> Deferred to follow-up PRs: embedded-node sync diagnostics, and a network row
-> and mainnet-consent route in the transaction review.
+> Deferred to a follow-up PR: embedded-node sync diagnostics.
 > Prototype: `docs/prototypes/two-mode-wallet.html`.
 
 > **Bend laws (2026-11-20):** Add 76 checked laws for wallet effect matching,

@@ -4,12 +4,14 @@ import { useRoute } from 'vue-router'
 import Sidebar from './Sidebar.vue'
 import TopBar from './TopBar.vue'
 import NomConfirm from './NomConfirm.vue'
+import MainnetConsentBanner from './MainnetConsentBanner.vue'
 import WalletConnectRequest from './WalletConnectRequest.vue'
 import { usePriceStore } from '../stores/price'
 import { useNodeStore } from '../stores/node'
 import { useBalancesStore } from '../stores/balances'
 import { usePlasmaStore } from '../stores/plasma'
 import { useStakeStore } from '../stores/stake'
+import { useConsentStore } from '../stores/consent'
 import { useCollateralStore } from '../stores/collateral'
 import { useSentinelStore } from '../stores/sentinel'
 import { currentRequestEpoch } from '../lib/requestEpoch'
@@ -30,6 +32,7 @@ const node = useNodeStore()
 const balances = useBalancesStore()
 const plasma = usePlasmaStore()
 const stake = useStakeStore()
+const consent = useConsentStore()
 const collateral = useCollateralStore()
 const sentinel = useSentinelStore()
 const pillar = usePillarStore()
@@ -151,6 +154,7 @@ onMounted(async () => {
   for (const e of ACTIVITY_EVENTS) window.addEventListener(e, onUserActivity, { capture: true, passive: true })
   refresh() // initial aggregate load (balances etc.)
   ui.init() // restore persisted appearance preferences
+  consent.load() // so the mainnet-consent banner can explain a refusal up front
   await autoReceive.init(wallet.activeIndex)
   if (walletConnect.projectId()) {
     try {
@@ -176,6 +180,7 @@ onBeforeUnmount(() => {
     <div class="flex min-h-0 min-w-0 flex-1 flex-col">
       <TopBar :title="title" :subtitle="subtitle" />
       <main class="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-4 lg:px-8">
+        <MainnetConsentBanner />
         <router-view />
       </main>
     </div>

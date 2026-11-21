@@ -178,6 +178,10 @@ type SendPreview struct {
 	Hash        string `json:"hash"`
 	NeedsPoW    bool   `json:"needsPoW"`
 	HoldID      uint64 `json:"holdId"` // identity of the backend hold; lets a cancel target exactly this block
+	// ChainID is the chain identifier stamped on the HELD block: the network
+	// this exact transaction is valid on. Display only; the publish path
+	// re-checks the block's chain and the mainnet opt-in itself.
+	ChainID uint64 `json:"chainId"`
 }
 
 // EffectField is one decoded parameter of a held block's contract call.
@@ -213,6 +217,9 @@ type CallPreview struct {
 	Difficulty uint64             `json:"difficulty"`
 	NeedsPoW   bool               `json:"needsPoW"`
 	HoldID     uint64             `json:"holdId"` // identity of the backend hold; lets a cancel target exactly this block
+	// ChainID is the chain identifier stamped on the held (or journaled)
+	// block. Display only; see SendPreview.ChainID.
+	ChainID uint64 `json:"chainId"`
 }
 
 // WalletConnectAccountBlockInput is the immutable intent subset of the

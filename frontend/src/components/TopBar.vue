@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { useModeSwitch } from '../lib/useModeSwitch'
+import { networkName } from '../lib/network'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'nom-ui'
 import {
@@ -54,8 +55,7 @@ const incomingTitle = computed(() => {
 // mainnet session is never mistaken for a test one.
 const network = computed(() => {
   if (!node.connected || !node.chainId) return null
-  const name = node.chainId === 1 ? 'Mainnet' : node.chainId === 73404 ? 'Testnet' : 'Custom network'
-  return { name, chainId: node.chainId }
+  return { name: networkName(node.chainId), chainId: node.chainId }
 })
 
 watch(() => ui.modeNotice, (m) => {

@@ -329,6 +329,7 @@ func (t *TxService) wcPreviewFromRecord(rec wcPublicationRecord) (*CallPreview, 
 		Hash:        rec.Hash,
 		Summary:     summary,
 		Effect:      effect,
+		ChainID:     block.ChainIdentifier,
 	}, nil
 }
 

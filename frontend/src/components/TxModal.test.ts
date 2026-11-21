@@ -275,4 +275,42 @@ describe('TxModal decoded effect (accelerator)', () => {
     expect(w.text()).toContain('no tokens sent')
     expect(w.text()).not.toContain('Amount0 ZNN')
   })
+
+  // The network shown is the chain stamped on the held block, never the chain
+  // the wallet is connected to.
+  describe('network row', () => {
+    const base = { toAddress: 'z1abc', amount: '100000000', zts: 'zts1znnxxxxxxxxxxxxx9z4ulx', symbol: 'ZNN', needsPoW: false, difficulty: 0, hash: 'h', usedPlasma: 0, decimals: 8 }
+
+    it('names mainnet from the preview and marks it as real funds', () => {
+      const tx = useTxStore(); tx.preview = { ...base, chainId: 1 } as any
+      useNodeStore().chainId = 73404 // connected chain must not be what is shown
+      const row = mount(TxModal).get('[data-testid="tx-network"]')
+      expect(row.text()).toContain('Mainnet')
+      expect(row.text()).toContain('chain 1')
+      expect(row.text()).toContain('Real funds')
+    })
+
+    it('names testnet without the real-funds mark', () => {
+      const tx = useTxStore(); tx.preview = { ...base, chainId: 73404 } as any
+      useNodeStore().chainId = 1
+      const row = mount(TxModal).get('[data-testid="tx-network"]')
+      expect(row.text()).toContain('Testnet')
+      expect(row.text()).toContain('chain 73404')
+      expect(row.text()).not.toContain('Real funds')
+    })
+
+    it('shows an unfamiliar chain by number, not as a known network', () => {
+      const tx = useTxStore(); tx.preview = { ...base, chainId: 321 } as any
+      const row = mount(TxModal).get('[data-testid="tx-network"]')
+      expect(row.text()).toContain('Custom network')
+      expect(row.text()).toContain('chain 321')
+      expect(row.text()).not.toContain('Mainnet')
+    })
+
+    it('claims no network when the preview carries none', () => {
+      const tx = useTxStore(); tx.preview = { ...base } as any
+      useNodeStore().chainId = 1
+      expect(mount(TxModal).find('[data-testid="tx-network"]').exists()).toBe(false)
+    })
+  })
 })

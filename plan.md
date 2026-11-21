@@ -2,6 +2,18 @@
 
 A start-to-finish plan to reimplement the Zenon `syrius` wallet (currently Flutter/Dart) as a Go + Wails desktop application.
 
+> **Collateral in holdings (2026-11-21):** Holdings now count what an account
+> has locked in the pillar and sentinel contracts and still owns:
+> 15,000 ZNN per active pillar, 5,000 ZNN and 50,000 QSR for an active
+> sentinel, and QSR deposited toward a registration that has not happened.
+> These appear as committed amounts, each on its own line, and count toward
+> the fiat estimate. QSR burned at pillar registration is not a holding and is
+> excluded. `NomService.GetCollateral` is a new read-only call; the
+> per-registration amounts are go-zenon protocol constants, because the node's
+> RPC does not report them and revocation returns exactly those amounts. The
+> snapshot reloads when the ZNN or QSR balance moves and is skipped while
+> stale, like staking.
+
 > **Incoming lookup state (2026-11-21):** A failed incoming-payment lookup is
 > now its own state instead of an empty list. The unreceived store records the
 > outcome of the latest lookup (`idle` / `ok` / `failed`) and when one last
@@ -30,8 +42,8 @@ A start-to-finish plan to reimplement the Zenon `syrius` wallet (currently Flutt
 > `SetPinnedActions`, both validated in Go) and never change what the backend
 > permits. Fresh installs start in Everyday; installs that predate the setting
 > keep Advanced. Signing, confirmation and consent flows are untouched.
-> Deferred to follow-up PRs: embedded-node sync diagnostics, a network row and mainnet-consent
-> route in the transaction review, and pillar/sentinel collateral in holdings.
+> Deferred to follow-up PRs: embedded-node sync diagnostics, and a network row
+> and mainnet-consent route in the transaction review.
 > Prototype: `docs/prototypes/two-mode-wallet.html`.
 
 > **Bend laws (2026-11-20):** Add 76 checked laws for wallet effect matching,

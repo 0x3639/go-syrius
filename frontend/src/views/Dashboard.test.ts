@@ -8,6 +8,7 @@ import { usePriceStore } from '../stores/price'
 import { useUiStore } from '../stores/ui'
 import { useUnreceivedStore } from '../stores/unreceived'
 import { useStakeStore } from '../stores/stake'
+import { useCollateralStore } from '../stores/collateral'
 import { usePlasmaStore } from '../stores/plasma'
 import { usePillarStore } from '../stores/pillar'
 import { useAcceleratorStore } from '../stores/accelerator'
@@ -26,7 +27,7 @@ function setup(mode: 'everyday' | 'advanced') {
     { zts: 'zts1qsrxxxxxxxxxxxxxmrhjll', symbol: 'QSR', decimals: 8, amount: '12408500000000' },
     { zts: 'zts1customxxxxxxxxxxxxxxxx', symbol: 'LUMEN', decimals: 6, amount: '25000000000' },
   ] as any
-  for (const s of [useStakeStore(), usePillarStore()] as any[]) s.refresh = vi.fn()
+  for (const s of [useStakeStore(), usePillarStore(), useCollateralStore()] as any[]) s.refresh = vi.fn()
   return mount(Dashboard, { global: { stubs: { TxHistory: true } } })
 }
 
@@ -156,6 +157,51 @@ describe('Dashboard', () => {
       expect(qsr.text()).toContain('fused for plasma')
       expect(qsr.findAll('td')[3].text()).toContain('20')
       expect(qsr.findAll('td')[3].text()).not.toContain('900')
+    })
+
+    it('shows pillar and sentinel collateral and deposits as committed, each with its amount', async () => {
+      const price = usePriceStore(); price.znnUsd = 1; price.qsrUsd = 0; price.available = true
+      const c = useCollateralStore(); c.status = 'ready'
+      c.info = { pillarZnn: '1500000000000', sentinelZnn: '500000000000', sentinelQsr: '5000000000000', pillarDepositedQsr: '0', sentinelDepositedQsr: '120000000000' } as any
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      const znn = w.get('[data-zts="zts1znnxxxxxxxxxxxxx9z4ulx"]').findAll('td')[3].text()
+      expect(znn).toContain('20,000') // total
+      expect(znn).toMatch(/15,000\S* ?pillar collateral/)
+      expect(znn).toMatch(/pillar collateral5,000\S* ?sentinel collateral/)
+      const qsr = w.get('[data-zts="zts1qsrxxxxxxxxxxxxxmrhjll"]').findAll('td')[3].text()
+      expect(qsr).toContain('51,200')
+      expect(qsr).toMatch(/50,000\S* ?sentinel collateral/)
+      expect(qsr).toMatch(/sentinel collateral1,200\S* ?deposited for a sentinel/)
+      expect(qsr).not.toContain('deposited for a pillar') // zero entries are left out
+      // 12,408.50319 spendable + 20,000 locked ZNN at $1
+      expect(w.text()).toContain('$32,408.50')
+    })
+
+    it('never adds an old collateral snapshot to a newer balance', async () => {
+      const c = useCollateralStore(); c.status = 'ready'
+      c.info = { pillarZnn: '1500000000000', sentinelZnn: '0', sentinelQsr: '0', pillarDepositedQsr: '0', sentinelDepositedQsr: '0' } as any
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      const committed = () => w.get('[data-zts="zts1znnxxxxxxxxxxxxx9z4ulx"]').findAll('td')[3].text()
+      expect(committed()).toContain('15,000')
+      // The pillar is revoked elsewhere: the refund lands in the balance while
+      // the collateral reload is still in flight.
+      ;(c.refresh as any).mockImplementation(() => new Promise<void>(() => {}))
+      useBalancesStore().items = [{ zts: 'zts1znnxxxxxxxxxxxxx9z4ulx', symbol: 'ZNN', decimals: 8, amount: '2740850319000' }] as any
+      await w.vm.$nextTick()
+      expect(c.stale).toBe(true)
+      expect(committed()).toBe('—')
+    })
+
+    it('reloads collateral when the QSR balance moves', async () => {
+      const w = setup(mode)
+      const refresh = useCollateralStore().refresh as any
+      refresh.mockClear()
+      const balances = useBalancesStore()
+      balances.items = balances.items.map((b) => b.symbol === 'QSR' ? { ...b, amount: '1' } : b)
+      await w.vm.$nextTick()
+      expect(refresh).toHaveBeenCalledTimes(1)
     })
 
     it('states what the fiat estimate covers and leaves out', () => {

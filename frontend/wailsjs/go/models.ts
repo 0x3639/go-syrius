@@ -132,6 +132,26 @@ export namespace app {
 		    return a;
 		}
 	}
+	export class Collateral {
+	    pillarZnn: string;
+	    sentinelZnn: string;
+	    sentinelQsr: string;
+	    pillarDepositedQsr: string;
+	    sentinelDepositedQsr: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Collateral(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pillarZnn = source["pillarZnn"];
+	        this.sentinelZnn = source["sentinelZnn"];
+	        this.sentinelQsr = source["sentinelQsr"];
+	        this.pillarDepositedQsr = source["pillarDepositedQsr"];
+	        this.sentinelDepositedQsr = source["sentinelDepositedQsr"];
+	    }
+	}
 	export class Contact {
 	    name: string;
 	    address: string;

@@ -547,6 +547,69 @@ func (s *NomService) GetMyPillar() (OwnedPillarInfo, error) {
 	return ownedPillarDTO(list), nil
 }
 
+// collateralFrom derives the still-owned locked amounts from chain reads. The
+// per-registration amounts are protocol constants: the node's RPC does not
+// report them, and revocation returns exactly these (go-zenon pillars.go
+// RevokeMethod returns PillarStakeAmount; sentinel.go RevokeSentinelMethod
+// returns the registered ZNN and QSR). A revoked pillar has already been
+// refunded and holds nothing.
+func collateralFrom(pillars []*embedded.PillarInfo, sentinel *embedded.SentinelInfo, pillarDeposit, sentinelDeposit *big.Int) Collateral {
+	str := func(v *big.Int) string {
+		if v == nil || v.Sign() < 0 {
+			return "0"
+		}
+		return v.String()
+	}
+	pillarZnn := new(big.Int)
+	for _, p := range pillars {
+		if p != nil && p.RevokeTimestamp == 0 {
+			pillarZnn.Add(pillarZnn, constants.PillarStakeAmount)
+		}
+	}
+	sentinelZnn, sentinelQsr := new(big.Int), new(big.Int)
+	if sentinel != nil && sentinel.RegistrationTimestamp != 0 && sentinel.Active {
+		sentinelZnn.Set(constants.SentinelZnnRegisterAmount)
+		sentinelQsr.Set(constants.SentinelQsrDepositAmount)
+	}
+	return Collateral{
+		PillarZnn:            str(pillarZnn),
+		SentinelZnn:          str(sentinelZnn),
+		SentinelQsr:          str(sentinelQsr),
+		PillarDepositedQsr:   str(pillarDeposit),
+		SentinelDepositedQsr: str(sentinelDeposit),
+	}
+}
+
+// GetCollateral returns what the active address has locked in the pillar and
+// sentinel contracts and still owns. Read-only.
+func (s *NomService) GetCollateral() (Collateral, error) {
+	client := s.node.currentClient()
+	if client == nil {
+		return Collateral{}, errors.New("not connected")
+	}
+	addr, ok := s.wallet.activeAddress()
+	if !ok {
+		return Collateral{}, errLocked
+	}
+	pillars, err := client.PillarApi.GetByOwner(addr)
+	if err != nil {
+		return Collateral{}, err
+	}
+	sentinel, err := client.SentinelApi.GetByOwner(addr)
+	if err != nil {
+		return Collateral{}, err
+	}
+	pillarDeposit, err := client.PillarApi.GetDepositedQsr(addr)
+	if err != nil {
+		return Collateral{}, err
+	}
+	sentinelDeposit, err := client.SentinelApi.GetDepositedQsr(addr)
+	if err != nil {
+		return Collateral{}, err
+	}
+	return collateralFrom(pillars, sentinel, pillarDeposit, sentinelDeposit), nil
+}
+
 // GetPillarDepositedQsr returns the active address's QSR escrowed toward pillar
 // registration (base-unit decimal string; "0" if none).
 func (s *NomService) GetPillarDepositedQsr() (string, error) {

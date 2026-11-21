@@ -113,6 +113,11 @@ func TestToUnreceivedBlock(t *testing.T) {
 	if got.FromAddress != b.Address.String() || got.Amount != "150000000" || got.Decimals != 6 {
 		t.Fatalf("toUnreceivedBlock = %+v", got)
 	}
+	// Zts is the identity the frontend matches against balances; it must be
+	// the token standard whether or not the node supplied token info.
+	if got.Zts != types.ZnnTokenStandard.String() {
+		t.Fatalf("Zts = %q, want %q", got.Zts, types.ZnnTokenStandard.String())
+	}
 	if got.FromHash != b.Hash.String() {
 		t.Fatalf("fromHash = %s", got.FromHash)
 	}

@@ -789,6 +789,7 @@ export namespace app {
 	    fromHash: string;
 	    fromAddress: string;
 	    token: string;
+	    zts: string;
 	    amount: string;
 	    decimals: number;
 	
@@ -801,6 +802,7 @@ export namespace app {
 	        this.fromHash = source["fromHash"];
 	        this.fromAddress = source["fromAddress"];
 	        this.token = source["token"];
+	        this.zts = source["zts"];
 	        this.amount = source["amount"];
 	        this.decimals = source["decimals"];
 	    }

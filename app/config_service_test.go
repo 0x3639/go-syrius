@@ -442,3 +442,27 @@ func TestSetPinnedActionsValidates(t *testing.T) {
 		t.Fatalf("empty pins must stay empty, got %v", s.PinnedActions)
 	}
 }
+
+// A fresh install must keep Everyday after its first wallet is written, even
+// when nothing else saved settings in between.
+func TestUIModeFreshInstallStaysEverydayAfterFirstWallet(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GO_SYRIUS_DATA_DIR", dir)
+	c := newConfigService()
+	if s, err := c.GetSettings(); err != nil || s.UIMode != uiModeEveryday {
+		t.Fatalf("first read: mode=%q err=%v", s.UIMode, err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "wallets"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "wallets", "first.dat"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := c.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.UIMode != uiModeEveryday {
+		t.Fatalf("after first wallet: mode = %q, want everyday", s.UIMode)
+	}
+}

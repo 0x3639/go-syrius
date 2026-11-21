@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { watch } from 'vue'
 import { useNodeStore } from '../stores/node'
+import { useBalancesStore } from '../stores/balances'
+import { ZNN_ZTS } from '../lib/useHoldings'
 import { useStakeStore } from '../stores/stake'
 import { usePillarStore } from '../stores/pillar'
 import { useSentinelStore } from '../stores/sentinel'
@@ -14,6 +16,7 @@ import OverviewAdvanced from './OverviewAdvanced.vue'
 // Advanced. Both read the same stores, so switching mode re-renders in place:
 // same account, same network, same data.
 const node = useNodeStore()
+const balances = useBalancesStore()
 const stake = useStakeStore()
 const pillar = usePillarStore()
 const sentinel = useSentinelStore()
@@ -32,6 +35,15 @@ function refreshEarning() {
 }
 useNodeRefresh(refreshEarning)
 watch(() => wallet.activeIndex, refreshEarning)
+
+// Holdings add staked ZNN to the spendable balance. The balance refreshes on
+// every momentum but the stake snapshot does not, so a stake or withdrawal
+// (here or from another client) would be counted twice or not at all until
+// the next remount. Reload staking whenever the ZNN balance moves.
+watch(
+  () => balances.items.find((b) => b.zts === ZNN_ZTS)?.amount,
+  (now, before) => { if (before !== undefined && now !== before && node.connected) stake.refresh() },
+)
 </script>
 
 <template>

@@ -302,9 +302,13 @@ type RewardInfo struct {
 type UnreceivedBlock struct {
 	FromHash    string `json:"fromHash"`
 	FromAddress string `json:"fromAddress"`
-	Token       string `json:"token"`
-	Amount      string `json:"amount"`
-	Decimals    int    `json:"decimals"`
+	// Token is display text: the symbol when the node reports token info,
+	// otherwise the token standard. Zts is always the token standard and is
+	// the identity to match against balances (symbols are not unique).
+	Token    string `json:"token"`
+	Zts      string `json:"zts"`
+	Amount   string `json:"amount"`
+	Decimals int    `json:"decimals"`
 }
 
 // PillarSummary is one pillar in the delegation picker list.

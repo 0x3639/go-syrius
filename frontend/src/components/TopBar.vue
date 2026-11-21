@@ -115,6 +115,8 @@ async function lockWallet() {
         <ZapIcon :size="16" />
       </button>
 
+      <!-- (The pillar and vote shortcuts further down are operator tools:
+           Advanced only. Everyday reports a waiting vote on Home instead.) -->
       <!-- Opens the waiting payments. It never changes auto-receive: that is
            an explicit switch on the Receive screen. -->
       <button type="button"
@@ -143,14 +145,14 @@ async function lockWallet() {
         <LinkIcon :size="16" />
       </button>
 
-      <button v-if="pillar.ownsPillar" type="button" aria-label="Your pillar"
+      <button v-if="pillar.ownsPillar && ui.mode === 'advanced'" type="button" aria-label="Your pillar"
         :title="`Operating pillar: ${pillar.myPillar?.name ?? ''}`"
         class="grid h-8.5 w-8.5 place-items-center rounded-md text-success transition-colors hover:bg-foreground/[0.06]"
         @click="router.push('/network/pillars')">
         <Building2Icon :size="16" />
       </button>
 
-      <button v-if="pillar.ownsPillar" type="button" aria-label="Accelerator votes"
+      <button v-if="pillar.ownsPillar && ui.mode === 'advanced'" type="button" aria-label="Accelerator votes"
         :title="accelerator.needsVoteCount > 0 ? `${accelerator.needsVoteCount} AZ item(s) to vote on` : 'Accelerator votes'"
         class="relative grid h-8.5 w-8.5 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
         @click="gotoVotes">

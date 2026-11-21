@@ -25,13 +25,13 @@ const { rows } = useHoldings()
         </tr>
       </thead>
       <tbody>
-        <tr v-for="r in rows" :key="r.symbol" :data-testid="`holding-${r.symbol}`">
+        <tr v-for="r in rows" :key="r.zts" :data-testid="`holding-${r.symbol}`" :data-zts="r.zts">
           <td class="border-t border-border px-6 align-top" :class="dense ? 'py-2.5' : 'py-3.5'">
             <div class="flex items-center gap-3">
               <span class="avatar-dot" :class="r.symbol === 'QSR' ? 'bg-info/15 text-info' : r.protocol ? '' : 'bg-foreground/10 text-muted-foreground'" aria-hidden="true">{{ r.symbol.slice(0, 3) }}</span>
               <span class="min-w-0">
                 <span class="block font-semibold text-foreground">{{ r.name }} <span v-if="r.name !== r.symbol" class="font-medium text-muted-foreground">{{ r.symbol }}</span></span>
-                <span v-if="dense && r.zts" class="block font-mono text-xs text-muted-foreground">{{ r.zts }}</span>
+                <span v-if="dense && r.zts.startsWith('zts1')" class="block font-mono text-xs text-muted-foreground">{{ r.zts }}</span>
                 <span v-else-if="!r.protocol" class="block text-xs text-muted-foreground">Custom token</span>
                 <span v-if="!dense && balances.available" class="block text-xs text-muted-foreground">{{ r.usd === null ? 'No price' : '≈ ' + formatFiat(r.usd) }}</span>
               </span>

@@ -13,6 +13,7 @@ import { useAutoReceiveStore } from '../stores/autoReceive'
 import { useUnreceivedStore } from '../stores/unreceived'
 import { useNodeStore } from '../stores/node'
 import { useUiStore } from '../stores/ui'
+import { usePillarStore } from '../stores/pillar'
 import { useWalletConnectStore } from '../stores/walletconnect'
 
 const stubs = { AccountSlotPicker: true }
@@ -77,6 +78,18 @@ describe('TopBar', () => {
     const w = mount(TopBar, { props: { title: 'Pillars' }, global: { stubs } })
     await w.find('[aria-label="Wallet mode"] button').trigger('click')
     expect(push).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('keeps pillar and vote shortcuts out of Everyday', async () => {
+    usePillarStore().myPillar = { name: 'Meridian' } as any
+    const ui = useUiStore()
+    const w = mount(TopBar, { props: { title: 'Overview' }, global: { stubs } })
+    expect(w.find('[aria-label="Your pillar"]').exists()).toBe(true)
+    expect(w.find('[aria-label="Accelerator votes"]').exists()).toBe(true)
+    ui.mode = 'everyday'
+    await w.vm.$nextTick()
+    expect(w.find('[aria-label="Your pillar"]').exists()).toBe(false)
+    expect(w.find('[aria-label="Accelerator votes"]').exists()).toBe(false)
   })
 
   it('names the connected network and chain', async () => {

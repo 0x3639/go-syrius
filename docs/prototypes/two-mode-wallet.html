@@ -324,7 +324,7 @@ function world(){return [
  {name:'Meridian operator',tag:'Account 1',ini:'A1',addr:'z1qpd7ey0wk3xn5s2c8vhtu4m6jagz9lfr03w5tk',
   assets:[
    {sym:'ZNN',name:'Zenon',zts:ZNN,dec:8,spend:312.07,price:1.18,committed:[['Pillar collateral',15000,'returned on dismantle']]},
-   {sym:'QSR',name:'Quasar',zts:QSR,dec:8,spend:48150,price:0.094,committed:[['Pillar collateral',150000,'burned at registration'],['Fused for plasma',2000,'cancellable now']]},
+   {sym:'QSR',name:'Quasar',zts:QSR,dec:8,spend:48150,price:0.094,committed:[['Fused for plasma',2000,'cancellable now']]},
    {sym:'MRD',name:'Meridian Points',zts:'zts1h9d3wq7c5xk2nz8a0v4mje',dec:2,spend:400000,price:null,committed:[],custom:true}],
   waiting:[],rewards:{deleg:{znn:96.4,qsr:310},stake:{qsr:0}},stakes:[],delegate:'Meridian',plasma:{level:'High',fused:2000,entries:1},
   pillar:{name:'Meridian',rank:17,of:41,weight:'1.92M ZNN',prod:'118 of 120 momentums this epoch'},issued:[{sym:'MRD',supply:'1,000,000.00',flags:'mintable, burnable'}],
@@ -408,7 +408,7 @@ function createApp(root,o={}){
  function todoList(){const L=attention();if(!L.length)return `<div class="clear"><span class="dot ok">${ico('check')}</span><span>Nothing needs you right now. <span class="mut">Incoming payments checked 12 s ago.</span></span></div>`;
   return `<ul class="todo">${L.map(x=>`<li><span class="dot ${x.t} ${x.t==='in'?'':x.t}">${ico(x.i)}</span><span class="tx"><b>${x.h}</b><span>${x.d}</span></span><button class="btn sm" data-act="${x.act}" ${x.arg?`data-arg="${x.arg}"`:''} data-id="td-${x.i}">${x.c}</button></li>`).join('')}</ul>`}
  function fiatScope(a){const priced=a.assets.filter(x=>x.price!=null),un=a.assets.filter(x=>x.price==null).map(x=>x.sym);
-  const total=priced.reduce((t,x)=>t+(x.spend+x.committed.reduce((c,k)=>c+(k[2]==='burned at registration'?0:k[1]),0))*x.price,0);
+  const total=priced.reduce((t,x)=>t+(x.spend+x.committed.reduce((c,k)=>c+k[1],0))*x.price,0);
   return {total,un,priced:priced.map(x=>x.sym)}}
  function assetRows(a,dense){return a.assets.map(x=>{const w=waitSum(a,x.sym),com=x.committed.reduce((t,k)=>t+k[1],0);
    const fiat=s.net!=='mainnet'?'<span class="z">n/a</span>':x.price==null?'<span class="z">No price</span>':'≈ '+usd((x.spend+com)*x.price);
@@ -620,7 +620,7 @@ function createApp(root,o={}){
    else if((d.amount.split('.')[1]||'').length>x.dec)s.err=`${x.sym} has ${x.dec} decimal places.`;
    else{s.err=null;d.to=d.to.trim();return openReview('send',{...d})}render('.err')},
   vote:p=>openReview('vote',p), collect:p=>openReview('collect',p),
-  confirm(){if(blocked()||s.stalled)return;s.phase='work';render();setTimeout(()=>{if(!s.review)return;s.review.apply();s.hash=[...Array(64)].map(()=>'0123456789abcdef'[Math.random()*16|0]).join('');s.phase='done';s.returnTo=null;render()},1500)},
+  confirm(){if(blocked()||s.stalled)return;const r=s.review;s.phase='work';render();setTimeout(()=>{if(s.review!==r||s.phase!=='work')return;r.apply();s.hash=[...Array(64)].map(()=>'0123456789abcdef'[Math.random()*16|0]).join('');s.phase='done';s.returnTo=null;render()},1500)},
   cancel(){s.review=null;s.phase=null;s.returnTo=null;render()},
   done(){const k=s.review.kind;s.review=null;s.phase=null;if(k==='send')s.route='home';render('h1')},
   toGate(){s.returnTo=s.rvArgs;s.review=null;s.phase=null;s.route='settings';s.askMainnet=true;render('[data-act="allowYes"]');body.querySelector('#'+CSS.escape(id+'gate'))?.scrollIntoView({block:'center'})},

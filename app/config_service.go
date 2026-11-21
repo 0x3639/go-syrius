@@ -171,6 +171,12 @@ func (c *ConfigService) getSettingsLocked() (Settings, error) {
 		if c.hasExistingWallets() {
 			s.UIMode = uiModeAdvanced
 		}
+		// Record the resolved layout now. The wallets-on-disk check is only
+		// meaningful before the first wallet of a fresh install is written;
+		// without this, creating that wallet before any settings write would
+		// flip a fresh install from Everyday to Advanced. Best-effort: a
+		// failed write still returns usable settings and is retried next read.
+		_ = c.setSettingsLocked(s)
 		return s, nil
 	}
 	if err != nil {

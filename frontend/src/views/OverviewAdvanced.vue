@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, type Component } from 'vue'
+import { computed, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ZapIcon, LayersIcon, Building2Icon, ShieldCheckIcon, RocketIcon, CoinsIcon,
   LinkIcon, ServerIcon, PinIcon,
 } from '@lucide/vue'
 import { useNodeStore } from '../stores/node'
+import { useWalletStore } from '../stores/wallet'
 import { useBalancesStore } from '../stores/balances'
 import { usePlasmaStore } from '../stores/plasma'
 import { useStakeStore } from '../stores/stake'
@@ -31,6 +32,7 @@ import AttentionList from '../components/AttentionList.vue'
 // the account actually uses come first; the rest collapse into one quiet row.
 const router = useRouter()
 const node = useNodeStore()
+const wallet = useWalletStore()
 const balances = useBalancesStore()
 const plasma = usePlasmaStore()
 const stake = useStakeStore()
@@ -44,6 +46,9 @@ const { totalUsd, unpriced } = useHoldings()
 const { items } = useAttention()
 
 useNodeRefresh(() => token.refresh())
+// Issued tokens belong to an address; follow account switches. The store's
+// epoch check drops a response that arrives for the previous account.
+watch(() => wallet.activeIndex, () => { if (node.connected) token.refresh() })
 
 const editingPins = ref(false)
 const pinIds = Object.keys(PINNABLE) as PinId[]

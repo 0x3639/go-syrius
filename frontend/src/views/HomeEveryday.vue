@@ -7,7 +7,7 @@ import { usePriceStore } from '../stores/price'
 import { useNodeStore } from '../stores/node'
 import { useStakeStore } from '../stores/stake'
 import { usePillarStore } from '../stores/pillar'
-import { useHoldings } from '../lib/useHoldings'
+import { useHoldings, ZNN_ZTS } from '../lib/useHoldings'
 import { useAttention } from '../lib/useAttention'
 import { formatFiat } from '../lib/fiat'
 import TxHistory from '../components/TxHistory.vue'
@@ -29,7 +29,7 @@ const pillar = usePillarStore()
 const { rows, totalUsd, unpriced, waitingCount } = useHoldings()
 const { items } = useAttention()
 
-const znn = computed(() => rows.value.find((r) => r.symbol === 'ZNN'))
+const znn = computed(() => rows.value.find((r) => r.zts === ZNN_ZTS))
 const delegatedTo = computed(() => pillar.delegation?.name || '')
 
 // What the estimate covers, said plainly next to the number.

@@ -69,6 +69,47 @@ describe('Dashboard', () => {
       expect(w.get('[data-testid="holding-QSR"]').text()).toContain('fused for plasma')
     })
 
+    it('keeps same-symbol tokens apart and never prices a look-alike', () => {
+      const price = usePriceStore(); price.znnUsd = 1; price.qsrUsd = 0.1; price.available = true
+      const w = setup(mode)
+      useBalancesStore().items.push(
+        { zts: 'zts1fakeznnxxxxxxxxxxxxxxx', symbol: 'ZNN', decimals: 8, amount: '99900000000' },
+        { zts: 'zts1customtwoxxxxxxxxxxxxx', symbol: 'LUMEN', decimals: 6, amount: '1000000' },
+      )
+      return w.vm.$nextTick().then(() => {
+        expect(w.findAll('[data-testid="holding-ZNN"]')).toHaveLength(2)
+        expect(w.findAll('[data-testid="holding-LUMEN"]')).toHaveLength(2)
+        const real = w.get('[data-zts="zts1znnxxxxxxxxxxxxx9z4ulx"]').text()
+        const fake = w.get('[data-zts="zts1fakeznnxxxxxxxxxxxxxxx"]').text()
+        expect(real).toContain('12,408.5')
+        expect(real).toContain('≈ $')
+        expect(fake).toContain('999')
+        expect(fake).toContain('No price')
+      })
+    })
+
+    it('matches a waiting payment by token standard, not by its display text', async () => {
+      useUnreceivedStore().items = [
+        // No token info from the node: `token` falls back to the standard.
+        { fromHash: 'h1', fromAddress: 'z1a', token: 'zts1znnxxxxxxxxxxxxx9z4ulx', zts: 'zts1znnxxxxxxxxxxxxx9z4ulx', amount: '4250000000', decimals: 8 },
+        { fromHash: 'h2', fromAddress: 'z1a', token: 'LUMEN', zts: 'zts1customxxxxxxxxxxxxxxxx', amount: '7000000', decimals: 6 },
+      ] as any
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      expect(w.findAll('tbody tr')).toHaveLength(3)
+      expect(w.get('[data-zts="zts1znnxxxxxxxxxxxxx9z4ulx"]').text()).toContain('+42.5')
+      expect(w.get('[data-zts="zts1customxxxxxxxxxxxxxxxx"]').text()).toContain('+7')
+    })
+
+    it('reloads staking when the ZNN balance moves', async () => {
+      const w = setup(mode)
+      const refresh = useStakeStore().refresh as any
+      refresh.mockClear()
+      useBalancesStore().items = [{ zts: 'zts1znnxxxxxxxxxxxxx9z4ulx', symbol: 'ZNN', decimals: 8, amount: '1' }] as any
+      await w.vm.$nextTick()
+      expect(refresh).toHaveBeenCalled()
+    })
+
     it('states what the fiat estimate covers and leaves out', () => {
       const price = usePriceStore(); price.znnUsd = 1; price.qsrUsd = 0.1; price.available = true
       useUnreceivedStore().items = [{ fromHash: 'h1', fromAddress: 'z1a', token: 'ZNN', amount: '1', decimals: 8 }] as any

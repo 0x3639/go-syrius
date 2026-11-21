@@ -38,6 +38,10 @@ export const useUiStore = defineStore('ui', {
     pins: ['fuse', 'collect', 'receive'] as PinId[],
     // One-shot message for the shell to toast after an automatic mode change.
     modeNotice: '',
+    // Bumped on every user edit so a settings load that started earlier
+    // cannot overwrite the newer choice when it resolves.
+    _modeRev: 0,
+    _pinsRev: 0,
   }),
   actions: {
     // NOTE: this store owns the theme PREFERENCE (persisted as syrius.theme).
@@ -64,19 +68,22 @@ export const useUiStore = defineStore('ui', {
     },
     // Authoritative load from settings.json. A failure keeps the current mode.
     async loadPrefs() {
+      const modeRev = this._modeRev
+      const pinsRev = this._pinsRev
       try {
         const s = await GetSettings()
-        if (isMode(s?.uiMode)) {
+        if (isMode(s?.uiMode) && modeRev === this._modeRev) {
           this.mode = s.uiMode
           try { localStorage.setItem('syrius.mode', s.uiMode) } catch { /* ignore */ }
         }
-        if (Array.isArray(s?.pinnedActions)) this.pins = s.pinnedActions.filter((p): p is PinId => p in PINNABLE)
+        if (Array.isArray(s?.pinnedActions) && pinsRev === this._pinsRev) this.pins = s.pinnedActions.filter((p): p is PinId => p in PINNABLE)
       } catch { /* keep current */ }
     },
     // The UI switches at once; persistence is best-effort (a failed save only
     // means the previous mode returns on next launch).
     setMode(mode: UiMode, notice = '') {
       if (this.mode === mode) return
+      this._modeRev++
       this.mode = mode
       this.modeNotice = notice
       try { localStorage.setItem('syrius.mode', mode) } catch { /* ignore */ }
@@ -86,6 +93,7 @@ export const useUiStore = defineStore('ui', {
     togglePin(id: PinId) {
       const next = this.pins.includes(id) ? this.pins.filter((p) => p !== id) : [...this.pins, id]
       if (next.length > MAX_PINS) return
+      this._pinsRev++
       this.pins = next
       try { SetPinnedActions(next)?.catch?.(() => {}) } catch { /* ignore */ }
     },

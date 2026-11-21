@@ -59,6 +59,31 @@ describe('TopBar', () => {
     expect(toggle).not.toHaveBeenCalled()
   })
 
+  it('shows that incoming payments could not be checked', async () => {
+    useNodeStore().connected = true
+    useUnreceivedStore().lookup = 'failed'
+    const w = mount(TopBar, { props: { title: 'Home' }, global: { stubs } })
+    const btn = w.get(`button[aria-label="Couldn't check for incoming payments"]`)
+    expect(btn.text()).toBe('?')
+    expect(btn.classes()).toContain('text-warning')
+    await btn.trigger('click')
+    expect(push).toHaveBeenCalledWith('/receive')
+  })
+
+  it('claims no payments are waiting only after a successful lookup', async () => {
+    const node = useNodeStore()
+    const unreceived = useUnreceivedStore()
+    const w = mount(TopBar, { props: { title: 'Home' }, global: { stubs } })
+    const title = () => w.get('button[aria-label="Incoming payments"]').attributes('title')
+    expect(title()).toBe('Incoming payments: not connected')
+    node.connected = true
+    await w.vm.$nextTick()
+    expect(title()).toBe('Checking for incoming payments…')
+    unreceived.lookup = 'ok'
+    await w.vm.$nextTick()
+    expect(title()).toBe('No payments waiting')
+  })
+
   it('offers a labelled mode switch that reflects the current mode', async () => {
     const ui = useUiStore()
     const w = mount(TopBar, { props: { title: 'Overview' }, global: { stubs } })

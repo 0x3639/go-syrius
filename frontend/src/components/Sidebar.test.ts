@@ -78,6 +78,15 @@ describe('Sidebar', () => {
     expect(mountSidebar().find('[aria-label="2 waiting"]').exists()).toBe(true)
   })
 
+  it.each(['everyday', 'advanced'] as const)('%s marks Receive when incoming payments could not be checked', (mode) => {
+    useUiStore().mode = mode
+    useNodeStore().connected = true
+    useUnreceivedStore().lookup = 'failed'
+    const w = mountSidebar()
+    expect(w.get(`[aria-label="Couldn't check"]`).text()).toBe('?')
+    expect(w.find('[aria-label="0 waiting"]').exists()).toBe(false)
+  })
+
   it('shows the app version below the sync pill', async () => {
     const w = mountSidebar()
     await flushPromises()

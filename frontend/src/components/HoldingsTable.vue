@@ -9,7 +9,7 @@ import TokenAmount from './TokenAmount.vue'
 // (Advanced) adds the token standard and a fiat column.
 defineProps<{ dense?: boolean }>()
 const balances = useBalancesStore()
-const { rows } = useHoldings()
+const { rows, waitingUnknown } = useHoldings()
 </script>
 
 <template>
@@ -42,7 +42,8 @@ const { rows } = useHoldings()
             <span v-else>—</span>
           </td>
           <td class="whitespace-nowrap border-t border-border px-3 text-right align-top" :class="dense ? 'py-2.5' : 'py-3.5'">
-            <span v-if="r.waiting !== '0'" class="text-primary">+<TokenAmount :amount="r.waiting" :decimals="r.decimals" /></span>
+            <span v-if="waitingUnknown" class="font-semibold text-warning" title="Couldn't check for incoming payments" aria-label="Unknown: couldn't check for incoming payments">?</span>
+            <span v-else-if="r.waiting !== '0'" class="text-primary">+<TokenAmount :amount="r.waiting" :decimals="r.decimals" /></span>
             <span v-else class="text-muted-foreground">—</span>
           </td>
           <td class="border-t border-border px-3 text-right align-top" :class="dense ? 'py-2.5' : 'py-3.5 pr-6'">

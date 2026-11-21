@@ -48,7 +48,9 @@ export function useAttention() {
       list.push({ key: 'sync', tone: 'danger', icon: AlertTriangleIcon, title: everyday ? 'Your node has stopped syncing' : 'Node sync stalled', detail: 'Balances and incoming payments may be out of date.', action: 'Node settings', to: '/settings' })
     }
     const waiting = unreceived.items
-    if (waiting.length) {
+    if (unreceived.failed) {
+      list.push({ key: 'incoming-unknown', tone: 'warning', icon: AlertTriangleIcon, title: "Couldn't check for incoming payments", detail: 'The node did not answer. Payments may still be waiting.', action: 'Open Receive', to: '/receive' })
+    } else if (waiting.length) {
       const first = waiting.slice(0, 3).map((u) => `${formatAmount(u.amount, u.decimals ?? 8)} ${u.token}`).join(' · ')
       list.push({ key: 'incoming', tone: 'primary', icon: ArrowDownIcon, title: `${waiting.length} ${waiting.length === 1 ? 'payment' : 'payments'} waiting to be received`, detail: waiting.length > 3 ? `${first} and ${waiting.length - 3} more` : first, action: 'Open payments', to: '/receive' })
     }

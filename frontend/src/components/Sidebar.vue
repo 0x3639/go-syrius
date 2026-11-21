@@ -31,7 +31,7 @@ const everydayNav = [
 const walletNav = computed(() => [
   { to: '/dashboard', label: 'Overview', icon: LayoutDashboardIcon },
   { to: '/transfer', label: 'Send', icon: SendIcon },
-  { to: '/receive', label: 'Receive', icon: DownloadIcon, badge: unreceived.items.length },
+  { to: '/receive', label: 'Receive', icon: DownloadIcon, badge: unreceived.failed ? '?' : unreceived.items.length },
   { to: '/activity', label: 'Activity', icon: ActivityIcon },
   { to: '/tokens', label: 'Tokens', icon: CoinsIcon },
 ])
@@ -96,7 +96,8 @@ onMounted(async () => {
         </RouterLink>
         <RouterLink to="/receive" class="relative inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-input text-sm font-semibold text-sidebar-foreground transition-colors hover:bg-sidebar-accent/60">
           <DownloadIcon :size="15" /> Receive
-          <span v-if="unreceived.items.length" class="absolute -right-1 -top-1 rounded-full bg-primary px-1.5 text-xs font-bold leading-5 text-primary-foreground" :aria-label="`${unreceived.items.length} waiting`">{{ unreceived.items.length }}</span>
+          <span v-if="unreceived.failed" class="absolute -right-1 -top-1 rounded-full bg-warning px-1.5 text-xs font-bold leading-5 text-warning-foreground" aria-label="Couldn't check">?</span>
+          <span v-else-if="unreceived.items.length" class="absolute -right-1 -top-1 rounded-full bg-primary px-1.5 text-xs font-bold leading-5 text-primary-foreground" :aria-label="`${unreceived.items.length} waiting`">{{ unreceived.items.length }}</span>
         </RouterLink>
       </div>
       <nav class="flex flex-col gap-0.5" aria-label="Wallet">

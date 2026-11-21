@@ -182,6 +182,19 @@ describe('Dashboard', () => {
       expect(push).toHaveBeenCalledWith('/receive')
     })
 
+    it('says it could not check incoming payments instead of showing none', async () => {
+      const unreceived = useUnreceivedStore(); unreceived.lookup = 'failed'
+      const price = usePriceStore(); price.znnUsd = 1; price.qsrUsd = 0.1; price.available = true
+      const w = setup(mode)
+      expect(w.text()).toContain("Couldn't check for incoming payments")
+      expect(w.find('[data-testid="attention-incoming"]').exists()).toBe(false)
+      const waiting = w.get('[data-zts="zts1znnxxxxxxxxxxxxx9z4ulx"]').findAll('td')[2]
+      expect(waiting.text()).toBe('?')
+      expect(w.get('[data-testid="estimate-scope"]').text()).toMatch(/any payments not yet received|could not be checked/)
+      await w.get('[data-testid="attention-incoming-unknown"]').trigger('click')
+      expect(push).toHaveBeenCalledWith('/receive')
+    })
+
     it('tells a pillar owner about a pending vote', async () => {
       const pillar = usePillarStore(); pillar.myPillar = { name: 'Meridian' } as any
       useAcceleratorStore().votable = [{ needsMyVote: true }] as any

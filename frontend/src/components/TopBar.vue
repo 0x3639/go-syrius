@@ -39,6 +39,17 @@ const plasmaColor = computed(() => plasmaAvailable.value ? plasmaColorClass(plas
 
 const switchMode = useModeSwitch()
 
+// Tooltip for the incoming button. "No payments waiting" is a claim, so it is
+// made only after a lookup has actually succeeded.
+const incomingTitle = computed(() => {
+  const n = unreceived.items.length
+  if (unreceived.failed) return `Couldn't check for incoming payments — open Receive to try again`
+  if (n > 0) return `${n} payment(s) waiting — open Receive`
+  if (!node.connected) return 'Incoming payments: not connected'
+  if (unreceived.lookup !== 'ok') return 'Checking for incoming payments…'
+  return autoReceive.enabled ? 'No payments waiting · auto-receive is on' : 'No payments waiting'
+})
+
 // The chain the connected node reports. Named for the two known networks so a
 // mainnet session is never mistaken for a test one.
 const network = computed(() => {
@@ -120,15 +131,15 @@ async function lockWallet() {
       <!-- Opens the waiting payments. It never changes auto-receive: that is
            an explicit switch on the Receive screen. -->
       <button type="button"
-        :aria-label="unreceived.items.length > 0 ? `${unreceived.items.length} incoming payment(s) waiting` : 'Incoming payments'"
-        :title="unreceived.items.length > 0
-          ? `${unreceived.items.length} payment(s) waiting — open Receive`
-          : autoReceive.enabled ? 'No payments waiting · auto-receive is on' : 'No payments waiting'"
+        :aria-label="unreceived.failed ? `Couldn't check for incoming payments` : unreceived.items.length > 0 ? `${unreceived.items.length} incoming payment(s) waiting` : 'Incoming payments'"
+        :title="incomingTitle"
         class="relative grid h-8.5 w-8.5 place-items-center rounded-md transition-colors"
-        :class="`hover:bg-foreground/[0.06] ${unreceived.items.length > 0 ? 'text-primary' : 'text-muted-foreground'}`"
+        :class="`hover:bg-foreground/[0.06] ${unreceived.failed ? 'text-warning' : unreceived.items.length > 0 ? 'text-primary' : 'text-muted-foreground'}`"
         @click="router.push('/receive')">
         <ArrowDownCircleIcon :size="16" />
-        <span v-if="unreceived.items.length > 0"
+        <span v-if="unreceived.failed"
+          class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[0.625rem] font-semibold text-warning-foreground" aria-hidden="true">?</span>
+        <span v-else-if="unreceived.items.length > 0"
           class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.625rem] font-semibold text-primary-foreground">
           {{ unreceived.items.length }}
         </span>

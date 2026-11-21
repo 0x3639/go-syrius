@@ -228,6 +228,7 @@ func (t *TxService) PrepareSend(req SendRequest) (SendPreview, error) {
 		Decimals:    resolveDecimals(zts.String(), clientTokenDecimals(client)),
 		NeedsPoW:    needsPoW,
 		HoldID:      holdID,
+		ChainID:     template.ChainIdentifier,
 		// UsedPlasma / Difficulty / Hash are filled by ConfirmPublish's PoW.
 	}, nil
 }
@@ -520,6 +521,7 @@ func (t *TxService) prepareCallWithEffectDecimals(template *nom.AccountBlock, ex
 		Effect:      effect,
 		NeedsPoW:    needsPoW,
 		HoldID:      holdID,
+		ChainID:     template.ChainIdentifier,
 		// UsedPlasma / Difficulty / Hash are filled by ConfirmPublish's PoW.
 	}, nil
 }

@@ -6,6 +6,7 @@ import { useTxStore } from '../stores/tx'
 import { useNodeStore } from '../stores/node'
 import { formatAmountExact } from '../lib/format'
 import { LoaderCircleIcon } from '@lucide/vue'
+import { networkName, MAINNET_CHAIN_ID } from '../lib/network'
 
 // FUNDS-CRITICAL — confirm-what-you-approve. Every field rendered here derives
 // from `tx.preview` — the EFFECT of the held, un-PoW'd template from PrepareSend,
@@ -26,6 +27,15 @@ const { preview: p, status } = storeToRefs(tx)
 // alongside, and the human form is labelled as node-reported.
 const ZNN_ZTS = 'zts1znnxxxxxxxxxxxxx9z4ulx'
 const QSR_ZTS = 'zts1qsrxxxxxxxxxxxxxmrhjll'
+// The network this exact transaction is valid on: the chain identifier
+// stamped on the HELD block (preview.chainId), never the chain the wallet
+// happens to be connected to or the configured setting. Absent only for a
+// preview from a backend that predates the field; then no network is claimed.
+const network = computed(() => {
+  const id = Number(p.value?.chainId ?? 0)
+  return id > 0 ? { id, name: networkName(id), mainnet: id === MAINNET_CHAIN_ID } : null
+})
+
 const isCustomToken = computed(() => !!p.value && p.value.zts !== ZNN_ZTS && p.value.zts !== QSR_ZTS)
 </script>
 
@@ -63,6 +73,13 @@ const isCustomToken = computed(() => !!p.value && p.value.zts !== ZNN_ZTS && p.v
       <!-- Full address (wraps) — confirm-what-you-sign means the user verifies
            the exact recipient, not a truncation. -->
       <span class="break-all text-right font-mono">{{ p.toAddress }}</span>
+    </div>
+    <div v-if="network" class="flex justify-between gap-4" data-testid="tx-network">
+      <span class="shrink-0 text-muted-foreground">Network</span>
+      <span class="text-right">
+        {{ network.name }} <span class="font-mono text-muted-foreground">· chain {{ network.id }}</span>
+        <span v-if="network.mainnet" class="block text-xs font-semibold text-warning">Real funds</span>
+      </span>
     </div>
     <div
       v-if="p.effect?.contract === 'Stake' && p.effect?.method === 'CollectReward'"

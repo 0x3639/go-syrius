@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { useModeSwitch } from '../lib/useModeSwitch'
 import { TriangleAlertIcon } from '@lucide/vue'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useConsentStore } from '../stores/consent'
 import { Input, Button } from 'nom-ui'
 import Field from '../components/Field.vue'
 import { useNodeStore } from '../stores/node'
@@ -44,6 +46,19 @@ async function applyAutoLock(v: number) {
 
 const chainId = ref(1)
 const allowMainnetSend = ref(false)
+// The mainnet opt-in sits inside the Advanced network disclosure. A visit
+// that came to review it (the consent banner) opens the disclosure and brings
+// the control into view instead of leaving the user to hunt for it.
+const consent = useConsentStore()
+const route = useRoute()
+const router = useRouter()
+const advancedOpen = ref(route?.query?.section === 'mainnet')
+const mainnetSection = ref<HTMLElement | null>(null)
+function returnFromConsent() {
+  const to = consent.returnTo
+  consent.clearReturn()
+  if (to) router.push(to)
+}
 const showMainnetConfirm = ref(false)
 const mainnetMsg = ref('')
 const mainnetErr = ref('')
@@ -71,6 +86,7 @@ async function requestMainnetToggle() {
   try {
     await Cfg.SetAllowMainnetSend(false)
     allowMainnetSend.value = false
+    consent.setAllowed(false)
     mainnetMsg.value = 'Mainnet transactions disabled'
   } catch (e: any) { mainnetErr.value = e?.message ?? String(e) }
 }
@@ -84,6 +100,7 @@ async function confirmMainnetTransactions() {
   try {
     await Cfg.SetAllowMainnetSend(true)
     allowMainnetSend.value = true
+    consent.setAllowed(true)
     mainnetMsg.value = 'Mainnet transactions enabled'
   } catch (e: any) { mainnetErr.value = e?.message ?? String(e) }
   finally { showMainnetConfirm.value = false }
@@ -111,11 +128,17 @@ onMounted(async () => {
     const settings = await Cfg.GetSettings()
     chainId.value = settings.chainId || 1
     allowMainnetSend.value = settings.allowMainnetSend ?? false
+    consent.setAllowed(allowMainnetSend.value)
     autoLockMinutes.value = settings.autoLockMinutes ?? 5
   } catch {}
   await ui.init()
   if (!wallet.wallets.length) await wallet.loadWallets()
   walletName.value = wallet.wallets.find((w) => w.id === wallet.active)?.name ?? ''
+  if (advancedOpen.value) {
+    await nextTick()
+    mainnetSection.value?.scrollIntoView?.({ block: 'center' })
+    mainnetSection.value?.querySelector<HTMLInputElement>('input[type="checkbox"]')?.focus()
+  }
 })
 
 // One node transition at a time (defense in depth — the backend serializes
@@ -364,7 +387,7 @@ function hide() { revealed.value = '' }
           <p v-if="autoLockErr" class="text-destructive text-sm" role="alert">{{ autoLockErr }}</p>
         </section>
 
-        <details class="panel-card">
+        <details class="panel-card" :open="advancedOpen" @toggle="advancedOpen = ($event.target as HTMLDetailsElement).open">
           <summary class="section-title cursor-pointer">Advanced network settings</summary>
           <div class="mt-4 space-y-3">
           <p class="hint">The chain the wallet builds transactions for (1 = mainnet, 73404 = testnet).</p>
@@ -378,7 +401,7 @@ function hide() { revealed.value = '' }
           <p v-if="chainMsg" class="text-primary text-sm">{{ chainMsg }}</p>
           <p v-if="chainErr" class="text-destructive text-sm" role="alert">{{ chainErr }}</p>
 
-          <div class="mt-4 border-t border-border pt-4 space-y-2">
+          <div ref="mainnetSection" class="mt-4 border-t border-border pt-4 space-y-2">
             <label class="flex flex-wrap items-center gap-2 text-sm text-foreground">
               <input
                 type="checkbox"
@@ -401,6 +424,13 @@ function hide() { revealed.value = '' }
               </div>
             </div>
             <p v-if="mainnetMsg" class="text-primary text-sm">{{ mainnetMsg }}</p>
+            <!-- The way back for a visit that started from the consent banner.
+                 Nothing was held while here: the transaction is built and
+                 reviewed afresh on return. -->
+            <div v-if="consent.returnTo && allowMainnetSend" class="flex flex-wrap items-center gap-3 rounded-lg bg-primary/[0.08] p-3" data-testid="consent-return">
+              <p class="min-w-0 flex-1 basis-56 text-sm text-foreground">Mainnet transactions are on. You will still review each transaction before it is signed.</p>
+              <Button aria-label="Back to where you were" @click="returnFromConsent">Back to where you were</Button>
+            </div>
             <p v-if="mainnetErr" class="text-destructive text-sm" role="alert">{{ mainnetErr }}</p>
           </div>
           </div>

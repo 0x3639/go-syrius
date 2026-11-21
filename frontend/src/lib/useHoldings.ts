@@ -84,7 +84,9 @@ export function useHoldings() {
         const r = row(zts, u.token, u.decimals ?? 8)
         r.waiting = sumBase([r.waiting, u.amount])
       }
-      const staked = stake.available ? stake.stakeInfo?.totalAmount : undefined
+      // Skipped while stale: a snapshot older than the balance would count
+      // the same ZNN as both spendable and staked.
+      const staked = stake.available && !stake.stale ? stake.stakeInfo?.totalAmount : undefined
       if (staked && staked !== '0') row(ZNN_ZTS, 'ZNN', 8).committed.push({ label: 'staked', amount: staked })
       // Owner side: QSR this account fused and can cancel, whoever benefits.
       // Not `qsrFused`, which is plasma fused FOR this account by anyone.

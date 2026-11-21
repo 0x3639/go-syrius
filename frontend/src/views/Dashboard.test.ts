@@ -110,6 +110,43 @@ describe('Dashboard', () => {
       expect(refresh).toHaveBeenCalled()
     })
 
+    it('reloads staking when a ZNN balance row appears', async () => {
+      const w = setup(mode)
+      const balances = useBalancesStore()
+      balances.items = balances.items.filter((b) => b.symbol !== 'ZNN') // all ZNN staked: no row
+      const refresh = useStakeStore().refresh as any
+      refresh.mockClear()
+      balances.items = [...balances.items, { zts: 'zts1znnxxxxxxxxxxxxx9z4ulx', symbol: 'ZNN', decimals: 8, amount: '50000000000' }] as any
+      await w.vm.$nextTick()
+      expect(refresh).toHaveBeenCalledTimes(1)
+    })
+
+    it('never adds an old staking snapshot to a newer balance', async () => {
+      const stake = useStakeStore(); stake.status = 'ready'
+      stake.stakeInfo = { totalAmount: '50000000000', entries: [] } as any
+      const w = setup(mode)
+      await w.vm.$nextTick()
+      const committed = () => w.get('[data-zts="zts1znnxxxxxxxxxxxxx9z4ulx"]').findAll('td')[3].text()
+      expect(committed()).toContain('500')
+
+      // The stake is withdrawn elsewhere: the balance rises first, and the
+      // staking reload is still in flight.
+      let land!: () => void
+      ;(stake.refresh as any).mockImplementation(() => new Promise<void>((r) => { land = r }).then(() => {
+        stake.stakeInfo = { totalAmount: '0', entries: [] } as any
+        stake.stale = false
+      }))
+      useBalancesStore().items = [{ zts: 'zts1znnxxxxxxxxxxxxx9z4ulx', symbol: 'ZNN', decimals: 8, amount: '1290850319000' }] as any
+      await w.vm.$nextTick()
+      expect(committed()).toBe('—') // not 500 on top of the new balance
+
+      land()
+      await new Promise((r) => setTimeout(r))
+      await w.vm.$nextTick()
+      expect(committed()).toBe('—')
+      expect(stake.stale).toBe(false)
+    })
+
     it('counts QSR this account fused, not plasma others fused for it', async () => {
       // 900 QSR fused for this account by someone else; it owns a 20 QSR fusion.
       usePlasmaStore().info = { qsrFused: '90000000000', qsrFusedOwned: '2000000000', currentPlasma: 80000, maxPlasma: 100000 } as any

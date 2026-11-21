@@ -39,10 +39,16 @@ watch(() => wallet.activeIndex, refreshEarning)
 // Holdings add staked ZNN to the spendable balance. The balance refreshes on
 // every momentum but the stake snapshot does not, so a stake or withdrawal
 // (here or from another client) would be counted twice or not at all until
-// the next remount. Reload staking whenever the ZNN balance moves.
+// the next remount. Reload staking whenever the ZNN balance moves, including
+// a ZNN row appearing or disappearing (GetBalances omits a zero balance, so
+// an all-staked account gains its row when a stake is withdrawn). resync
+// marks the old snapshot stale immediately, so holdings never add it to the
+// new balance while the reload is in flight. Sync flush: the mark must be set
+// before anything re-reads holdings.
 watch(
-  () => balances.items.find((b) => b.zts === ZNN_ZTS)?.amount,
-  (now, before) => { if (before !== undefined && now !== before && node.connected) stake.refresh() },
+  () => balances.items.find((b) => b.zts === ZNN_ZTS)?.amount ?? '',
+  () => { if (node.connected) stake.resync() },
+  { flush: 'sync' },
 )
 </script>
 

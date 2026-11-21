@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import * as Nom from '../../wailsjs/go/app/NomService'
 import { currentRequestEpoch } from '../lib/requestEpoch'
+import { withTimeout } from '../lib/withTimeout'
 import type { app } from '../../wailsjs/go/models'
 import { useNodeStore } from './node'
 
@@ -55,7 +56,9 @@ export const useCollateralStore = defineStore('collateral', {
       if (this.status !== 'ready') this.status = 'loading'
       this._active = request
       try {
-        const info = await Nom.GetCollateral()
+        // Bounded: an unanswered read must release `_active` (so periodic
+        // reloads resume) and surface as unknown, not hold the rows forever.
+        const info = await withTimeout(Nom.GetCollateral())
         if (epoch !== currentRequestEpoch() || request !== this._request) return
         this.info = info
         this.status = 'ready'

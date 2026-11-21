@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import * as Nom from '../../wailsjs/go/app/NomService'
 import { currentRequestEpoch } from '../lib/requestEpoch'
+import { withTimeout } from '../lib/withTimeout'
 import type { app } from '../../wailsjs/go/models'
 import { useNodeStore } from './node'
 
@@ -54,7 +55,9 @@ export const useStakeStore = defineStore('stake', {
       if (this.status !== 'ready') this.status = 'loading'
       this._active = request
       try {
-        const [stakeInfo, reward] = await Promise.all([Nom.GetStakeList(), Nom.GetUncollectedReward()])
+        // Bounded: an unanswered read must release `_active` (so periodic
+        // reloads resume) and surface as unknown, not hold the rows forever.
+        const [stakeInfo, reward] = await withTimeout(Promise.all([Nom.GetStakeList(), Nom.GetUncollectedReward()]))
         if (epoch !== currentRequestEpoch() || request !== this._request) return
         this.stakeInfo = stakeInfo
         this.reward = reward

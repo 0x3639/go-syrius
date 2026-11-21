@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 const { GetStakeList, GetUncollectedReward } = vi.hoisted(() => ({ GetStakeList: vi.fn(), GetUncollectedReward: vi.fn() }))
 vi.mock('../../wailsjs/go/app/NomService', () => ({ GetStakeList, GetUncollectedReward }))
 
+import { READ_TIMEOUT_MS } from '../lib/withTimeout'
 import { useStakeStore } from './stake'
 
 describe('stake store resync', () => {
@@ -82,5 +83,28 @@ describe('stake store resync', () => {
     await s.refreshIfIdle()
     expect(GetStakeList).toHaveBeenCalledTimes(2)
     expect(s.stakeInfo?.totalAmount).toBe('9')
+  })
+
+  // The WebSocket transport has no per-call deadline: a read the node never
+  // answers would otherwise block periodic reloads and hold the rows forever.
+  it('gives up on an unanswered read, reports unknown and lets the next reload run', async () => {
+    vi.useFakeTimers()
+    try {
+      const s = useStakeStore()
+      s.stale = true
+      GetStakeList.mockReturnValueOnce(new Promise(() => {})) // never answers
+      const hung = s.refreshIfIdle()
+      await s.refreshIfIdle()
+      expect(GetStakeList).toHaveBeenCalledTimes(1) // gate is held while it is outstanding
+      await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS)
+      await hung
+      expect(s.status).toBe('error') // shown as "couldn't check", not as old data
+      expect(s.stale).toBe(false)
+      GetStakeList.mockResolvedValueOnce({ totalAmount: '9', entries: [] })
+      await s.refreshIfIdle()
+      expect(GetStakeList).toHaveBeenCalledTimes(2)
+      expect(s.stakeInfo?.totalAmount).toBe('9')
+      expect(s.status).toBe('ready')
+    } finally { vi.useRealTimers() }
   })
 })

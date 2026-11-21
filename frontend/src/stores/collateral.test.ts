@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 const GetCollateral = vi.hoisted(() => vi.fn())
 vi.mock('../../wailsjs/go/app/NomService', () => ({ GetCollateral }))
 
+import { READ_TIMEOUT_MS } from '../lib/withTimeout'
 import { useCollateralStore } from './collateral'
 import { useNodeStore } from './node'
 
@@ -87,5 +88,28 @@ describe('collateral store', () => {
     await s.refreshIfIdle()
     expect(GetCollateral).toHaveBeenCalledTimes(2)
     expect(s.info?.pillarZnn).toBe('9')
+  })
+
+  // The WebSocket transport has no per-call deadline: a read the node never
+  // answers would otherwise block periodic reloads and hold the rows forever.
+  it('gives up on an unanswered read, reports unknown and lets the next reload run', async () => {
+    vi.useFakeTimers()
+    try {
+      const s = useCollateralStore()
+      s.stale = true
+      GetCollateral.mockReturnValueOnce(new Promise(() => {})) // never answers
+      const hung = s.refreshIfIdle()
+      await s.refreshIfIdle()
+      expect(GetCollateral).toHaveBeenCalledTimes(1) // gate is held while it is outstanding
+      await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS)
+      await hung
+      expect(s.status).toBe('error') // shown as "couldn't check", not as old data
+      expect(s.stale).toBe(false)
+      GetCollateral.mockResolvedValueOnce(snapshot('9'))
+      await s.refreshIfIdle()
+      expect(GetCollateral).toHaveBeenCalledTimes(2)
+      expect(s.info?.pillarZnn).toBe('9')
+      expect(s.status).toBe('ready')
+    } finally { vi.useRealTimers() }
   })
 })

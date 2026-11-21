@@ -37,16 +37,16 @@ watch(() => wallet.activeIndex, load)
 <template>
   <div>
     <Tabs v-model="sub">
-      <TabsList class="w-full justify-start">
+      <TabsList class="justify-start">
         <TabsTrigger value="Vote">Vote</TabsTrigger>
         <TabsTrigger value="Projects">Projects</TabsTrigger>
         <TabsTrigger value="Create">Create</TabsTrigger>
         <TabsTrigger value="Donate">Donate</TabsTrigger>
       </TabsList>
-      <TabsContent value="Vote"><AcceleratorVote /></TabsContent>
-      <TabsContent value="Projects"><AcceleratorProjects /></TabsContent>
-      <TabsContent value="Create"><AcceleratorCreate /></TabsContent>
-      <TabsContent value="Donate"><AcceleratorDonate /></TabsContent>
+      <TabsContent class="mt-5" value="Vote"><AcceleratorVote /></TabsContent>
+      <TabsContent class="mt-5" value="Projects"><AcceleratorProjects /></TabsContent>
+      <TabsContent class="mt-5" value="Create"><AcceleratorCreate /></TabsContent>
+      <TabsContent class="mt-5" value="Donate"><AcceleratorDonate /></TabsContent>
     </Tabs>
   </div>
 </template>

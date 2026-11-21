@@ -47,7 +47,7 @@ watch(
   <section v-if="sentinel" class="space-y-3 panel-card">
     <div class="flex items-center gap-2">
       <CircleCheckIcon class="text-primary" :size="18" />
-      <h2 class="text-sm font-medium text-foreground">Your Sentinel</h2>
+      <h2 class="section-title">Your Sentinel</h2>
       <span class="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
         {{ sentinel.active ? 'Active' : 'Inactive' }}
       </span>

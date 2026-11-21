@@ -14,6 +14,9 @@ export const useConsentStore = defineStore('consent', {
     // Where the user was when they went to review the setting, so Settings can
     // offer the way back. A route path; '' when there is nowhere to return to.
     returnTo: '',
+    // Bumped on every explicit write, so a read that started earlier cannot
+    // replace the newer value when it resolves.
+    _writes: 0,
   }),
   getters: {
     // Connected to mainnet with the opt-in known to be off: every send,
@@ -25,10 +28,16 @@ export const useConsentStore = defineStore('consent', {
   },
   actions: {
     async load() {
-      try { this.mainnetAllowed = !!(await GetSettings())?.allowMainnetSend } catch { /* keep the last known value */ }
+      const writes = this._writes
+      try {
+        const allowed = !!(await GetSettings())?.allowMainnetSend
+        // Settings changed the opt-in while this read was in flight: the read
+        // is older than what the backend just accepted, so drop it.
+        if (writes === this._writes) this.mainnetAllowed = allowed
+      } catch { /* keep the last known value */ }
     },
     // Called by Settings after the backend has accepted a change.
-    setAllowed(v: boolean) { this.mainnetAllowed = v },
+    setAllowed(v: boolean) { this._writes++; this.mainnetAllowed = v },
     leaveFrom(path: string) { this.returnTo = path },
     clearReturn() { this.returnTo = '' },
   },

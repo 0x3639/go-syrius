@@ -35,6 +35,25 @@ describe('consent store', () => {
     expect(s.mainnetAllowed).toBe(true)
   })
 
+  it.each([[true, false], [false, true]])('a read that started before a change to %s does not undo it', async (written, stale) => {
+    const s = useConsentStore()
+    let land!: (v: unknown) => void
+    GetSettings.mockReturnValueOnce(new Promise((r) => { land = r }))
+    const loading = s.load()
+    s.setAllowed(written) // Settings: the backend accepted this change
+    land({ allowMainnetSend: stale })
+    await loading
+    expect(s.mainnetAllowed).toBe(written)
+  })
+
+  it('a later read still applies', async () => {
+    const s = useConsentStore()
+    s.setAllowed(true)
+    GetSettings.mockResolvedValueOnce({ allowMainnetSend: false })
+    await s.load()
+    expect(s.mainnetAllowed).toBe(false)
+  })
+
   it('remembers where to return to', () => {
     const s = useConsentStore()
     s.leaveFrom('/transfer?to=z1abc')
